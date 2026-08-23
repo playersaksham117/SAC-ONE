@@ -1,0 +1,30 @@
+{
+  "name": "sacone",
+  "private": true,
+  "scripts": {
+    "dev": "npx concurrently -n api,control,erp -c blue,green,magenta \"npm run dev --prefix sacone-api\" \"npm run dev --prefix \\\"SACHIN ELECTRICALS\\\"\" \"npm run dev --prefix \\\"SACHIN ELECTRICALS/erp\\\"\"",
+    "dev:api": "npm run dev --prefix sacone-api",
+    "dev:control": "npm run dev --prefix \"SACHIN ELECTRICALS\"",
+    "dev:web": "npm run dev --prefix \"SACHIN ELECTRICALS\"",
+    "dev:admin": "npm run dev --prefix \"SACHIN ELECTRICALS\"",
+    "dev:erp": "npm run dev --prefix \"SACHIN ELECTRICALS/erp\"",
+    "build": "npm run build --prefix sacone-api && npm run build --prefix \"SACHIN ELECTRICALS\" && npm run build --prefix \"SACHIN ELECTRICALS/erp\"",
+    "install:all": "npm install && npm install --prefix \"SACHIN ELECTRICALS\" && npm install --prefix sacone-api && npm install --prefix \"SACHIN ELECTRICALS/erp\"",
+    "db:up": "docker compose up -d",
+    "db:migrate": "node scripts/migrate-master-db.mjs",
+    "db:setup": "npm run db:up && npm run db:migrate && npm run db:setup --prefix sacone-api",
+    "db:sqlite": "node scripts/build-sqlite-master.mjs",
+    "db:sqlite:json": "node scripts/sqlite-to-json.mjs",
+    "db:mongo:push": "node scripts/json-to-mongo.mjs",
+    "db:sync:mongo": "node scripts/sync-sqlite-mongo.mjs"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "concurrently": "^9.1.2",
+    "pg": "^8.16.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "mongodb": "^7.5.0"
+  }
+}

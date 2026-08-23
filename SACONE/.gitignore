@@ -1,0 +1,10 @@
+node_modules/
+data/*.sqlite
+data/*.sqlite-*
+exports/*.json
+.env
+*.log
+sacone-api/erp/data/*.db
+sacone-api/erp/data/*.db-*
+sacone-api/prisma/dev.db
+sacone-api/prisma/dev.db-*

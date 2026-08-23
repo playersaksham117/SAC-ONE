@@ -1,0 +1,19 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # WMS module is under migration and not part of current app entrypoint (`lib/main.dart`).
+    - lib/wms_main.dart
+    - lib/screens/wms_*.dart
+    - lib/providers/wms_*.dart
+    - lib/providers/wms_providers.dart
+    - lib/data/**
+    - lib/domain/**
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_const_literals_to_create_immutables: true
+    prefer_final_fields: true
+    unnecessary_this: true
+    avoid_print: false

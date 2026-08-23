@@ -1,0 +1,17 @@
+<svg width="800" height="200" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TracInvent logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="800" height="200" rx="24" fill="#F8FAFC"/>
+  <rect x="24" y="24" width="152" height="152" rx="20" fill="url(#bg)"/>
+  <rect x="52" y="58" width="96" height="12" rx="6" fill="#DBEAFE"/>
+  <rect x="52" y="84" width="96" height="12" rx="6" fill="#DBEAFE"/>
+  <rect x="52" y="110" width="96" height="12" rx="6" fill="#DBEAFE"/>
+  <circle cx="132" cy="132" r="20" fill="#10B981"/>
+  <path d="M123 132l7 7 14-14" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="206" y="94" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="700" fill="#0F172A">TracInvent</text>
+  <text x="206" y="130" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="500" fill="#64748B">Smart Inventory Tracking</text>
+</svg>

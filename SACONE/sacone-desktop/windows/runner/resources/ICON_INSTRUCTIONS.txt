@@ -1,0 +1,12 @@
+// This file is used by the Windows build system to reference the app icon.
+// To set a custom icon:
+// 1. Convert assets/icons/tracinvent_icon_simple.svg to ICO format using:
+//    - Online: https://convertio.co/svg-ico/ or https://cloudconvert.com/svg-to-ico
+//    - Set multiple sizes: 16, 32, 48, 64, 128, 256
+// 2. Save as app_icon.ico in this directory (windows/runner/resources/)
+// 3. The icon will be automatically used for taskbar and desktop shortcut
+
+// If you need to rebuild:
+// flutter clean
+// flutter pub get
+// flutter build windows
