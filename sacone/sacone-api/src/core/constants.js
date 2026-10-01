@@ -48,8 +48,6 @@ export const DEFAULT_ROLES = [
       'crm.contacts.view',
       'finance.ledger.view', 'finance.ledger.create',
       'finance.bank_import.view', 'finance.bank_import.create', 'finance.bank_import.edit', 'finance.bank_import.approve',
-      'hr.employees.view', 'hr.attendance.view', 'hr.attendance.create',
-      'hr.wages.view', 'hr.wages.create',
       'reports.reports.view',
       // CEO dashboard is NOT granted by default — assign reports.ceo_dashboard.view explicitly
     ],
@@ -130,7 +128,6 @@ export const DEFAULT_ROLES = [
       'reports.reports.view', 'reports.ceo_dashboard.view',
       'finance.ledger.view', 'finance.ledger.create', 'finance.ledger.edit',
       'finance.bank_import.view', 'finance.bank_import.create', 'finance.bank_import.edit', 'finance.bank_import.approve',
-      'hr.employees.view', 'hr.attendance.view', 'hr.wages.view', 'hr.wages.create', 'hr.wages.edit',
       'pos.sales.view', 'sales.orders.view',
       'sales.agents.view', 'sales.commissions.view', 'sales.commission_payments.view', 'sales.commission_reports.view',
       'purchases.orders.view', 'purchases.bills.view', 'purchases.reports.view',
@@ -251,16 +248,6 @@ export const MODULE_DEFINITIONS = [
     features: [
       { code: 'ledger', name: 'Finance', actions: ['view', 'create', 'edit', 'delete', 'approve'] },
       { code: 'bank_import', name: 'Bank Statement Import', actions: ['view', 'create', 'edit', 'approve'] },
-    ],
-  },
-  {
-    code: 'hr',
-    name: 'HR & Wages',
-    sortOrder: 9.5,
-    features: [
-      { code: 'employees', name: 'Employees', actions: ['view', 'create', 'edit', 'delete'] },
-      { code: 'attendance', name: 'Attendance', actions: ['view', 'create', 'edit', 'approve'] },
-      { code: 'wages', name: 'Payroll & Wages', actions: ['view', 'create', 'edit', 'approve'] },
     ],
   },
   {

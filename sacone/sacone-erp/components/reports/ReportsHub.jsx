@@ -38,15 +38,6 @@ const REPORT_LINKS = [
     hint: 'Open Banking & Cash',
   },
   {
-    id: 'hr',
-    title: 'HR & Wages Reports',
-    description: 'Attendance, payroll cost, advances outstanding and department labour.',
-    href: '/business/hr',
-    icon: '👷',
-    permission: 'hr.employees.view',
-    hint: 'Open HR → Reports tab',
-  },
-  {
     id: 'sales',
     title: 'Sales Reports',
     description: 'Invoice register, salesperson performance, returns analysis.',

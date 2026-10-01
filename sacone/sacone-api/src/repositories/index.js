@@ -53,13 +53,6 @@ import {
   FinanceSettingsRepository,
 } from './sqlite/finance.js';
 import {
-  EmployeeRepository,
-  AttendanceRepository,
-  EmployeeAdvanceRepository,
-  PayrollRepository,
-  HrSettingsRepository,
-} from './sqlite/hr.js';
-import {
   DocumentNumberingRepository,
   DocumentShareLogRepository,
   EmailSendLogRepository,
@@ -137,11 +130,6 @@ export function createSqliteRepositories() {
     financeAccounts: new FinancePaymentAccountRepository(),
     financeTransactions: new FinanceTransactionRepository(),
     financeSettings: new FinanceSettingsRepository(),
-    hrEmployees: new EmployeeRepository(),
-    hrAttendance: new AttendanceRepository(),
-    hrAdvances: new EmployeeAdvanceRepository(),
-    hrPayroll: new PayrollRepository(),
-    hrSettings: new HrSettingsRepository(),
     documentNumbering: new DocumentNumberingRepository(),
     documentShareLog: new DocumentShareLogRepository(),
     emailSendLog: new EmailSendLogRepository(),

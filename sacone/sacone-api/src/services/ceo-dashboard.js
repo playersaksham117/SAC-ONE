@@ -1,7 +1,6 @@
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
-import { hrService } from './hr.js';
 
 const repo = repos.ceoDashboard;
 const financeTxn = repos.financeTransactions;
@@ -359,7 +358,6 @@ export class CeoDashboardService {
     const estimatedOperatingProfit = round2(
       profit.estimatedGrossProfit + manualTotals.otherIncome - manualTotals.operatingExpenses
     );
-    const hrMetrics = hrService.getCeoMetrics(dateFrom, dateTo);
     const inventoryValue = repo.inventoryValue(filters);
     const inventoryHealth = repo.inventoryHealthCounts(settings, filters);
     const receivables = repo.receivables();
@@ -483,43 +481,6 @@ export class CeoDashboardService {
           label: 'Est. Operating Profit',
           hint: 'Gross profit + other income − operating expenses',
         },
-        totalEmployees: {
-          current: hrMetrics.totalEmployees,
-          previous: null,
-          change: null,
-          percentChange: null,
-          trend: 'flat',
-          label: 'Total Employees',
-          hint: 'Active employee records',
-        },
-        attendanceToday: {
-          current: hrMetrics.attendancePercent,
-          previous: null,
-          change: null,
-          percentChange: null,
-          trend: hrMetrics.attendancePercent >= 80 ? 'up' : hrMetrics.attendancePercent >= 60 ? 'flat' : 'down',
-          label: 'Attendance Today',
-          hint: `${hrMetrics.presentToday} present · ${hrMetrics.absentToday} absent`,
-          format: 'percent',
-        },
-        monthlyWageCost: {
-          current: hrMetrics.monthlyWageCost,
-          previous: null,
-          change: null,
-          percentChange: null,
-          trend: 'flat',
-          label: 'Monthly Wage Cost',
-          hint: 'Paid wages this month',
-        },
-        pendingWagePayments: {
-          current: hrMetrics.pendingWagePayments,
-          previous: null,
-          change: null,
-          percentChange: null,
-          trend: hrMetrics.pendingWagePayments > 0 ? 'down' : 'flat',
-          label: 'Pending Wages',
-          hint: 'Approved but unpaid',
-        },
       },
       salesBreakdown: {
         period: sales,
@@ -541,7 +502,6 @@ export class CeoDashboardService {
         flow: manualFlow,
         accounts: accountBalances,
       },
-      labour: hrMetrics,
       salesAgentPerformance: (() => {
         try {
           return repos.saleCommissions.performanceReport({ dateFrom, dateTo });
@@ -609,33 +569,6 @@ export class CeoDashboardService {
       },
       alerts: [
         ...repo.alerts(settings),
-        ...(hrMetrics.attendancePercent < (hrMetrics.rules?.absenteeismAlertPercent || 75)
-          ? [{
-            code: 'hr_high_absenteeism',
-            severity: 'warning',
-            title: 'High absenteeism today',
-            message: `Only ${hrMetrics.attendancePercent}% attendance (${hrMetrics.absentToday} absent)`,
-            actionHref: '/business/hr',
-          }]
-          : []),
-        ...(hrMetrics.pendingWagePayments > 0
-          ? [{
-            code: 'hr_pending_wages',
-            severity: 'info',
-            title: 'Pending wage payments',
-            message: `₹${hrMetrics.pendingWagePayments.toFixed(2)} approved wages awaiting payment`,
-            actionHref: '/business/hr',
-          }]
-          : []),
-        ...(hrMetrics.advancesOutstanding > 0
-          ? [{
-            code: 'hr_advances_outstanding',
-            severity: 'info',
-            title: 'Employee advances outstanding',
-            message: `₹${hrMetrics.advancesOutstanding.toFixed(2)} in unrecovered advances`,
-            actionHref: '/business/hr',
-          }]
-          : []),
       ],
       recentActivity: repo.recentActivity(20),
       multiFirm: {

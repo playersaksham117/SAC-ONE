@@ -199,36 +199,6 @@ export const REPOSITORY_CONTRACTS = {
     migrationReady: true,
     methods: ['getApprovalSettings'],
   },
-  hrEmployees: {
-    module: 'hr',
-    migrationReady: true,
-    methods: ['nextCode', 'findById', 'findAll', 'codeExists', 'create', 'update', 'countActive', 'listDepartments'],
-  },
-  hrAttendance: {
-    module: 'hr',
-    migrationReady: true,
-    methods: ['findById', 'findByEmployeeDate', 'findAll', 'upsert', 'bulkUpsert', 'dailySummary', 'trend', 'aggregateForEmployee'],
-  },
-  hrAdvances: {
-    module: 'hr',
-    migrationReady: true,
-    methods: ['nextNumber', 'findById', 'findAll', 'create', 'updateStatus', 'applyRecovery', 'outstandingTotal', 'outstandingForEmployee', 'listOutstanding'],
-  },
-  hrPayroll: {
-    module: 'hr',
-    migrationReady: true,
-    methods: [
-      'nextRunNumber', 'findRunById', 'findAllRuns', 'createRun', 'updateRunStatus',
-      'findLineById', 'findLinesByRun', 'upsertLine', 'deleteLinesForRun', 'updateLinePayment',
-      'hasOverlappingRun', 'createAdjustment', 'listAdjustments',
-      'monthlyWageCost', 'pendingWagePayments', 'labourCostByDepartment', 'wageCostTrend', 'overtimeCost',
-    ],
-  },
-  hrSettings: {
-    module: 'hr',
-    migrationReady: true,
-    methods: ['getRules'],
-  },
 };
 
 export function listMigrationReadyModules() {

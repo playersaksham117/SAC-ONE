@@ -72,7 +72,7 @@ npm run cloud:verify
 
 | SACONE (SQLite) | MongoDB | Supabase |
 |---|---|---|
-| every business table (products, stock ledger, sales, purchases, finance, HR, POS devices…) | collection of the same name | none |
+| every business table (products, stock ledger, sales, purchases, finance, POS devices…) | collection of the same name | none |
 | `users` | `users` (without `password_hash`) | `auth.users` (UUID + bcrypt hash) and `public.profiles` |
 | `roles`, `permissions`, `role_permissions`, `modules`, `features` | same-name collections | same-name tables in `public` |
 | `sessions` | skipped | skipped |

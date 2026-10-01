@@ -258,10 +258,6 @@ export default function CeoDashboardView() {
               <KpiCard kpi={k.grossSales} />
               <KpiCard kpi={k.purchaseValue} />
               <KpiCard kpi={k.grossMarginPercent} format="percent" />
-              <KpiCard kpi={k.totalEmployees} />
-              <KpiCard kpi={k.attendanceToday} format="percent" />
-              <KpiCard kpi={k.monthlyWageCost} />
-              <KpiCard kpi={k.pendingWagePayments} />
               <KpiCard kpi={k.otherIncome} />
               <KpiCard kpi={k.operatingExpenses} />
               <KpiCard kpi={k.estimatedOperatingProfit} />

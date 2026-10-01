@@ -12,7 +12,6 @@ import { webstorePublicRouter, webstoreAdminRouter } from './webstore.js';
 import { exportRouter } from './export.js';
 import { migrationRouter } from './migration.js';
 import { financeRouter } from './finance.js';
-import { hrRouter } from './hr.js';
 import { quotationRouter, documentNumberingRouter } from './quotations.js';
 import { purchaseRouter } from './purchases.js';
 import { customerReceiptRouter, supplierPaymentVoucherRouter, cashBookRouter } from './party-payments.js';
@@ -57,12 +56,11 @@ export const ROUTES = [
   ['/api/customer-receipts', customerReceiptRouter],
   ['/api/supplier-payment-vouchers', supplierPaymentVoucherRouter],
 
-  // Finance, HR, analytics
+  // Finance, analytics
   ['/api/finance', financeRouter],
   ['/api/cash-book', cashBookRouter],
   ['/api/bank-import', bankImportRouter],
   ['/api/bank-transactions', bankTransactionRouter],
-  ['/api/hr', hrRouter],
   ['/api/ceo-dashboard', ceoDashboardRouter],
 
   // Data platform

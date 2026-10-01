@@ -6,7 +6,7 @@ _Last reviewed: 28 Sep 2026_
 
 | App | Stack | Role | Runs on |
 |-----|-------|------|---------|
-| `sacone-api` | Node 20+ · Express 4 · better-sqlite3 (Mongo-ready repos) | System of record: products, stock engine, POS, parties, finance, HR, approvals | Server / shop PC (`:4000`) |
+| `sacone-api` | Node 20+ · Express 4 · better-sqlite3 (Mongo-ready repos) | System of record: products, stock engine, POS, parties, finance, approvals | Server / shop PC (`:4000`) |
 | `sacone-erp` | Next.js 14 (App Router) · Tailwind · Recharts | Back-office web app | Any browser — desktop, tablet, phone |
 | `sacone-owner` | Next.js 14 · Tailwind · Recharts | Owner app: CEO Dashboard + Income & Expense | Any browser (`:3001`) |
 | `sac-pos` | Expo SDK 57 · React Native 0.86 · TypeScript · zustand + AsyncStorage | Offline-first mobile POS (the only POS) | Android · iOS · web |
@@ -52,7 +52,7 @@ The legacy Flutter POS (`billease pos/`), GST Billing (`desktop-apps/`) and Spen
 |---------|----------|--------|
 | Fixed 256 px sidebar, `p-8` padding — **unusable on phones** | High | **Fixed** → responsive `AppShell` (drawer < 1024 px, sticky header, viewport meta) |
 | No UI for POS terminals / sync | High | **Added** `/admin/pos-devices` (Devices · POS users · Sync inbox) |
-| Page files of 35–52 KB (`products`, `pos`, `warehouse`, `crm`, `hr`, `finance`) | Medium | Open — split into `components/<module>/*` + hooks |
+| Page files of 35–52 KB (`products`, `pos`, `warehouse`, `crm`, `finance`) | Medium | Open — split into `components/<module>/*` + hooks |
 | Session token in `localStorage` (XSS-exfiltratable) | Medium | Open — move to httpOnly cookie |
 | No data-fetch layer (each page re-implements loading/error state) | Low | Open — `useApi()` hook or SWR |
 

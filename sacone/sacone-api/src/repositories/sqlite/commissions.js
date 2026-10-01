@@ -219,7 +219,7 @@ export class SalesAgentRepository {
       data.agentCode,
       data.name,
       data.agentType || 'internal',
-      data.employeeId || null,
+      null, // employee_id: HR module removed
       data.mobile || null,
       data.email || null,
       data.address || null,
@@ -255,7 +255,7 @@ export class SalesAgentRepository {
       data.agentCode ?? existing.agentCode,
       data.name ?? existing.name,
       data.agentType ?? existing.agentType,
-      data.employeeId !== undefined ? data.employeeId : existing.employeeId,
+      null,
       data.mobile !== undefined ? data.mobile : existing.mobile,
       data.email !== undefined ? data.email : existing.email,
       data.address !== undefined ? data.address : existing.address,

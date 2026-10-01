@@ -191,7 +191,7 @@ The demo cashier `cashier@sacone.local` / `Cashier@123` exists only when the dat
 | App | For | Contains |
 |-----|-----|----------|
 | **SAC-POS** (mobile) | Counter staff | All POS billing, returns, collections. The ERP web POS page was removed. |
-| **SACONE ERP** (web, :3000) | Office staff | Operations, parties, **Banking & Cash** (cash/bank/UPI books, bank import, party payments, accounts), commissions, HR, reports hub, admin |
+| **SACONE ERP** (web, :3000) | Office staff | Operations, parties, **Banking & Cash** (cash/bank/UPI books, bank import, party payments, accounts), commissions, reports hub, admin |
 | **SACONE Owner** (web, :3001) | Owner / CEO | **CEO Dashboard** and **Income & Expense** (transactions, approval, summary, categories) |
 
 - Owner access needs `reports.ceo_dashboard.view` and/or `finance.ledger.view`; other roles see "No owner access".

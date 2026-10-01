@@ -77,10 +77,6 @@ export const SACONE_COLLECTIONS = [
     { key: { status: 1 }, name: 'idx_status' },
     { key: { transactionType: 1 }, name: 'idx_type' },
   ]},
-  { name: 'employees', indexes: [{ key: { employeeCode: 1 }, unique: true, sparse: true, name: 'uniq_code' }] },
-  { name: 'attendance', indexes: [{ key: { employeeId: 1, attendanceDate: 1 }, name: 'idx_emp_date' }] },
-  { name: 'payroll', indexes: [{ key: { periodStart: 1, status: 1 }, name: 'idx_period_status' }] },
-  { name: 'employee_advances', indexes: [{ key: { employeeId: 1 }, name: 'idx_employee' }] },
   { name: 'approval_rules', indexes: [
     { key: { module: 1, action: 1, isActive: 1 }, name: 'idx_module_action' },
   ]},

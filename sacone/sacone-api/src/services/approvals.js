@@ -36,7 +36,6 @@ export class ApprovalService {
       { code: 'purchases', actions: ['purchase_order', 'purchase_bill', 'purchase_return'] },
       { code: 'inventory', actions: ['adjustment', 'transfer'] },
       { code: 'pos', actions: ['discount', 'cancel_sale', 'return'] },
-      { code: 'hr', actions: ['payroll'] },
       { code: 'warehouse', actions: ['transfer', 'stock_count'] },
     ];
   }
