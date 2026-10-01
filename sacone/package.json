@@ -1,0 +1,33 @@
+{
+  "name": "sacone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SACONE - Modular Business Management System",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix sacone-api && npm install --prefix sacone-erp && npm install --prefix sacone-owner && npm install --prefix sac-pos",
+    "db:setup": "npm run db:setup --prefix sacone-api",
+    "db:reset": "npm run db:reset --prefix sacone-api",
+    "export:json": "npm run export:json --prefix sacone-api --",
+    "migrate:dry-run": "npm run migrate:dry-run --prefix sacone-api --",
+    "migrate:json-to-mongo": "npm run migrate:json-to-mongo --prefix sacone-api --",
+    "dev": "concurrently -n api,erp,owner,gateway -c blue,green,magenta,gray \"npm run dev:api\" \"npm run dev:erp\" \"npm run dev:owner\" \"npm run gateway\"",
+    "dev:api": "npm run dev --prefix sacone-api",
+    "dev:erp": "npm run dev --prefix sacone-erp",
+    "dev:web": "npm run dev --prefix sacone-erp",
+    "start:api": "npm run start --prefix sacone-api",
+    "test:pos": "npm run test:pos --prefix sacone-api",
+    "test:pos-sync": "npm run test:pos-sync --prefix sacone-api",
+    "build:erp": "npm run build --prefix sacone-erp",
+    "dev:pos": "npm run start --prefix sac-pos",
+    "test:sac-pos": "npm test --prefix sac-pos",
+    "dev:owner": "npm run dev --prefix sacone-owner",
+    "build:owner": "npm run build --prefix sacone-owner",
+    "gateway": "node local-server/gateway.mjs",
+    "cloud:status": "npm run cloud:status --prefix sacone-api",
+    "cloud:export": "npm run cloud:export --prefix sacone-api --",
+    "cloud:verify": "npm run cloud:verify --prefix sacone-api --"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

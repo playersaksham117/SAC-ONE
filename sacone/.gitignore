@@ -1,0 +1,27 @@
+# Dependencies and builds
+node_modules/
+.next/
+out/
+.expo/
+dist/
+*.tsbuildinfo
+
+# Secrets and per-machine settings
+.env
+.env.local
+.env.*.local
+
+# Live data: the local server's database, exports and cloud snapshots never go to git
+*.db
+*.db-shm
+*.db-wal
+sacone-api/data/exports/
+sacone-api/data/cloud-snapshots/
+/products.csv
+
+# Tools and retired apps kept only on disk
+.claude/
+/Claude outputs/
+/billease pos/
+
+*.log

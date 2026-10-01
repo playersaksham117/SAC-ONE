@@ -1,0 +1,8 @@
+node_modules/
+data/*.db
+data/*.db-*
+data/exports/
+# Cloud export snapshots hold password hashes: never commit them
+data/cloud-snapshots/
+.env
+*.log

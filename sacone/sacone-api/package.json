@@ -1,0 +1,33 @@
+{
+  "name": "sacone-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:setup": "node src/database/run-setup.js",
+    "db:reset": "node src/database/reset.js",
+    "mongo:setup": "node src/database/mongodb/setup.js",
+    "mongo:reset": "node src/database/mongodb/reset.js",
+    "export:json": "node src/scripts/export-json.js",
+    "migrate:dry-run": "node src/scripts/migrate-json-to-mongo.js --dry-run",
+    "migrate:json-to-mongo": "node src/scripts/migrate-json-to-mongo.js",
+    "cloud:status": "node src/scripts/cloud.js status",
+    "cloud:export": "node src/scripts/cloud.js export",
+    "cloud:verify": "node src/scripts/cloud.js verify",
+    "test:pos": "node scripts/test-pos-scenarios.js",
+    "test:pos-sync": "node scripts/test-pos-sync.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongodb": "^6.12.0",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
+    "uuid": "^11.0.5"
+  }
+}
