@@ -64,10 +64,12 @@ export const config = {
 };
 
 const PRIVATE_IPV4 = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+/** Tailscale: 100.64.0.0/10 addresses and MagicDNS names (*.ts.net). */
+const TAILSCALE_IPV4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**
  * In local server mode, browsers on this PC or the shop LAN may use the API:
- * localhost, private IPs (phones opening http://192.168.x.x:3000) and the local domain.
+ * localhost, private IPs (phones opening http://192.168.x.x:3000), Tailscale and the local domain.
  */
 export function isLocalNetworkOrigin(origin) {
   if (config.serverMode !== 'local') return false;
@@ -81,6 +83,8 @@ export function isLocalNetworkOrigin(origin) {
   return hostname === 'localhost'
     || hostname.endsWith('.localhost')
     || PRIVATE_IPV4.test(hostname)
+    || TAILSCALE_IPV4.test(hostname)
+    || hostname.endsWith('.ts.net')
     || (Boolean(domain) && (hostname === domain || hostname.endsWith(`.${domain}`)));
 }
 

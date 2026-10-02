@@ -54,6 +54,19 @@ The API publishes a notice after every committed database write:
 - SAC-POS phones long-poll the server and pull new prices, stock, customers and staff changes
   within a second, instead of waiting for the one-minute sync.
 
+## Working from other networks (Tailscale)
+
+1. Install Tailscale (https://tailscale.com/download) on the server PC and on each phone or
+   laptop, and sign in with the same account on all of them.
+2. On the server PC run `tailscale ip -4` (or open the Tailscale app) to get its `100.x.x.x`
+   address, or use its MagicDNS name such as `shop-pc.tail1234.ts.net`.
+3. From anywhere, as long as Tailscale is connected:
+   - ERP: `http://100.x.x.x:3000`, Owner: `http://100.x.x.x:3001`
+   - SAC-POS server URL: `http://100.x.x.x:4000`
+
+Only devices signed in to your Tailscale account can reach the server; nothing is opened
+to the public internet. The API accepts Tailscale origins automatically in local mode.
+
 ## Moving to the cloud later
 
 See `sacone-api/docs/CLOUD_LINK.md`: `npm run cloud:export` copies everything to MongoDB and

@@ -15,7 +15,8 @@ export function siblingAppUrl(app, port, configured = '') {
   if (configured && (!LOOPBACK.test(new URL(configured).hostname) || LOOPBACK.test(hostname))) {
     return configured.replace(/\/$/, '');
   }
-  if (LOOPBACK.test(hostname) || IPV4.test(hostname) || !hostname.includes('.')) {
+  // A machine name, not an app subdomain: IPs, Tailscale MagicDNS (*.ts.net), bare hosts.
+  if (LOOPBACK.test(hostname) || IPV4.test(hostname) || hostname.endsWith('.ts.net') || !hostname.includes('.')) {
     return `${protocol}//${hostname}:${port}`;
   }
   const labels = hostname.split('.');
