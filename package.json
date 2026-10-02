@@ -1,0 +1,17 @@
+{
+  "name": "billease-suite",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix sacone",
+    "install:all": "npm run install:all --prefix sacone",
+    "db:setup": "npm run db:setup --prefix sacone",
+    "db:setup:api": "npm run db:setup --prefix sacone/sacone-api",
+    "dev:api": "npm run dev:api --prefix sacone",
+    "dev:web": "npm run dev:web --prefix sacone",
+    "dev:erp": "npm run dev:erp --prefix sacone",
+    "dev:pos": "npm run dev:pos --prefix sacone",
+    "test:pos-sync": "npm run test:pos-sync --prefix sacone",
+    "test:sac-pos": "npm run test:sac-pos --prefix sacone",
+    "dev:owner": "npm run dev:owner --prefix sacone"
+  }
+}
