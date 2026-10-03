@@ -934,9 +934,9 @@ export default function ProductsPage() {
                 <input
                   className="input-field font-mono"
                   value={form.barcode}
-                  onChange={(e) => setForm({ ...form, barcode: e.target.value.replace(/\D/g, '').slice(0, 9) })}
-                  placeholder="000000001"
-                  maxLength={9}
+                  onChange={(e) => setForm({ ...form, barcode: e.target.value.replace(/\D/g, '').slice(0, 14) })}
+                  placeholder="00000001"
+                  maxLength={14}
                 />
                 <button
                   type="button"

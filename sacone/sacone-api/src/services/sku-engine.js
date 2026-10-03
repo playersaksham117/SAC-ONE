@@ -6,6 +6,11 @@ import {
   KNOWN_BRAND_CODES,
 } from './sku-engine-config.js';
 
+/** In-house barcodes: 8 digits, starting at 00000001 (older 9-digit ones are still recognised). */
+export const BARCODE_DIGITS = 8;
+const IN_HOUSE_BARCODE = /^\d{8,9}$/;
+const formatBarcode = (n) => String(n).padStart(BARCODE_DIGITS, '0');
+
 function normalizeText(value) {
   return String(value || '')
     .toUpperCase()
@@ -361,14 +366,25 @@ export class SkuEngineRepository {
     return this.findFamilyById(id);
   }
 
-  allocateBarcode() {
+  /**
+   * Next free in-house barcode (00000001, 00000002, …) WITHOUT using it up: opening the
+   * product form must not burn numbers. The sequence advances in recordBarcodeUsed().
+   */
+  peekNextBarcode() {
     const db = getDatabase();
-    const allocate = db.transaction(() => {
-      db.prepare('UPDATE barcode_sequences SET last_value = last_value + 1 WHERE id = 1').run();
-      const row = db.prepare('SELECT last_value FROM barcode_sequences WHERE id = 1').get();
-      return String(row.last_value).padStart(9, '0');
-    });
-    return allocate();
+    const last = Number(db.prepare('SELECT last_value FROM barcode_sequences WHERE id = 1').get()?.last_value || 0);
+    const taken = db.prepare('SELECT 1 FROM products WHERE barcode = ?');
+    let next = last + 1;
+    while (taken.get(formatBarcode(next))) next += 1;
+    return formatBarcode(next);
+  }
+
+  /** Advance the sequence past an in-house barcode that was just saved on a product. */
+  recordBarcodeUsed(barcode) {
+    if (!IN_HOUSE_BARCODE.test(String(barcode || ''))) return;
+    getDatabase()
+      .prepare('UPDATE barcode_sequences SET last_value = MAX(last_value, ?) WHERE id = 1')
+      .run(Number(barcode));
   }
 
   syncBarcodeSequenceFromProducts() {
@@ -376,7 +392,7 @@ export class SkuEngineRepository {
     const row = db.prepare(`
       SELECT MAX(CAST(barcode AS INTEGER)) as max_barcode
       FROM products
-      WHERE barcode GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+      WHERE length(barcode) IN (8, 9) AND barcode NOT GLOB '*[^0-9]*'
     `).get();
     const max = Number(row?.max_barcode || 0);
     if (max > 0) {

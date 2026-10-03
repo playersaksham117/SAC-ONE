@@ -395,11 +395,7 @@ export class ProductService {
 
   generateBarcode(actor) {
     authService.checkPermission(actor.permissions, 'products.products.create');
-    const barcode = skuEngineRepo.allocateBarcode();
-    if (productRepo.barcodeExists(barcode)) {
-      throw new AppError('Barcode collision — retry generate', 409);
-    }
-    return { barcode };
+    return { barcode: skuEngineRepo.peekNextBarcode() };
   }
 
   checkDuplicate(data, actor) {
@@ -488,6 +484,7 @@ export class ProductService {
       ...input,
       createdBy: actor.user.id,
     });
+    skuEngineRepo.recordBarcodeUsed(product.barcode);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -529,6 +526,7 @@ export class ProductService {
     validateProductRefs(input);
 
     const updated = productRepo.update(id, input);
+    skuEngineRepo.recordBarcodeUsed(updated?.barcode);
 
     auditRepo.create({
       userId: actor.user.id,
