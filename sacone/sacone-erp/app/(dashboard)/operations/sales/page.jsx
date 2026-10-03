@@ -1,5 +1,12 @@
-import ModulePage from '../../../../components/ModulePage';
+'use client';
+
+import { RequirePermission } from '../../../../lib/auth-context';
+import SalesInvoices from '../../../../components/sales/SalesInvoices';
 
 export default function Page() {
-  return <ModulePage moduleId="sales" />;
+  return (
+    <RequirePermission permissions={['pos.sales.view', 'sales.orders.view']}>
+      <SalesInvoices />
+    </RequirePermission>
+  );
 }

@@ -211,7 +211,7 @@ export class PosSaleRepository {
     `).all(saleId).map(mapPayment);
   }
 
-  findAll({ search = '', customerId = '', warehouseId = '', status = '', limit = 50, offset = 0 } = {}) {
+  findAll({ search = '', customerId = '', warehouseId = '', status = '', dateFrom = '', dateTo = '', limit = 50, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
     const params = [];
@@ -231,6 +231,15 @@ export class PosSaleRepository {
     if (status) {
       where.push('s.status = ?');
       params.push(status);
+    }
+    // Dates are YYYY-MM-DD, inclusive; created_at is an ISO timestamp.
+    if (dateFrom) {
+      where.push('s.created_at >= ?');
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      where.push("s.created_at < date(?, '+1 day')");
+      params.push(dateTo);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const items = db.prepare(`

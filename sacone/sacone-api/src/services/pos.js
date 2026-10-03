@@ -515,7 +515,9 @@ export class PosService {
       customerId: filters.customerId || '',
       warehouseId: filters.warehouseId || '',
       status: filters.status || '',
-      limit: filters.limit ? parseInt(filters.limit, 10) : 50,
+      dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom || '') ? filters.dateFrom : '',
+      dateTo: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo || '') ? filters.dateTo : '',
+      limit: filters.limit ? Math.min(parseInt(filters.limit, 10) || 50, 5000) : 50,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });
   }
