@@ -173,6 +173,7 @@ async function loadInvoice(saleId) {
       ['Date', new Date(sale.createdAt).toLocaleString('en-IN')],
       ['Customer', sale.customerIsWalkIn ? 'Walk-in' : sale.customerName],
       ['Total', money(sale.grandTotal)],
+      ...(sale.notes ? [['Notes', sale.notes]] : []),
     ],
     html: (size) => documentHtml(model, company, size),
     items: sale.items,

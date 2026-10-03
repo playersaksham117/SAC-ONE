@@ -33,6 +33,8 @@ interface SessionState {
   applyStaffStatus: (staff: StaffStatus[]) => void;
   lock: () => void;
   forget: (userId: string) => void;
+  /** Check another user's PIN for an approval; returns their profile if they may approve. */
+  verifyApprover: (userId: string, pin: string, capability: Capability) => Promise<Profile>;
 }
 
 async function hashPin(pin: string, salt: string) {
@@ -141,6 +143,26 @@ export const useSession = create<SessionState>()(
 
       lock() {
         set({ currentUserId: null });
+      },
+
+      async verifyApprover(userId, pin, capability) {
+        const profile = get().profiles[userId];
+        if (!profile?.pinHash || !profile.pinSalt) throw new ApiError('This approver has no PIN on this phone', 0, 'NO_PIN');
+        if (profile.failedPins >= MAX_PIN_ATTEMPTS) {
+          throw new ApiError(`Too many wrong PINs for ${profile.name}; they must sign in with their ERP password`, 0, 'PIN_LOCKED');
+        }
+        const hash = await hashPin(pin, profile.pinSalt);
+        if (hash !== profile.pinHash) {
+          const failedPins = profile.failedPins + 1;
+          set((s) => ({ profiles: { ...s.profiles, [userId]: { ...profile, failedPins } } }));
+          throw new ApiError(`Wrong PIN (${MAX_PIN_ATTEMPTS - failedPins} tries left)`, 0, 'BAD_PIN');
+        }
+        if (daysSince(profile.lastVerifiedAt) > OFFLINE_GRACE_DAYS) {
+          throw new ApiError(`${profile.name} has not been verified online for ${OFFLINE_GRACE_DAYS} days`, 0, 'GRACE_EXPIRED');
+        }
+        if (!can(profile.permissions, capability)) throw new ApiError(`${profile.name} is not allowed to approve this`, 403, 'FORBIDDEN');
+        set((s) => ({ profiles: { ...s.profiles, [userId]: { ...profile, failedPins: 0 } } }));
+        return profile;
       },
 
       forget(userId) {

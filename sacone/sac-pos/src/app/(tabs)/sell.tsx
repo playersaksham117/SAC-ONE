@@ -13,6 +13,7 @@ import { searchProducts, useCatalog } from '../../store/catalog';
 import { useLedger } from '../../store/ledger';
 import { useCurrentUser } from '../../store/session';
 import { syncNow } from '../../sync/engine';
+import { ExchangeNotice } from '../../ui/ExchangeNotice';
 import { Badge, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, colors, font, radius, space } from '../../ui/components';
 
 function stockTone(available: number) {
@@ -111,6 +112,7 @@ export default function Sell() {
         )}
       />
       <View style={{ paddingHorizontal: space.lg }}>
+        <ExchangeNotice />
         <SearchBar
           value={query}
           onChangeText={setQuery}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { compactNotes, formatNotes, notesTotal, suggestChange } from '../src/domain/cash';
 import { calculateCart, lineRefundValue } from '../src/domain/tax';
 import { can } from '../src/domain/permissions';
 import {
@@ -184,5 +185,27 @@ describe('payloads & numbering', () => {
     expect(p.customer_phone).toBe('9876543210');
     expect(p.items[0].product_uuid).toBe('p1');
     expect(p.erp_user_id).toBe('u1');
+  });
+});
+
+describe('cash drawer', () => {
+  it('totals note counts', () => {
+    expect(notesTotal({ 500: 2, 100: 1, 2: 3 })).toBe(1106);
+    expect(notesTotal({})).toBe(0);
+    expect(notesTotal(null)).toBe(0);
+  });
+
+  it('suggests the fewest notes for change and returns paise as round-off', () => {
+    expect(suggestChange(388)).toEqual({ counts: { 200: 1, 100: 1, 50: 1, 20: 1, 10: 1, 5: 1, 2: 1, 1: 1 }, remainder: 0 });
+    expect(suggestChange(1000).counts).toEqual({ 500: 2 });
+    expect(suggestChange(71.5)).toEqual({ counts: { 50: 1, 20: 1, 1: 1 }, remainder: 0.5 });
+    expect(suggestChange(0)).toEqual({ counts: {}, remainder: 0 });
+    expect(suggestChange(-20)).toEqual({ counts: {}, remainder: 0 });
+  });
+
+  it('formats and compacts counts largest first', () => {
+    expect(formatNotes({ 10: 1, 500: 2, 50: 0 })).toBe('₹500 × 2, ₹10 × 1');
+    expect(formatNotes({})).toBe('');
+    expect(compactNotes({ 500: 1, 200: 0 })).toEqual({ 500: 1 });
   });
 });

@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartLine, HeldBill, Product } from '../domain/types';
+
+/** Value of returned goods that pays for part of the next bill (exchange). */
+export interface ExchangeCredit {
+  returnId: string;
+  returnNumber: string;
+  saleNumber: string;
+  amount: number;
+}
 import { MAX_QTY } from '../domain/validation';
 import { jsonStorage } from './persist';
 
@@ -9,6 +17,7 @@ interface CartState {
   customerId: string | null;
   invoiceDiscount: number;
   notes: string;
+  exchange: ExchangeCredit | null;
   add: (p: Product, qty?: number) => void;
   setQty: (productId: string, qty: number) => void;
   updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount'>>) => void;
@@ -17,6 +26,7 @@ interface CartState {
   setInvoiceDiscount: (amount: number) => void;
   setNotes: (notes: string) => void;
   load: (bill: HeldBill) => void;
+  startExchange: (credit: ExchangeCredit, customerId: string | null) => void;
   clear: () => void;
 }
 
@@ -29,6 +39,7 @@ export const useCart = create<CartState>()(
       customerId: null,
       invoiceDiscount: 0,
       notes: '',
+      exchange: null,
 
       add(p, qty = 1) {
         set((s) => {
@@ -76,8 +87,12 @@ export const useCart = create<CartState>()(
         set({ lines: bill.lines, customerId: bill.customerId, invoiceDiscount: bill.invoiceDiscount, notes: '' });
       },
 
+      startExchange(credit, customerId) {
+        set({ lines: [], customerId, invoiceDiscount: 0, notes: `Exchange for ${credit.saleNumber} (return ${credit.returnNumber})`, exchange: credit });
+      },
+
       clear() {
-        set({ lines: [], customerId: null, invoiceDiscount: 0, notes: '' });
+        set({ lines: [], customerId: null, invoiceDiscount: 0, notes: '', exchange: null });
       },
     }),
     { name: 'sacpos.cart', storage: jsonStorage },

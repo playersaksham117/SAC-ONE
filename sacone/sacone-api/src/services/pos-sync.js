@@ -69,6 +69,40 @@ const PAGE_LIMIT_MAX = 500;
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+const DENOMINATIONS = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+
+/** "₹500×2, ₹100×1" from a terminal's note counts; ignores anything that is not a real denomination. */
+function formatNoteCounts(counts) {
+  if (!counts || typeof counts !== 'object') return '';
+  return DENOMINATIONS
+    .map((value) => [value, Math.trunc(Number(counts[String(value)]) || 0)])
+    .filter(([, n]) => n > 0 && n <= 100000)
+    .map(([value, n]) => `₹${value}×${n}`)
+    .join(', ');
+}
+
+/** Cash-drawer summary for the invoice notes (SAC-POS "Count notes"). */
+function cashDrawerNote(drawer) {
+  const received = formatNoteCounts(drawer?.received);
+  if (!received) return null;
+  const change = formatNoteCounts(drawer?.change);
+  return `Cash notes ${received}${change ? `; change ${change}` : ''}`;
+}
+
+/**
+ * Approval recorded on the phone for a return / exchange. The approver must be an active
+ * ERP user whose role has pos.returns.approve; otherwise the note says it was not verified.
+ */
+function approvalNote(ret) {
+  const userId = str(ret?.approved_by_erp_user_id);
+  if (!userId) return null;
+  const user = userRepo.findById(userId);
+  const name = user?.fullName || str(ret.approved_by_name) || userId;
+  const perms = user?.isActive ? repos.roles.getPermissions(user.roleId).map((x) => x.permission_key) : [];
+  const allowed = perms.includes('*') || perms.includes('pos.returns.approve');
+  return allowed ? `Approved by ${name}` : `Approval by ${name} NOT verified (needs active user with pos.returns.approve)`;
+}
 const str = (v) => (v == null ? '' : String(v).trim());
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 
@@ -497,7 +531,12 @@ export class PosSyncService {
       invoiceDiscount,
       payments,
       invoiceNumber,
-      notes: [sale.notes, `Synced from ${device.name}`].filter(Boolean).join(' · '),
+      notes: [
+        sale.notes,
+        cashDrawerNote(sale.cash_drawer),
+        str(sale.exchange_return_number) ? `Exchange: part paid by return ${str(sale.exchange_return_number)}` : null,
+        `Synced from ${device.name}`,
+      ].filter(Boolean).join(' · '),
     }, actor, req, { offlineSync: true, completedAt });
 
     return {
@@ -540,7 +579,10 @@ export class PosSyncService {
       items: lines,
       refundMethod: ['cash', 'upi', 'bank', 'credit_note'].includes(refund) ? refund : 'cash',
       reason: ret.reason || null,
-      notes: `POS return ${ret.return_number} (${device.code})`,
+      notes: [
+        `POS ${str(ret.return_type) === 'exchange' ? 'exchange' : 'return'} ${ret.return_number} (${device.code})`,
+        approvalNote(ret),
+      ].filter(Boolean).join(' · '),
     }, actor, req);
     return { status: 'applied', resultType: 'pos_sales_return', resultId: created.id, number: created.returnNumber };
   }

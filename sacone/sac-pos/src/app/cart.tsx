@@ -8,6 +8,7 @@ import { validateLine } from '../domain/validation';
 import { useCartTotals } from '../lib/useCartTotals';
 import { holdCurrentBill } from '../services/pos';
 import { useCart } from '../store/cart';
+import { ExchangeNotice } from '../ui/ExchangeNotice';
 import { useCan } from '../store/session';
 import { confirm, notify } from '../ui/dialogs';
 import {
@@ -80,13 +81,21 @@ export default function Cart() {
   const setCustomer = useCart((s) => s.setCustomer);
 
   const clear = async () => {
-    if (await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) {
+    const ex = useCart.getState().exchange;
+    const message = ex
+      ? `This also cancels the exchange: give the customer ${formatMoney(ex.amount)} in cash for return ${ex.returnNumber}.`
+      : 'All items will be removed.';
+    if (await confirm('Clear cart?', message, 'Clear', true)) {
       useCart.getState().clear();
       router.back();
     }
   };
 
   const hold = () => {
+    if (useCart.getState().exchange) {
+      notify('Cannot hold', 'Finish the exchange first: the returned value is waiting to be used on this bill.');
+      return;
+    }
     try {
       holdCurrentBill();
       router.back();
@@ -119,6 +128,7 @@ export default function Cart() {
     >
       <Header title="Cart" subtitle={`${lines.length} item(s)`} onBack={() => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />
       <View style={{ paddingHorizontal: space.lg }}>
+        <ExchangeNotice />
         <SectionTitle>Customer</SectionTitle>
         <Card onPress={() => router.push('/customer-picker')} style={{ padding: space.md }}>
           <Row>

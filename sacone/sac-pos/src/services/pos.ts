@@ -2,7 +2,8 @@ import * as Crypto from 'expo-crypto';
 import { round2 } from '../domain/money';
 import { can } from '../domain/permissions';
 import { calculateCart, lineRefundValue } from '../domain/tax';
-import type { Customer, CustomerPayment, Payment, RefundMethod, Sale, SaleReturn } from '../domain/types';
+import type { Approval, Customer, CustomerPayment, Payment, RefundMethod, Sale, SaleReturn } from '../domain/types';
+import { compactNotes, type CashDrawer } from '../domain/cash';
 import {
   gstinStateCode, normalizePhone, validateCheckout, validateCollection, validateCustomerDraft, validateReturn,
   type CheckResult, type CustomerDraft,
@@ -53,6 +54,19 @@ export function cartTotals() {
   });
 }
 
+/** Exchange credit applied to the current cart (never more than the bill total). */
+export function exchangeCreditFor(total: number): number {
+  const ex = useCart.getState().exchange;
+  return ex ? round2(Math.min(ex.amount, total)) : 0;
+}
+
+/** Customer payments plus the exchange credit, which settles part of the bill as cash. */
+export function withExchangeCredit(payments: Payment[], total: number): Payment[] {
+  const ex = useCart.getState().exchange;
+  const credit = exchangeCreditFor(total);
+  return ex && credit > 0 ? [...payments, { method: 'cash', amount: credit, reference: `Exchange ${ex.returnNumber}` }] : payments;
+}
+
 export function checkCheckout(payments: Payment[]): CheckResult {
   const user = currentUser();
   const cart = useCart.getState();
@@ -69,16 +83,21 @@ export function checkCheckout(payments: Payment[]): CheckResult {
   });
 }
 
-export function completeSale(payments: Payment[], { tendered }: { tendered?: number } = {}): Sale {
+export function completeSale(
+  customerPayments: Payment[],
+  { tendered, cashDrawer }: { tendered?: number; cashDrawer?: CashDrawer | null } = {},
+): Sale {
   const user = requireUser('sell');
+  const cart = useCart.getState();
+  const totals = cartTotals();
+  const payments = withExchangeCredit(customerPayments, totals.grandTotal);
   const check = checkCheckout(payments);
   if (check.errors.length) throw new ValidationError(check);
 
-  const cart = useCart.getState();
-  const totals = cartTotals();
   const customer = cartCustomer();
   const amountDue = round2(payments.filter((p) => p.method === 'credit').reduce((s, p) => s + p.amount, 0));
-  const cashPaid = round2(payments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0));
+  // Change is worked out against the cash the customer hands over (not the exchange credit).
+  const cashPaid = round2(customerPayments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0));
 
   const sale: Sale = {
     id: Crypto.randomUUID(),
@@ -93,6 +112,8 @@ export function completeSale(payments: Payment[], { tendered }: { tendered?: num
     amountDue,
     tendered: tendered && tendered > cashPaid ? round2(tendered) : undefined,
     change: tendered && tendered > cashPaid ? round2(tendered - cashPaid) : undefined,
+    cashDrawer: cashDrawer ? { received: compactNotes(cashDrawer.received), change: compactNotes(cashDrawer.change) } : undefined,
+    exchange: cart.exchange ? { returnId: cart.exchange.returnId, returnNumber: cart.exchange.returnNumber, credit: exchangeCreditFor(totals.grandTotal) } : null,
     notes: cart.notes || null,
     returned: {},
     sync: 'pending',
@@ -122,8 +143,16 @@ export function holdCurrentBill(label?: string) {
 
 /* ───────────── returns ───────────── */
 
-export function createReturn(saleId: string, qtyByProduct: Record<string, number>, refundMethod: RefundMethod, reason: string): SaleReturn {
+export function createReturn(
+  saleId: string,
+  qtyByProduct: Record<string, number>,
+  refundMethod: RefundMethod,
+  reason: string,
+  { type = 'return', approval }: { type?: 'return' | 'exchange'; approval: Approval },
+): SaleReturn {
   const user = requireUser('returns');
+  if (!approval) throw new Error('A manager must approve this return');
+  if (type === 'exchange' && !can(user.permissions, 'sell')) throw new Error('Exchanges need permission to create sales');
   const sale = useLedger.getState().sales.find((s) => s.id === saleId);
   if (!sale) throw new Error('Sale not found on this phone');
   const check = validateReturn(sale, qtyByProduct, reason);
@@ -146,6 +175,8 @@ export function createReturn(saleId: string, qtyByProduct: Record<string, number
     refundMethod,
     reason: reason.trim(),
     total: round2(lines.reduce((s, l) => s + l.amount, 0)),
+    type,
+    approvedBy: approval,
     sync: 'pending',
   };
   useLedger.getState().addReturn(ret);
