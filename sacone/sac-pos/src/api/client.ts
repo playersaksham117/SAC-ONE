@@ -45,7 +45,12 @@ export async function request<T>(baseUrl: string, path: string, opts: RequestOpt
     });
   } catch (e) {
     const aborted = (e as Error)?.name === 'AbortError';
-    throw new ApiError(aborted ? 'Server did not respond in time' : 'Cannot reach the SACONE server', 0, aborted ? 'TIMEOUT' : 'NETWORK');
+    const where = baseUrl.trim().replace(/\/+$/, '');
+    throw new ApiError(
+      aborted ? `Server did not respond in time (${where})` : `Cannot reach the SACONE server at ${where}. Check the phone is on the same Wi-Fi and the address is current (More → Change server address).`,
+      0,
+      aborted ? 'TIMEOUT' : 'NETWORK',
+    );
   } finally {
     clearTimeout(timer);
   }

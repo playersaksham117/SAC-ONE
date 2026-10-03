@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
 import { CAPABILITY_LABELS, can, type Capability } from '../../domain/permissions';
@@ -14,7 +14,7 @@ import { syncNow, useSyncStatus } from '../../sync/engine';
 import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import {
-  Badge, Banner, Button, Card, Divider, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, space,
+  Badge, Banner, Button, Card, Divider, Field, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, space,
 } from '../../ui/components';
 
 export default function More() {
@@ -52,6 +52,25 @@ export default function More() {
       useCart.getState().clear();
     }
     router.replace('/setup');
+  };
+
+  const [editingServer, setEditingServer] = useState(false);
+  const [serverDraft, setServerDraft] = useState('');
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [savingServer, setSavingServer] = useState(false);
+
+  const saveServer = async () => {
+    setSavingServer(true);
+    setServerError(null);
+    try {
+      await useDevice.getState().changeServer(serverDraft);
+      setEditingServer(false);
+      syncNow().catch(() => undefined);
+    } catch (e) {
+      setServerError((e as Error).message);
+    } finally {
+      setSavingServer(false);
+    }
   };
 
   const caps = Object.keys(CAPABILITY_LABELS) as Capability[];
@@ -142,6 +161,33 @@ export default function More() {
           <KeyValue label="Device" value={`${info?.device.name ?? '—'} (${info?.device.code ?? '—'})`} muted />
           <KeyValue label="Warehouse" value={info?.warehouse?.name ?? '—'} muted />
           <KeyValue label="Server" value={baseUrl ?? '—'} muted />
+          {editingServer ? (
+            <View style={{ marginTop: space.sm }}>
+              <Field
+                label="New server address"
+                value={serverDraft}
+                onChangeText={setServerDraft}
+                placeholder="http://192.168.1.10:4000"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                error={serverError}
+                hint="Shown in SACONE ERP → POS Devices & Sync. Your device key and bills stay on this phone."
+              />
+              <Row gap={space.sm}>
+                <Button title="Cancel" variant="secondary" style={{ flex: 1 }} onPress={() => setEditingServer(false)} />
+                <Button title="Save & test" icon="checkmark-outline" style={{ flex: 1 }} loading={savingServer} onPress={saveServer} />
+              </Row>
+            </View>
+          ) : (
+            <Button
+              title="Change server address"
+              variant="secondary"
+              icon="swap-horizontal-outline"
+              style={{ marginTop: space.sm }}
+              onPress={() => { setServerDraft(baseUrl ?? 'http://'); setServerError(null); setEditingServer(true); }}
+            />
+          )}
           <KeyValue label="Negative stock" value={info?.settings.allowNegativeStock ? 'Allowed' : 'Blocked'} muted />
           {can(user?.permissions, 'manageDevice') ? (
             <Button title="Disconnect device" variant="danger" icon="unlink-outline" onPress={disconnect} style={{ marginTop: space.sm }} />
