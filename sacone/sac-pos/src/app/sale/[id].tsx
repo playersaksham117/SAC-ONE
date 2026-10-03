@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { formatMoney, formatQty } from '../../domain/money';
-import { receiptHtml, printReceipt, shareReceipt } from '../../lib/receipt';
+import { billHtml, PDF_SIZES, PRINT_SIZES, printBill, savePdf, sharePdf, type PaperSize, type PdfSize } from '../../lib/receipt';
+import { usePref } from '../../lib/usePref';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
 import { useCan } from '../../store/session';
 import { notify } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
-import { Banner, Button, Card, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, colors, font, space } from '../../ui/components';
+import { Banner, Button, Card, Chip, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, Segmented, colors, font, space } from '../../ui/components';
 
 const METHOD: Record<string, string> = { cash: 'Cash', upi: 'UPI', bank: 'Card / Bank', credit: 'Credit (due)' };
 
@@ -18,6 +19,8 @@ export default function SaleDetail() {
   const returns = useLedger((s) => s.returns);
   const info = useDevice((s) => s.info);
   const canReturn = useCan('returns');
+  const [printSize, setPrintSize] = usePref<PaperSize>('sacpos.printSize', '80mm', PRINT_SIZES.map((p) => p.value));
+  const [pdfSize, setPdfSize] = usePref<PdfSize>('sacpos.pdfSize', 'A4', PDF_SIZES.map((p) => p.value));
 
   if (!sale) {
     return (
@@ -31,7 +34,8 @@ export default function SaleDetail() {
   const t = sale.totals;
   const saleReturns = returns.filter((r) => r.saleId === sale.id);
   const returnable = t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
-  const html = () => receiptHtml(sale, info?.company, info?.device.code);
+  const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size);
+  const title = `Bill ${sale.serverNumber ?? sale.number}`;
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
   };
@@ -49,10 +53,26 @@ export default function SaleDetail() {
           </Card>
         ) : null}
 
-        <Row gap={space.sm}>
-          <Button title="Print" icon="print-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => printReceipt(html()))} />
-          <Button title="Share PDF" icon="share-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => shareReceipt(html(), sale.number))} />
-        </Row>
+        <Card>
+          <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>PRINT</Text>
+          <Row gap={space.xs} style={{ flexWrap: 'wrap', marginBottom: space.sm }}>
+            {PRINT_SIZES.map((p) => (
+              <Chip key={p.value} label={p.label} active={printSize === p.value} onPress={() => setPrintSize(p.value)} />
+            ))}
+          </Row>
+          <Button
+            title={`Print ${PRINT_SIZES.find((p) => p.value === printSize)?.label} ${printSize.endsWith('mm') ? 'receipt' : 'invoice'}`}
+            icon="print-outline"
+            onPress={() => run(() => printBill(html(printSize), printSize))}
+          />
+          <Divider />
+          <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>PDF</Text>
+          <Segmented value={pdfSize} options={PDF_SIZES} onChange={setPdfSize} />
+          <Row gap={space.sm} style={{ marginTop: space.sm }}>
+            <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize))} />
+            <Button title="Share" icon="share-social-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => sharePdf(html(pdfSize), pdfSize, title))} />
+          </Row>
+        </Card>
 
         <SectionTitle right={<DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>
         {sale.syncError ? <Banner tone="danger" title="ERP could not post this bill" messages={[sale.syncError, 'A manager can fix and retry it in ERP → POS Devices & Sync → Sync inbox.']} /> : null}
