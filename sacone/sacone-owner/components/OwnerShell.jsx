@@ -21,7 +21,7 @@ export default function OwnerShell({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950 text-white">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-lg">👑</span>
             <span className="hidden leading-tight sm:block">
@@ -30,7 +30,7 @@ export default function OwnerShell({ children }) {
             </span>
           </Link>
 
-          <nav className="scrollbar-none ml-2 flex flex-1 gap-1 overflow-x-auto">
+          <nav className="scrollbar-none order-last -mx-1 flex w-full gap-1 overflow-x-auto px-1 sm:order-none sm:mx-0 sm:ml-2 sm:w-auto sm:flex-1 sm:px-0">
             {items.map((n) => {
               const active = pathname === n.href || pathname.startsWith(`${n.href}/`);
               return (
@@ -48,7 +48,7 @@ export default function OwnerShell({ children }) {
             })}
           </nav>
 
-          <LiveIndicator dark />
+          <span className="ml-auto sm:ml-0"><LiveIndicator dark /></span>
           <a href={erpUrl} target="_blank" rel="noopener noreferrer" className="hidden rounded-lg px-3 py-2 text-xs font-medium text-slate-300 ring-1 ring-white/15 hover:bg-white/10 hover:text-white md:inline-flex">
             Open ERP ↗
           </a>

@@ -16,17 +16,17 @@ export function Screen({ children, scroll = false, padded = true, edges = ['top'
   children: ReactNode; scroll?: boolean; padded?: boolean; edges?: readonly ('top' | 'bottom' | 'left' | 'right')[]; footer?: ReactNode;
 }) {
   const content = scroll ? (
-    <ScrollView contentContainerStyle={[padded && styles.padded, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[styles.column, padded && styles.padded, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   ) : (
-    <View style={[{ flex: 1 }, padded && styles.padded]}>{children}</View>
+    <View style={[styles.column, { flex: 1 }, padded && styles.padded]}>{children}</View>
   );
   return (
     <SafeAreaView style={styles.screen} edges={edges}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {content}
-        {footer}
+        {footer ? <View style={styles.column}>{footer}</View> : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -288,6 +288,8 @@ export function StatTile({ label, value, tone = 'neutral', icon }: { label: stri
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  /** Phones use the full width; tablets, landscape and web get a centred, readable column. */
+  column: { width: '100%', maxWidth: 760, alignSelf: 'center' },
   padded: { paddingHorizontal: space.lg },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md, gap: space.sm },
   headerBack: { marginLeft: -6, padding: 2 },

@@ -890,7 +890,7 @@ export default function ProductsPage() {
           </>
         )}
       >
-        <form id="product-form" onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+        <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <label className="label">Product Name *</label>
