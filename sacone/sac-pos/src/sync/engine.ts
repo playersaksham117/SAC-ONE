@@ -8,6 +8,7 @@ import { useCatalog, type LocalCustomer } from '../store/catalog';
 import { deviceConfig, useDevice } from '../store/device';
 import { useLedger } from '../store/ledger';
 import { currentUser, useSession } from '../store/session';
+import { serverUrlCandidates } from '../lib/serverDiscovery';
 
 /**
  * Offline-first sync cycle (all calls use the device key):
@@ -74,14 +75,34 @@ async function pushDocs<T extends SyncMeta & { id: string; number: string; userI
   return sent;
 }
 
+/**
+ * The saved server address stopped answering (usually the server PC got a new DHCP address).
+ * Try the PC that served this app; switch to it only if it accepts this phone's device key.
+ */
+async function recoverServer(current: DeviceConfig): Promise<DeviceConfig | null> {
+  for (const url of serverUrlCandidates(current.baseUrl)) {
+    try {
+      await useDevice.getState().changeServer(url);
+      return deviceConfig();
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
 async function runCycle(): Promise<void> {
-  const cfg = deviceConfig();
+  let cfg = deviceConfig();
   if (!cfg) return;
   useSyncStatus.setState({ status: 'syncing', lastError: null });
   try {
-    // 1. handshake
-    const info = await sync.ping(cfg);
-    useDevice.getState().setInfo(info);
+    // 1. handshake (with automatic recovery when the server's address changed)
+    try {
+      const info = await sync.ping(cfg);
+      useDevice.getState().setInfo(info);
+    } catch (e) {
+      const recovered = e instanceof ApiError && e.isNetwork ? await recoverServer(cfg) : null;
+      if (!recovered) throw e;
+      cfg = recovered;
+    }
 
     // 2. RBAC refresh for all staff profiles on this phone
     const ids = Object.keys(useSession.getState().profiles);
