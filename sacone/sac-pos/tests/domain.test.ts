@@ -123,6 +123,23 @@ describe('checkout validation', () => {
     };
   };
 
+  it('blocks a price or discount below the minimum selling price', () => {
+    const at = (lines: CartLine[], invoiceDiscount = 0, minPrice = 0) => {
+      const totals = calculateCart(lines, invoiceDiscount);
+      return validateCheckout({
+        ...base(), lines, totals, canOverridePrice: true,
+        products: { p1: product({ minPrice }) },
+        payments: [{ method: 'cash', amount: totals.grandTotal }] as Payment[],
+      }).errors.filter((e) => /below the minimum/.test(e.message));
+    };
+    const p = product();
+    expect(at([line({ unitPrice: p.price + 5 })])).toEqual([]);                    // raising the price is fine
+    expect(at([line({ unitPrice: p.price - 1 })]).length).toBe(1);                 // lower price: blocked
+    expect(at([line({ discountAmount: 1 })]).length).toBe(1);                      // item discount: blocked
+    expect(at([line()], 1).length).toBe(1);                                        // bill discount share: blocked
+    expect(at([line({ discountAmount: 1 })], 0, p.price - 2)).toEqual([]);         // within the minimum: allowed
+    expect(at([line({ discountAmount: 5 })], 0, p.price - 2).length).toBe(1);      // ₹2.50/unit off, beyond the minimum: blocked
+  });
   it('accepts a normal cash sale', () => {
     expect(validateCheckout(base()).errors).toEqual([]);
   });

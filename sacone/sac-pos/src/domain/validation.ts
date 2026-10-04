@@ -89,6 +89,12 @@ export function validateLine(line: CartLine, { canOverridePrice }: { canOverride
   return issues;
 }
 
+/** Lowest net unit price (GST-exclusive) a product may be sold at. */
+export function priceFloor(p: Pick<Product, 'price' | 'minPrice'> | undefined): number {
+  if (!p) return 0;
+  return p.minPrice && p.minPrice > 0 ? p.minPrice : p.price;
+}
+
 /* ───────────── checkout ───────────── */
 
 export interface CheckoutContext {
@@ -127,6 +133,17 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
     if (qty > available + 0.000001) {
       const msg = `${p.name}: only ${Math.max(available, 0)} ${p.unit} in stock`;
       (ctx.allowNegativeStock ? r.warnings : r.errors).push({ message: msg });
+    }
+  }
+
+  // Price floor: edited price, item discount and bill-discount share together may not take
+  // a line's net unit price below the product's minimum (or selling) price.
+  for (const line of ctx.totals.lines) {
+    const floor = priceFloor(ctx.products[line.productId]);
+    if (!(floor > 0) || !(line.quantity > 0)) continue;
+    const netUnit = line.taxableAmount / line.quantity;
+    if (netUnit + 0.005 < floor) {
+      r.errors.push({ field: 'unitPrice', message: `${line.name}: price after discount ₹${netUnit.toFixed(2)} is below the minimum ₹${floor.toFixed(2)}` });
     }
   }
 
