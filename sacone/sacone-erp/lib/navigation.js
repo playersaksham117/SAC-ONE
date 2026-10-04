@@ -208,6 +208,17 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
+    id: 'opening-balances',
+    section: 'administration',
+    label: 'Opening Stock & Balances',
+    description: 'Go-live stock, customer dues, supplier payables, cash & bank',
+    href: '/admin/opening-balances',
+    permission: 'inventory.movements.create',
+    permissions: ['inventory.movements.create', 'parties.customers.edit', 'parties.suppliers.edit', 'finance.ledger.edit'],
+    icon: '🧾',
+    placeholder: false,
+  },
+  {
     id: 'api-keys',
     section: 'administration',
     label: 'Web Store API',

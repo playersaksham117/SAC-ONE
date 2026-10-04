@@ -20,6 +20,7 @@ import { approvalRouter } from './approvals.js';
 import { salesAgentRouter, commissionRouter, commissionPaymentRouter } from './commissions.js';
 import { posSyncRouter, posDeviceAdminRouter } from './pos-sync.js';
 import { eventsRouter } from './events.js';
+import { openingBalanceRouter } from './opening-balances.js';
 
 export const ROUTES = [
   // Core & security
@@ -39,6 +40,7 @@ export const ROUTES = [
   ['/api/units', unitRouter],
   ['/api/products', productRouter],
   ['/api/inventory', inventoryRouter],
+  ['/api/opening-balances', openingBalanceRouter],
   ['/api/warehouses', warehouseRouter],
 
   // Sales & POS (quotations must mount before /api/pos)
