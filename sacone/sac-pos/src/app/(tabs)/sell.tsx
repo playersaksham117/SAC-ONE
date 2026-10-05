@@ -14,6 +14,7 @@ import { useLedger } from '../../store/ledger';
 import { useCurrentUser } from '../../store/session';
 import { syncNow } from '../../sync/engine';
 import { ExchangeNotice } from '../../ui/ExchangeNotice';
+import { QtyPrompt } from '../../ui/QtyPrompt';
 import { Badge, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, colors, font, radius, space } from '../../ui/components';
 
 function stockTone(available: number) {
@@ -28,6 +29,8 @@ export default function Sell() {
   const pending = usePendingQty();
   const lines = useCart((s) => s.lines);
   const add = useCart((s) => s.add);
+  const setQty = useCart((s) => s.setQty);
+  const [qtyFor, setQtyFor] = useState<Product | null>(null);
   const heldCount = useLedger((s) => s.held.length);
   const badge = useSyncBadge();
   const [query, setQuery] = useState('');
@@ -59,6 +62,9 @@ export default function Sell() {
     return (
       <Pressable
         onPress={() => addProduct(item)}
+        onLongPress={() => setQtyFor(item)}
+        delayLongPress={350}
+        accessibilityHint="Tap to add one, press and hold to type a quantity"
         testID={`product-${item.sku}`}
         style={({ pressed }) => ({
           flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.surface, padding: space.md,
@@ -81,9 +87,15 @@ export default function Sell() {
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
           <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(item.price)}</Text>
           {inCart ? (
-            <View style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 }}>
+            <Pressable
+              onPress={() => setQtyFor(item)}
+              hitSlop={8}
+              accessibilityLabel={`Change quantity of ${item.name}`}
+              style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
               <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}</Text>
-            </View>
+              <Ionicons name="create-outline" size={12} color="#fff" />
+            </Pressable>
           ) : (
             <Ionicons name="add-circle" size={26} color={colors.primary} />
           )}
@@ -160,6 +172,18 @@ export default function Sell() {
           <Ionicons name="chevron-forward" size={20} color="#fff" />
         </Pressable>
       ) : null}
+
+      <QtyPrompt
+        product={qtyFor}
+        current={qtyFor ? qtyInCart[qtyFor.id] || 0 : 0}
+        available={qtyFor ? qtyFor.available - (pending[qtyFor.id] || 0) : 0}
+        onSet={(q) => {
+          if (!qtyFor) return;
+          if (qtyInCart[qtyFor.id]) setQty(qtyFor.id, q);
+          else if (q > 0) add(qtyFor, q);
+        }}
+        onClose={() => setQtyFor(null)}
+      />
     </Screen>
   );
 }

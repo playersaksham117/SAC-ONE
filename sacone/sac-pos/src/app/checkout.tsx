@@ -42,7 +42,7 @@ function NoteCounter({ counts, onChange }: { counts: NoteCounts; onChange: (next
         return (
           <Row key={key} style={{ justifyContent: 'space-between', paddingVertical: 4 }}>
             <Text style={{ width: 64, fontWeight: '700', color: colors.text }}>₹{value}</Text>
-            <Stepper value={n} onChange={(v) => onChange({ ...counts, [key]: Math.max(0, v) })} />
+            <Stepper integer value={n} onChange={(v) => onChange({ ...counts, [key]: Math.max(0, v) })} />
             <Text style={{ width: 84, textAlign: 'right', color: n ? colors.text : colors.textFaint }}>{formatMoney(value * n)}</Text>
           </Row>
         );
