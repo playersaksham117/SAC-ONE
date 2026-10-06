@@ -5,6 +5,12 @@ import { apiRequest } from '../../../../lib/api';
 import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState } from '../../../../components/ui';
 
+const TERMS_PLACEHOLDER = [
+  'All disputes are subject to JALANDHAR jurisdiction.',
+  'Goods once sold will not be taken back.',
+  'E.&O.E.',
+].join('\n');
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,9 +143,7 @@ export default function SettingsPage() {
           <label className="block text-sm"><span className="label">Terms &amp; conditions (one per line)</span>
             <textarea
               className="input-field min-h-[110px]"
-              placeholder={'All disputes are subject to JALANDHAR jurisdiction.
-Goods once sold will not be taken back.
-E.&O.E.'}
+              placeholder={TERMS_PLACEHOLDER}
               {...field('invoice.terms')}
             />
           </label>
