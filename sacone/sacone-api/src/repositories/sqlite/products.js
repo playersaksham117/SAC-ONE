@@ -47,7 +47,6 @@ function mapProduct(row) {
     gstPercentage: Number(row.gst_percentage || 0),
     mrp: Number(row.mrp || 0),
     sellingPrice: Number(row.selling_price || 0),
-    minSellingPrice: row.min_selling_price == null ? null : Number(row.min_selling_price),
     purchasePrice: Number(row.purchase_price || 0),
     reorderLevel: Number(row.reorder_level || 0),
     minimumStock: Number(row.minimum_stock || 0),
@@ -367,9 +366,6 @@ export class ProductRepository {
       now,
       data.createdBy || null
     );
-    if (data.minSellingPrice !== undefined) {
-      db.prepare('UPDATE products SET min_selling_price = ? WHERE id = ?').run(data.minSellingPrice, id);
-    }
 
     return this.findById(id);
   }
@@ -414,9 +410,6 @@ export class ProductRepository {
       now,
       id
     );
-    if (data.minSellingPrice !== undefined) {
-      db.prepare('UPDATE products SET min_selling_price = ? WHERE id = ?').run(data.minSellingPrice, id);
-    }
 
     return this.findById(id);
   }

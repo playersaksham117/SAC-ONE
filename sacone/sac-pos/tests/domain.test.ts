@@ -128,9 +128,9 @@ describe('checkout validation', () => {
       const totals = calculateCart(lines, invoiceDiscount);
       return validateCheckout({
         ...base(), lines, totals, canOverridePrice: true,
-        products: { p1: product({ minPrice }) },
+        minPrices: minPrice ? { p1: minPrice } : {},
         payments: [{ method: 'cash', amount: totals.grandTotal }] as Payment[],
-      }).errors.filter((e) => /below the minimum/.test(e.message));
+      }).errors.filter((e) => /lowest allowed price/.test(e.message));
     };
     const p = product();
     expect(at([line({ unitPrice: p.price + 5 })])).toEqual([]);                    // raising the price is fine

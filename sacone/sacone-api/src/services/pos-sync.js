@@ -708,7 +708,6 @@ export class PosSyncService {
       gst_rate: Number(r.gst_percentage || 0),
       mrp: Number(r.mrp || 0),
       selling_price: Number(r.selling_price || 0),
-      min_selling_price: Number(r.min_selling_price || 0),
       wholesale_price: Number(r.purchase_price || 0) > 0 ? Number(r.selling_price || 0) : 0,
       current_stock: Number(r.quantity_on_hand || 0),
       reserved_stock: Number(r.quantity_reserved || 0),

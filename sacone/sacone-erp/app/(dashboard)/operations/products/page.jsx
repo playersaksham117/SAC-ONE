@@ -18,7 +18,6 @@ const EMPTY_PRODUCT = {
   gstPercentage: 18,
   mrp: 0,
   sellingPrice: 0,
-  minSellingPrice: '',
   purchasePrice: 0,
   reorderLevel: 0,
   minimumStock: 0,
@@ -385,7 +384,6 @@ export default function ProductsPage() {
         gstPercentage: full.gstPercentage || 0,
         mrp: full.mrp || 0,
         sellingPrice: full.sellingPrice || 0,
-        minSellingPrice: full.minSellingPrice ?? '',
         purchasePrice: full.purchasePrice || 0,
         reorderLevel: full.reorderLevel || 0,
         minimumStock: full.minimumStock || 0,
@@ -1010,16 +1008,6 @@ export default function ProductsPage() {
                 <div>
                   <label className="label">Selling Price</label>
                   <input type="number" step="0.01" className="input-field" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Minimum Selling Price</label>
-                  <input
-                    type="number" step="0.01" min="0" className="input-field"
-                    value={form.minSellingPrice ?? ''}
-                    placeholder={form.sellingPrice ? `${form.sellingPrice} (selling price)` : 'Selling price'}
-                    onChange={(e) => setForm({ ...form, minSellingPrice: e.target.value })}
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Lowest price after any discount (excl. GST). Empty = selling price.</p>
                 </div>
                 <div>
                   <label className="label">Purchase Price</label>

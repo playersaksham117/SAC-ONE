@@ -53,8 +53,9 @@ CREATE INDEX IF NOT EXISTS idx_sales_agents_code ON sales_agents(agent_code);
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_sales_agents_user ON sales_agents(user_id) WHERE user_id IS NOT NULL;
 
 -- 2. Minimum selling prices, managed only in Commission settings.
---    Selling below the floor is blocked (offline POS sales are recorded with a warning) and
---    the lines below it earn no commission. Most specific scope wins: product > brand > category.
+--    Most specific rule wins: product > brand > category. With no rule, the selling price is the
+--    floor (migration 026). Selling below the floor is blocked (offline POS sales are recorded
+--    with a warning) and the lines below it earn no commission.
 CREATE TABLE IF NOT EXISTS min_selling_prices (
   id TEXT PRIMARY KEY,
   scope TEXT NOT NULL CHECK (scope IN ('product', 'brand', 'category')),
@@ -78,6 +79,17 @@ CREATE TABLE IF NOT EXISTS min_selling_prices (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_min_price_product ON min_selling_prices(product_id) WHERE scope = 'product';
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_min_price_brand ON min_selling_prices(brand_id) WHERE scope = 'brand';
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_min_price_category ON min_selling_prices(category_id) WHERE scope = 'category';
+
+-- 3. Minimums entered on the product form (migration 026) move here, so Commission settings is
+--    the only place they are kept. products.min_selling_price stays as it was but is no longer read.
+INSERT INTO min_selling_prices (id, scope, product_id, min_price, is_active, notes, created_at, updated_at)
+SELECT
+  lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))), 2) || '-'
+    || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))),
+  'product', p.id, p.min_selling_price, 1, 'Moved from the product form', datetime('now'), datetime('now')
+FROM products p
+WHERE p.min_selling_price > 0
+  AND NOT EXISTS (SELECT 1 FROM min_selling_prices m WHERE m.scope = 'product' AND m.product_id = p.id);
 
 COMMIT;
 PRAGMA foreign_keys = ON;

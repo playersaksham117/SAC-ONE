@@ -266,7 +266,7 @@ export class CommissionService {
     return { deleted: true };
   }
 
-  /** productId → floor for every active product with a rule (SAC-POS pulls this). */
+  /** productId → floor for every active product with a rule (SAC-POS pulls this; others use their price). */
   minPriceMap() {
     const rules = minPriceRepo.activeRules();
     const map = {};
@@ -279,20 +279,20 @@ export class CommissionService {
   }
 
   /**
-   * Lines priced below their floor. Lines need productId, quantity, taxableAmount
-   * (after all discounts, before GST) and a name.
+   * Lines priced below their floor: the Commission-settings minimum when one applies, otherwise
+   * the product's selling price (no discount below it). Lines need productId, quantity,
+   * taxableAmount (after all discounts, before GST) and a name.
    */
   belowMinPrice(lines) {
     const rules = minPriceRepo.activeRules();
-    if (!rules.product.size && !rules.brand.size && !rules.category.size) return [];
     const out = [];
     for (const line of lines) {
       const product = repos.products.findById(line.productId);
-      if (!product) continue;
-      const hit = resolveFloor(product, rules);
+      if (!product || !(Number(line.quantity) > 0)) continue;
+      const floor = resolveFloor(product, rules)?.floor ?? Number(product.sellingPrice || 0);
       const price = unitNetPrice(line);
-      if (hit && price + 0.005 < hit.floor) {
-        out.push({ productId: line.productId, name: line.productName || product.name, unitPrice: price, floor: hit.floor });
+      if (floor > 0 && price + 0.005 < floor) {
+        out.push({ productId: line.productId, name: line.productName || product.name, unitPrice: price, floor });
       }
     }
     return out;

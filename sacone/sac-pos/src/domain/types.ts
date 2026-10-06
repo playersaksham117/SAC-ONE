@@ -16,7 +16,6 @@ export interface Product {
   gstRate: number;
   mrp: number;
   price: number;         // selling price, GST-exclusive
-  minPrice?: number;     // floor for the net unit price (GST-exclusive); 0 = price is the floor
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;

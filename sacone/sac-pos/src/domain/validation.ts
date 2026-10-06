@@ -89,12 +89,6 @@ export function validateLine(line: CartLine, { canOverridePrice }: { canOverride
   return issues;
 }
 
-/** Lowest net unit price (GST-exclusive) a product may be sold at. */
-export function priceFloor(p: Pick<Product, 'price' | 'minPrice'> | undefined): number {
-  if (!p) return 0;
-  return p.minPrice && p.minPrice > 0 ? p.minPrice : p.price;
-}
-
 /* ───────────── checkout ───────────── */
 
 export interface CheckoutContext {
@@ -106,16 +100,22 @@ export interface CheckoutContext {
   pendingQty: Record<string, number>;   // qty already sold on this device but not yet synced
   allowNegativeStock: boolean;
   canOverridePrice: boolean;
-  /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Commission settings. */
+  /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Commission settings.
+   *  Products without one may not go below their selling price. */
   minPrices?: Record<string, number>;
 }
 
-/** Lines whose effective unit price (after line + bill discounts, before GST) is below the floor. */
-export function belowMinPrice(totals: CartTotals, minPrices: Record<string, number> = {}): Issue[] {
+/**
+ * Lines whose effective unit price (after line + bill discounts, before GST) is below the floor:
+ * the Commission-settings minimum when one applies, otherwise the product's selling price.
+ */
+export function belowMinPrice(
+  totals: CartTotals, minPrices: Record<string, number> = {}, products: Record<string, Pick<Product, 'price'>> = {},
+): Issue[] {
   const issues: Issue[] = [];
   for (const l of totals.lines) {
-    const floor = minPrices[l.productId];
-    if (floor == null || !(l.quantity > 0)) continue;
+    const floor = minPrices[l.productId] ?? products[l.productId]?.price;
+    if (!(Number(floor) > 0) || !(l.quantity > 0)) continue;
     const price = round2(l.taxableAmount / l.quantity);
     if (price + 0.005 < floor) {
       issues.push({ field: 'unitPrice', message: `${l.name}: lowest allowed price is ${floor.toFixed(2)} before GST (now ${price.toFixed(2)})` });
@@ -129,7 +129,7 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
   if (!ctx.lines.length) r.errors.push({ message: 'Cart is empty' });
 
   for (const line of ctx.lines) r.errors.push(...validateLine(line, { canOverridePrice: ctx.canOverridePrice }));
-  r.errors.push(...belowMinPrice(ctx.totals, ctx.minPrices));
+  r.errors.push(...belowMinPrice(ctx.totals, ctx.minPrices, ctx.products));
 
   if (ctx.totals.invoiceDiscount > 0 && !ctx.canOverridePrice) {
     r.errors.push({ field: 'invoiceDiscount', message: 'You are not allowed to give a bill discount' });
@@ -150,17 +150,6 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
     if (qty > available + 0.000001) {
       const msg = `${p.name}: only ${Math.max(available, 0)} ${p.unit} in stock`;
       (ctx.allowNegativeStock ? r.warnings : r.errors).push({ message: msg });
-    }
-  }
-
-  // Price floor: edited price, item discount and bill-discount share together may not take
-  // a line's net unit price below the product's minimum (or selling) price.
-  for (const line of ctx.totals.lines) {
-    const floor = priceFloor(ctx.products[line.productId]);
-    if (!(floor > 0) || !(line.quantity > 0)) continue;
-    const netUnit = line.taxableAmount / line.quantity;
-    if (netUnit + 0.005 < floor) {
-      r.errors.push({ field: 'unitPrice', message: `${line.name}: price after discount ₹${netUnit.toFixed(2)} is below the minimum ₹${floor.toFixed(2)}` });
     }
   }
 

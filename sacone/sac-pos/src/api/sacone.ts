@@ -45,7 +45,7 @@ export interface PushResult {
 
 export interface ServerProduct {
   uuid: string; name: string; sku: string; barcode: string | null; category: string | null; brand: string | null;
-  unit: string; hsn: string | null; gst_rate: number; mrp: number; selling_price: number; min_selling_price?: number;
+  unit: string; hsn: string | null; gst_rate: number; mrp: number; selling_price: number;
   current_stock: number; available_stock: number; is_active: boolean; approval_status?: string; updated_at: string;
 }
 

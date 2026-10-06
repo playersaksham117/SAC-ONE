@@ -381,21 +381,6 @@ export class PosService {
       }
     }
 
-    // Price floor: an edited price or any discount must not take a line below the product's
-    // minimum selling price (or its selling price when no minimum is set). Net unit price is
-    // GST-exclusive and includes the line's share of the bill discount.
-    for (const item of totals.items) {
-      const product = productRepo.findById(item.productId);
-      const floor = product ? (product.minSellingPrice > 0 ? product.minSellingPrice : product.sellingPrice) : 0;
-      if (!(floor > 0) || !(item.quantity > 0)) continue;
-      const netUnit = item.taxableAmount / item.quantity;
-      if (netUnit + 0.005 < floor) {
-        const message = `${item.productName}: net price ₹${netUnit.toFixed(2)} is below the minimum selling price ₹${floor.toFixed(2)}`;
-        if (offlineSync) warnings.push({ code: 'BELOW_MIN_PRICE', message });
-        else throw new AppError(message, 400, 'BELOW_MIN_PRICE');
-      }
-    }
-
     const allowNegative = offlineSync || this.#allowNegativeStock();
     // Pre-validate stock before creating invoice
     for (const item of totals.items) {
