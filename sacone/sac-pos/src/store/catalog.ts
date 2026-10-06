@@ -20,7 +20,7 @@ interface CatalogState {
   productCursor: string;
   customerCursor: string;
   lastPullAt: string | null;
-  /** productId → minimum selling price (before GST), from ERP Commission settings. */
+  /** productId → minimum selling price (before GST), from ERP Product Master. */
   minPrices: Record<string, number>;
   setMinPrices: (prices: Record<string, number>) => void;
   applyProducts: (rows: ServerProduct[]) => void;

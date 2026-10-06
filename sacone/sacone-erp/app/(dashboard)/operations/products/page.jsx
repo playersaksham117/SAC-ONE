@@ -5,6 +5,7 @@ import { apiDownload, apiRequest } from '../../../../lib/api';
 import { useLiveRefresh } from '../../../../lib/live';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
+import MinPricePanel from '../../../../components/products/MinPricePanel';
 
 const EMPTY_PRODUCT = {
   name: '',
@@ -262,6 +263,7 @@ export default function ProductsPage() {
     { id: 'categories', label: 'Categories', show: checkPermission('products.categories.view') },
     { id: 'brands', label: 'Brands', show: checkPermission('products.brands.view') },
     { id: 'units', label: 'Units', show: checkPermission('products.units.view') },
+    { id: 'min-prices', label: 'Min Selling Price', show: checkPermission('products.products.view') },
   ].filter((t) => t.show)), [checkPermission]);
 
   const loadLookups = async () => {
@@ -695,6 +697,10 @@ export default function ProductsPage() {
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
 
+      {tab === 'min-prices' && (
+        <MinPricePanel canEdit={canEdit} onError={setError} onMessage={setMessage} />
+      )}
+
       {tab === 'products' && (
         <>
           <div className="mb-4 grid gap-3 md:grid-cols-4">
@@ -1001,17 +1007,19 @@ export default function ProductsPage() {
             </div>
             {showAdvanced && (
               <>
-                <div>
-                  <label className="label">MRP</label>
-                  <input type="number" step="0.01" className="input-field" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Selling Price</label>
-                  <input type="number" step="0.01" className="input-field" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Purchase Price</label>
-                  <input type="number" step="0.01" className="input-field" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
+                <div className="grid gap-4 sm:grid-cols-3 md:col-span-2">
+                  <div>
+                    <label className="label">MRP</label>
+                    <input type="number" step="0.01" className="input-field" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Selling Price</label>
+                    <input type="number" step="0.01" className="input-field" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Purchase Price</label>
+                    <input type="number" step="0.01" className="input-field" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
+                  </div>
                 </div>
                 <div>
                   <label className="label">Reorder Level</label>

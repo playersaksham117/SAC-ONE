@@ -736,7 +736,7 @@ export class CommissionPaymentRepository {
   }
 }
 
-/* ───────────── minimum selling prices (Commission settings) ───────────── */
+/* ───────────── minimum selling prices (Product Master) ───────────── */
 
 function mapMinPrice(row) {
   if (!row) return null;

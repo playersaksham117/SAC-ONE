@@ -11,6 +11,9 @@ import { getDatabaseHealth } from './database/mongo.js';
  */
 export function createApp() {
   const app = express();
+  app.disable('x-powered-by');
+  // The local gateway proxies from this PC; trust its X-Forwarded-For only (rate limits, audit IPs).
+  app.set('trust proxy', 'loopback');
 
   const allowedOrigins = config.corsOrigins;
   app.use(cors({

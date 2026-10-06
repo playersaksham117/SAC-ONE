@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Serves only cache/shared-documents/ (see document_share_paths.xml); never exported. -->
+    <provider
+      android:name="expo.modules.documentshare.DocumentShareFileProvider"
+      android:authorities="${applicationId}.SacDocumentShareProvider"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/document_share_paths" />
+    </provider>
+  </application>
+</manifest>

@@ -54,17 +54,6 @@ commissionRouter.post('/plans/:id/rules', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.createRule(req.params.id, req.body, req.actor, req), 201);
 }));
 
-// Minimum selling prices live only in Commission settings.
-commissionRouter.get('/min-prices', asyncHandler(async (req, res) => {
-  sendSuccess(res, commissionService.listMinPrices(req.actor));
-}));
-commissionRouter.post('/min-prices', asyncHandler(async (req, res) => {
-  sendSuccess(res, commissionService.saveMinPrice(req.body || {}, req.actor, req), 201);
-}));
-commissionRouter.delete('/min-prices/:id', asyncHandler(async (req, res) => {
-  sendSuccess(res, commissionService.deleteMinPrice(req.params.id, req.actor, req));
-}));
-
 commissionRouter.post('/preview', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.preview(req.body, req.actor));
 }));

@@ -6,8 +6,6 @@ import { useLiveRefresh } from '../../../../lib/live';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, Modal } from '../../../../components/ui';
 import { StatCard, SectionCard, ModuleTabs } from '../../../../components/module-ui';
-import MinPricePanel from '../../../../components/commissions/MinPricePanel';
-
 function money(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -229,7 +227,6 @@ export default function CommissionsPage() {
     { id: 'ledger', label: 'Commission Ledger' },
     { id: 'performance', label: 'Performance' },
     { id: 'payments', label: 'Commission Payments' },
-    ...(checkPermission('sales.commissions.view') ? [{ id: 'min-prices', label: 'Min Selling Price' }] : []),
   ];
 
   return (
@@ -248,10 +245,6 @@ export default function CommissionsPage() {
         <Alert type="success" message={message} />
         <CredentialsBanner credentials={credentials} onClose={() => setCredentials(null)} />
         <ModuleTabs tabs={tabs} active={tab} onChange={setTab} />
-
-        {tab === 'min-prices' && (
-          <MinPricePanel canEdit={checkPermission('sales.commissions.edit')} onError={setError} onMessage={setMessage} />
-        )}
 
         {tab === 'agents' && (
           <SectionCard title="Sales agents">

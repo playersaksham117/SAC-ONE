@@ -11,7 +11,7 @@ const EMPTY = { scope: 'product', targetId: '', mode: 'price', value: '', notes:
 const SCOPE_LABEL = { product: 'Product', brand: 'Brand', category: 'Category' };
 
 /**
- * Minimum selling prices: managed only here, in Commission settings.
+ * Minimum selling prices, managed in Product Master.
  * Sales below the floor are blocked on SAC-POS and in the ERP, and those lines earn no commission.
  */
 export default function MinPricePanel({ canEdit, onError, onMessage }) {
@@ -24,7 +24,7 @@ export default function MinPricePanel({ canEdit, onError, onMessage }) {
 
   const load = useCallback(async () => {
     try {
-      setRules(await apiRequest('/api/commissions/min-prices'));
+      setRules(await apiRequest('/api/products/min-prices'));
     } catch (e) {
       onError?.(e.message);
     }
@@ -54,7 +54,7 @@ export default function MinPricePanel({ canEdit, onError, onMessage }) {
     e.preventDefault();
     setSaving(true);
     try {
-      await apiRequest('/api/commissions/min-prices', {
+      await apiRequest('/api/products/min-prices', {
         method: 'POST',
         body: JSON.stringify({
           scope: form.scope,
@@ -77,7 +77,7 @@ export default function MinPricePanel({ canEdit, onError, onMessage }) {
   const remove = async (rule) => {
     if (!window.confirm(`Remove the minimum price for ${rule.targetName}?`)) return;
     try {
-      await apiRequest(`/api/commissions/min-prices/${rule.id}`, { method: 'DELETE' });
+      await apiRequest(`/api/products/min-prices/${rule.id}`, { method: 'DELETE' });
       await load();
     } catch (err) {
       onError?.(err.message);

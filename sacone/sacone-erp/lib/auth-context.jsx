@@ -13,7 +13,8 @@ import {
 
 const AuthContext = createContext(null);
 
-const PUBLIC_PATHS = ['/login'];
+// /share opens a customer's invoice link; it never uses the staff session.
+const PUBLIC_PATHS = ['/login', '/share'];
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);

@@ -12,6 +12,18 @@ const APP_ENV = ['development', 'local', 'staging', 'production'].includes(rawAp
   ? (rawAppEnv === 'local' ? 'development' : rawAppEnv)
   : 'development';
 
+function publicDocumentBase(raw) {
+  const value = String(raw || '').trim().replace(/\/+$/, '');
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    const localhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if (url.protocol === 'https:' || (url.protocol === 'http:' && localhost)) return url.origin + url.pathname.replace(/\/+$/, '');
+  } catch { /* invalid URL */ }
+  console.warn('PUBLIC_DOCUMENT_BASE_URL ignored: it must be an https:// URL. Invoice links stay disabled.');
+  return '';
+}
+
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -59,6 +71,13 @@ export const config = {
     password: process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123',
     name: process.env.DEFAULT_ADMIN_NAME || 'System Administrator',
   },
+  /**
+   * Public HTTPS origin of the ERP's /share page, e.g. https://erp.example.com. Customer-facing
+   * invoice links are disabled until this is set; plain http is accepted only for localhost testing.
+   */
+  publicDocumentBaseUrl: publicDocumentBase(process.env.PUBLIC_DOCUMENT_BASE_URL),
+  /** Lifetime of a shared invoice link (1–168 hours). */
+  documentLinkTtlHours: Math.min(168, Math.max(1, parseInt(process.env.DOCUMENT_LINK_TTL_HOURS || '24', 10) || 24)),
   /** When true, inserts sample products/parties for local demos. Default: off (real data only). */
   seedDemoData: process.env.SEED_DEMO_DATA === 'true' || process.env.SEED_DEMO_DATA === '1',
 };

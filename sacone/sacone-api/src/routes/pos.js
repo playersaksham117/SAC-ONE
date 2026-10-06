@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
+import { noStore, rateLimit } from '../core/rate-limit.js';
 import { authenticate } from '../middleware/auth.js';
+import { documentLinkService } from '../services/document-links.js';
 import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
 import { partyStatementService } from '../services/party-statements.js';
@@ -175,8 +177,22 @@ posRouter.get('/sales', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.listSales(req.query, req.actor));
 }));
 
-posRouter.get('/sales/:id', asyncHandler(async (req, res) => {
+const invoiceReadLimit = rateLimit({ name: 'invoice-read', windowMs: 60_000, max: 120 });
+const shareLinkLimit = rateLimit({ name: 'invoice-share-link', windowMs: 60_000, max: 20 });
+
+posRouter.get('/sales/:id', invoiceReadLimit, noStore, asyncHandler(async (req, res) => {
   sendSuccess(res, posService.getSale(req.params.id, req.actor));
+}));
+
+// Short-lived customer links to one invoice (see services/document-links.js).
+posRouter.get('/sales/:id/share-link', shareLinkLimit, noStore, asyncHandler(async (req, res) => {
+  sendSuccess(res, documentLinkService.status(req.params.id, req.actor));
+}));
+posRouter.post('/sales/:id/share-link', shareLinkLimit, noStore, asyncHandler(async (req, res) => {
+  sendSuccess(res, documentLinkService.createSaleLink(req.params.id, req.actor, req), 201);
+}));
+posRouter.delete('/sales/:id/share-links', shareLinkLimit, noStore, asyncHandler(async (req, res) => {
+  sendSuccess(res, documentLinkService.revokeSaleLinks(req.params.id, req.actor, req));
 }));
 
 // Owner only: edit or delete (void) an invoice; products go back to stock.

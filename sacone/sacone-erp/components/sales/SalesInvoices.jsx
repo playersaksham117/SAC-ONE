@@ -168,7 +168,7 @@ Reason (optional):`);
                   <td className={`px-4 py-3 text-right ${s.amountCredit > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{s.amountCredit > 0 ? money(s.amountCredit) : '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / PDF</button>
+                      <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / Share</button>
                       {isOwner && s.status === 'completed' && (
                         <>
                           <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(s.id); }}>Edit</button>
@@ -222,5 +222,14 @@ async function loadInvoice(saleId) {
     defaultLayout: invoice.layout,
     items: sale.items,
     csvName: sale.invoiceNumber,
+    share: {
+      number: sale.invoiceNumber,
+      amount: sale.grandTotal,
+      links: {
+        status: () => apiRequest(`/api/pos/sales/${saleId}/share-link`),
+        create: () => apiRequest(`/api/pos/sales/${saleId}/share-link`, { method: 'POST' }),
+        revoke: () => apiRequest(`/api/pos/sales/${saleId}/share-links`, { method: 'DELETE' }),
+      },
+    },
   };
 }

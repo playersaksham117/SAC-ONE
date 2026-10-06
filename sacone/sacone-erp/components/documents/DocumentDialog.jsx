@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { LAYOUTS, PDF_SIZES, PRINT_SIZES, printHtml } from '../../lib/bill-document';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { Alert, LoadingState, Modal } from '../ui';
+import ShareSection from './ShareSection';
 
 /** Per-browser remembered choice (paper size), guarded because storage can be unavailable. */
 function useStoredChoice(key, fallback, allowed) {
@@ -38,7 +39,8 @@ export const ITEM_CSV_COLUMNS = [
 
 /**
  * Print (58mm / 80mm / A5 / A4), Save PDF (A5 / A4) and line-item CSV for one document.
- *   load(): Promise<{ summary: [[label, value]], html: (size, layout) => string, items: [], csvName, defaultLayout? }>
+ *   load(): Promise<{ summary: [[label, value]], html: (size, layout) => string, items: [], csvName, defaultLayout?, share? }>
+ *   share: { number, amount, links? } adds the Share invoice section (see ShareSection).
  * A5 / A4 come in two layouts: 1 · GST classic (boxed tax-invoice grid) and 2 · Modern.
  */
 export default function DocumentDialog({ title, load, onClose, documentLabel = 'invoice' }) {
@@ -131,6 +133,8 @@ export default function DocumentDialog({ title, load, onClose, documentLabel = '
             </div>
             <p className="mt-2 text-xs text-slate-500">In the dialog that opens, pick <b>Save as PDF</b> as the destination.</p>
           </section>
+
+          {doc.share && <ShareSection pdf={() => ({ html: html(pdfSize), size: pdfSize })} share={doc.share} />}
 
           <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 p-4">
             <div>

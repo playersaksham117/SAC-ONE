@@ -21,6 +21,7 @@ import { salesAgentRouter, commissionRouter, commissionPaymentRouter } from './c
 import { posSyncRouter, posDeviceAdminRouter } from './pos-sync.js';
 import { eventsRouter } from './events.js';
 import { openingBalanceRouter } from './opening-balances.js';
+import { sharedDocumentRouter } from './shared-documents.js';
 
 export const ROUTES = [
   // Core & security
@@ -73,4 +74,7 @@ export const ROUTES = [
   ['/api/webstore/v1', webstorePublicRouter],
   ['/api/webstore/admin', webstoreAdminRouter],
   ['/api/v1/sync', posSyncRouter],
+
+  // Public, token-gated: customers opening a shared invoice link
+  ['/api/shared-documents', sharedDocumentRouter],
 ];

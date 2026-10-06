@@ -1,10 +1,11 @@
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import type { CompanyInfo } from '../api/sacone';
 import { formatNotes } from '../domain/cash';
 import { formatMoney, formatQty } from '../domain/money';
+import { invoiceShareMessage, shareFileName } from '../domain/share';
 import type { Sale } from '../domain/types';
+import { DocumentShareService } from '../services/documentShare';
 
 /**
  * Bill documents in four paper sizes.
@@ -397,21 +398,17 @@ export async function printBill(html: string, size: PaperSize) {
   await Print.printAsync(isSheet(size) ? { html, ...PAGE[size] } : { html, margins: NO_MARGINS });
 }
 
-async function makePdf(html: string, size: PdfSize) {
-  const { uri } = await Print.printToFileAsync({ html, ...PAGE[size] });
-  return uri;
-}
-
 /** Open the PDF in the system viewer (Save as PDF / Save to Files). On web: browser "Save as PDF". */
-export async function savePdf(html: string, size: PdfSize) {
+export async function savePdf(html: string, size: PdfSize, number: string) {
   if (Platform.OS === 'web') return Print.printAsync({ html });
-  return Print.printAsync({ uri: await makePdf(html, size) });
+  return Print.printAsync({ uri: await DocumentShareService.createPdf(html, PAGE[size], shareFileName(number)) });
 }
 
-/** Share the PDF (WhatsApp, email, Drive …). */
-export async function sharePdf(html: string, size: PdfSize, title: string) {
-  if (Platform.OS === 'web') return Print.printAsync({ html });
-  const uri = await makePdf(html, size);
-  if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this device');
-  return Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Share ${title}`, UTI: 'com.adobe.pdf' });
+/** Share the invoice PDF through the OS share sheet; the user picks the app and recipient. */
+export function shareInvoice(html: string, size: PdfSize, sale: Sale, deviceCode?: string) {
+  const number = billNumber(sale, deviceCode);
+  return DocumentShareService.shareDocument(html, PAGE[size], shareFileName(number), {
+    title: `Share invoice ${number}`,
+    message: invoiceShareMessage(number, sale.totals.grandTotal),
+  });
 }

@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
-import { billHtml, LAYOUTS, PDF_SIZES, PRINT_SIZES, printBill, savePdf, sharePdf, type Layout, type PaperSize, type PdfSize } from '../../lib/receipt';
+import { billHtml, LAYOUTS, PDF_SIZES, PRINT_SIZES, printBill, savePdf, shareInvoice, type Layout, type PaperSize, type PdfSize } from '../../lib/receipt';
 import { usePref } from '../../lib/usePref';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
-import { useCan } from '../../store/session';
+import { useCan, useSession } from '../../store/session';
 import { notify } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Banner, Button, Card, Chip, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, Segmented, colors, font, space } from '../../ui/components';
@@ -24,6 +25,8 @@ export default function SaleDetail() {
   const [pdfSize, setPdfSize] = usePref<PdfSize>('sacpos.pdfSize', 'A4', PDF_SIZES.map((p) => p.value));
   const invoiceSettings = useDevice((s) => s.info?.settings.invoice);
   const [layout, setLayout] = usePref<Layout>('sacpos.invoiceLayout', invoiceSettings?.layout ?? 'classic', LAYOUTS.map((l) => l.value));
+  const [sharing, setSharing] = useState(false);
+  const [captionCopied, setCaptionCopied] = useState(false);
 
   if (!sale) {
     return (
@@ -38,9 +41,25 @@ export default function SaleDetail() {
   const saleReturns = returns.filter((r) => r.saleId === sale.id);
   const returnable = t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
   const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
-  const title = `Bill ${sale.serverNumber ?? sale.number}`;
+  const number = sale.serverNumber ?? sale.number;
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
+  };
+  const share = async () => {
+    if (!useSession.getState().currentUserId) {
+      notify('Share invoice', 'Unlock SAC-POS with your PIN first.');
+      return;
+    }
+    setSharing(true);
+    setCaptionCopied(false);
+    try {
+      const { messageCopied } = await shareInvoice(html(pdfSize), pdfSize, sale, info?.device.code);
+      setCaptionCopied(messageCopied);
+    } catch (e) {
+      notify('Share invoice', (e as Error).message);
+    } finally {
+      setSharing(false);
+    }
   };
 
   return (
@@ -74,10 +93,20 @@ export default function SaleDetail() {
           <Divider />
           <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>PDF</Text>
           <Segmented value={pdfSize} options={PDF_SIZES} onChange={setPdfSize} />
-          <Row gap={space.sm} style={{ marginTop: space.sm }}>
-            <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize))} />
-            <Button title="Share" icon="share-social-outline" variant="secondary" style={{ flex: 1 }} onPress={() => run(() => sharePdf(html(pdfSize), pdfSize, title))} />
-          </Row>
+          <Button
+            title="Share invoice"
+            icon="share-social-outline"
+            style={{ marginTop: space.sm }}
+            loading={sharing}
+            onPress={share}
+            testID="share-invoice"
+          />
+          <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ marginTop: space.sm }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize, number))} />
+          {captionCopied ? (
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: space.xs }}>
+              Caption copied. Paste it in the chat if you want to add it to the PDF.
+            </Text>
+          ) : null}
         </Card>
 
         <SectionTitle right={<DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>

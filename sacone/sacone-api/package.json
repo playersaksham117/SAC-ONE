@@ -17,7 +17,8 @@
     "cloud:export": "node src/scripts/cloud.js export",
     "cloud:verify": "node src/scripts/cloud.js verify",
     "test:pos": "node scripts/test-pos-scenarios.js",
-    "test:pos-sync": "node scripts/test-pos-sync.js"
+    "test:pos-sync": "node scripts/test-pos-sync.js",
+    "test:document-share": "node scripts/test-document-share.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

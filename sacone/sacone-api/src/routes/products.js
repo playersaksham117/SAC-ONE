@@ -7,6 +7,7 @@ import {
   unitService,
   productService,
 } from '../services/products.js';
+import { commissionService } from '../services/commissions.js';
 
 function lookupRouter(service) {
   const router = Router();
@@ -94,6 +95,17 @@ productRouter.post('/bulk-delete', asyncHandler(async (req, res) => {
 
 productRouter.post('/bulk-update', asyncHandler(async (req, res) => {
   sendSuccess(res, productService.bulkUpdate(req.body?.ids || [], req.body?.patch || {}, req.actor, req));
+}));
+
+// Minimum selling prices: product > brand > category, a fixed price or % of MRP.
+productRouter.get('/min-prices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.listMinPrices(req.actor));
+}));
+productRouter.post('/min-prices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.saveMinPrice(req.body || {}, req.actor, req), 201);
+}));
+productRouter.delete('/min-prices/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.deleteMinPrice(req.params.id, req.actor, req));
 }));
 
 productRouter.get('/', asyncHandler(async (req, res) => {

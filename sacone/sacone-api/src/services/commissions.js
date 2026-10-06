@@ -218,14 +218,14 @@ export class CommissionService {
   }
 
   // ── Plans ───────────────────────────────────────────────
-  // ── Minimum selling prices (only managed here, in Commission settings) ──
+  // ── Minimum selling prices (managed in Product Master; enforced at sale and commission time) ──
   listMinPrices(actor) {
-    requirePerm(actor, 'sales.commissions.view');
+    requirePerm(actor, 'products.products.view');
     return minPriceRepo.list();
   }
 
   saveMinPrice(data, actor, req) {
-    requirePerm(actor, 'sales.commissions.edit');
+    requirePerm(actor, 'products.products.edit');
     const scope = String(data.scope || '');
     if (!['product', 'brand', 'category'].includes(scope)) throw new AppError('scope must be product, brand or category', 400);
     const targetId = data.targetId;
@@ -247,20 +247,20 @@ export class CommissionService {
     });
     auditRepo.create({
       userId: actor.user.id, userName: actor.user.fullName,
-      action: 'update', module: 'sales', recordType: 'min_selling_price', recordId: saved.id,
+      action: 'update', module: 'products', recordType: 'min_selling_price', recordId: saved.id,
       newValue: saved, ...meta(req),
     });
     return saved;
   }
 
   deleteMinPrice(id, actor, req) {
-    requirePerm(actor, 'sales.commissions.edit');
+    requirePerm(actor, 'products.products.edit');
     const existing = minPriceRepo.findById(id);
     if (!existing) throw new AppError('Minimum price rule not found', 404);
     minPriceRepo.remove(id);
     auditRepo.create({
       userId: actor.user.id, userName: actor.user.fullName,
-      action: 'delete', module: 'sales', recordType: 'min_selling_price', recordId: id,
+      action: 'delete', module: 'products', recordType: 'min_selling_price', recordId: id,
       previousValue: existing, ...meta(req),
     });
     return { deleted: true };

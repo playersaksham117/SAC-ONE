@@ -100,7 +100,7 @@ export interface CheckoutContext {
   pendingQty: Record<string, number>;   // qty already sold on this device but not yet synced
   allowNegativeStock: boolean;
   canOverridePrice: boolean;
-  /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Commission settings.
+  /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Product Master.
    *  Products without one may not go below their selling price. */
   minPrices?: Record<string, number>;
 }

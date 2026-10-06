@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { ApiError } from '../api/client';
 import { sync } from '../api/sacone';
+import { sweepSharedDocuments } from '../services/documentShare';
 import { useCart } from '../store/cart';
 import { useCatalog } from '../store/catalog';
 import { deviceConfig, useDevice } from '../store/device';
@@ -31,6 +32,18 @@ export function useBootstrap(): boolean {
     const unsubs = STORES.map((s) => s.persist.onFinishHydration(() => { if (hydrated()) finish(); }));
     return () => { cancelled = true; unsubs.forEach((u) => u()); };
   }, []);
+
+  // Temporary share PDFs: expire after the TTL, and all go when the terminal is locked
+  // (the app always starts locked, so a cold start clears everything left over).
+  useEffect(() => {
+    if (!ready) return undefined;
+    sweepSharedDocuments(true);
+    const appSub = AppState.addEventListener('change', (st) => { if (st === 'active') sweepSharedDocuments(); });
+    const unsub = useSession.subscribe((s, prev) => {
+      if (prev.currentUserId && !s.currentUserId) sweepSharedDocuments(true);
+    });
+    return () => { appSub.remove(); unsub(); };
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return undefined;

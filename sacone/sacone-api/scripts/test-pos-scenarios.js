@@ -67,9 +67,9 @@ async function main() {
   const p2 = products.items[1] || products.items[0];
   await ensureStock(token, p1.id, warehouseId, 50);
   await ensureStock(token, p2.id, warehouseId, 50);
-  // Discounts below the selling price need room: set a minimum selling price in Commission settings.
+  // Discounts below the selling price need room: set a minimum selling price in Product Master.
   const p2Full = await req(`/api/products/${p2.id}`, { token });
-  await req('/api/commissions/min-prices', { method: 'POST', token, body: { scope: 'product', targetId: p2.id, minPrice: Math.max(0, p2Full.sellingPrice - 10) } });
+  await req('/api/products/min-prices', { method: 'POST', token, body: { scope: 'product', targetId: p2.id, minPrice: Math.max(0, p2Full.sellingPrice - 10) } });
 
   // Credit customer
   let creditCustomer;
