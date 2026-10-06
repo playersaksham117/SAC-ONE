@@ -523,6 +523,13 @@ export class PurchaseService {
     }, actor, req);
   }
 
+  getReturn(id, actor) {
+    authService.checkPermission(actor.permissions, 'purchases.returns.view');
+    const purchaseReturn = purchaseRepo.findReturnById(id);
+    if (!purchaseReturn) throw new AppError('Purchase return not found', 404);
+    return purchaseReturn;
+  }
+
   listReturns(filters, actor) {
     authService.checkPermission(actor.permissions, 'purchases.returns.view');
     return purchaseRepo.listReturns(filters);

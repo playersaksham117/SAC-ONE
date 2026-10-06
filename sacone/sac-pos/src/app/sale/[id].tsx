@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
+import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
 import { billHtml, PDF_SIZES, PRINT_SIZES, printBill, savePdf, sharePdf, type PaperSize, type PdfSize } from '../../lib/receipt';
 import { usePref } from '../../lib/usePref';
@@ -101,6 +102,19 @@ export default function SaleDetail() {
           <KeyValue label="Total" value={formatMoney(t.grandTotal)} bold />
           <Divider />
           {sale.payments.map((p, i) => <KeyValue key={i} label={`${METHOD[p.method]}${p.reference ? ` · ${p.reference}` : ''}`} value={formatMoney(p.amount)} muted />)}
+          {sale.tendered ? <KeyValue label="Cash received" value={formatMoney(sale.tendered)} muted /> : null}
+          {sale.change ? <KeyValue label="Change given" value={formatMoney(sale.change)} muted /> : null}
+          {sale.cashDrawer && formatNotes(sale.cashDrawer.received) ? (
+            <View style={{ marginTop: space.xs }}>
+              <Text style={{ color: colors.textMuted, fontSize: font.xs }}>Notes received: {formatNotes(sale.cashDrawer.received)}</Text>
+              {formatNotes(sale.cashDrawer.change) ? <Text style={{ color: colors.textMuted, fontSize: font.xs }}>Change notes: {formatNotes(sale.cashDrawer.change)}</Text> : null}
+            </View>
+          ) : null}
+          {sale.exchange ? (
+            <Text style={{ color: colors.primary, fontSize: font.xs, marginTop: space.xs }}>
+              Exchange: {formatMoney(sale.exchange.credit)} paid by return {sale.exchange.returnNumber}
+            </Text>
+          ) : null}
         </Card>
 
         {saleReturns.length ? (
@@ -113,8 +127,11 @@ export default function SaleDetail() {
                   <DocSyncBadge doc={r} />
                 </Row>
                 <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 4 }}>
-                  {r.lines.map((l) => `${l.name} × ${l.quantity}`).join(', ')} · refund {formatMoney(r.total)} ({r.refundMethod})
+                  {r.lines.map((l) => `${l.name} × ${l.quantity}`).join(', ')} · {r.type === 'exchange' ? `exchanged ${formatMoney(r.total)}` : `refund ${formatMoney(r.total)} (${r.refundMethod})`}
                 </Text>
+                {r.approvedBy ? (
+                  <Text style={{ color: colors.textMuted, fontSize: font.xs }}>Approved by {r.approvedBy.name} · {new Date(r.approvedBy.at).toLocaleString('en-IN')}</Text>
+                ) : null}
               </Card>
             ))}
           </>
@@ -122,7 +139,7 @@ export default function SaleDetail() {
 
         <View style={{ gap: space.sm, marginTop: space.lg }}>
           {canReturn && returnable ? (
-            <Button title="Return items" icon="return-down-back-outline" variant="secondary" onPress={() => router.push({ pathname: '/return/[id]', params: { id: sale.id } })} />
+            <Button title="Return / exchange items" icon="return-down-back-outline" variant="secondary" onPress={() => router.push({ pathname: '/return/[id]', params: { id: sale.id } })} />
           ) : null}
           {done ? <Button title="New sale" icon="add-circle-outline" size="lg" onPress={() => (router.canGoBack() ? router.back() : router.replace('/sell'))} testID="new-sale" /> : null}
         </View>

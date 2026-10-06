@@ -16,6 +16,7 @@ export interface Product {
   gstRate: number;
   mrp: number;
   price: number;         // selling price, GST-exclusive
+  minPrice?: number;     // floor for the net unit price (GST-exclusive); 0 = price is the floor
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;
@@ -91,6 +92,13 @@ export interface SyncMeta {
   syncedAt?: string | null;
 }
 
+/** Who approved a return / exchange on the phone (a user with "POS Returns – approve"). */
+export interface Approval {
+  userId: string;
+  name: string;
+  at: string;
+}
+
 export interface Sale extends SyncMeta {
   id: string;
   number: string;
@@ -104,6 +112,10 @@ export interface Sale extends SyncMeta {
   amountDue: number;
   tendered?: number;
   change?: number;
+  /** Notes/coins counted into and out of the cash drawer for this bill. */
+  cashDrawer?: { received: Record<string, number>; change: Record<string, number> };
+  /** Set when this bill is the new half of an exchange: the return that paid for part of it. */
+  exchange?: { returnId: string; returnNumber: string; credit: number } | null;
   notes?: string | null;
   returned: Record<string, number>;   // productId → qty returned
 }
@@ -128,6 +140,9 @@ export interface SaleReturn extends SyncMeta {
   refundMethod: RefundMethod;
   reason: string;
   total: number;
+  /** 'exchange': the value goes into a new bill instead of back to the customer. */
+  type?: 'return' | 'exchange';
+  approvedBy?: Approval | null;
 }
 
 export interface CustomerPayment extends SyncMeta {

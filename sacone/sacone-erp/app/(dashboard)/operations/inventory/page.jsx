@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { useLiveRefresh } from '../../../../lib/live';
+import HsnSummary from '../../../../components/inventory/HsnSummary';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
 
@@ -54,6 +55,7 @@ export default function InventoryPage() {
     { id: 'stock', label: 'Stock Levels', show: checkPermission('inventory.stock.view') },
     { id: 'ledger', label: 'Movement Ledger', show: checkPermission('inventory.movements.view') },
     { id: 'adjustments', label: 'Pending Adjustments', show: checkPermission('inventory.adjustments.view') },
+    { id: 'hsn', label: 'HSN Summary', show: checkPermission('inventory.stock.view') },
   ].filter((t) => t.show)), [checkPermission]);
 
   useEffect(() => {
@@ -274,6 +276,8 @@ export default function InventoryPage() {
             <option value="">All products</option>
             {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
           </select>
+          {tab === 'hsn' && <HsnSummary warehouses={warehouses} />}
+
           {tab === 'ledger' && (
             <>
               <select className="input-field" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>

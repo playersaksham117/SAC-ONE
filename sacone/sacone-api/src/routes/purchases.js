@@ -82,6 +82,10 @@ purchaseRouter.get('/returns', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.listReturns(req.query, req.actor));
 }));
 
+purchaseRouter.get('/returns/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, purchaseService.getReturn(req.params.id, req.actor));
+}));
+
 purchaseRouter.post('/returns', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.createReturn(req.body, req.actor, req), 201);
 }));

@@ -9,6 +9,7 @@ export const P = {
   sell: 'pos.sales.create',
   viewSales: 'pos.sales.view',
   returns: 'pos.returns.create',
+  approveReturns: 'pos.returns.approve',
   priceOverride: 'pos.pricing.edit',
   customersView: 'parties.customers.view',
   customersCreate: 'parties.customers.create',
@@ -23,6 +24,7 @@ export type Capability =
   | 'sell'
   | 'viewSales'
   | 'returns'
+  | 'approveReturns'
   | 'overridePrice'
   | 'viewCustomers'
   | 'createCustomers'
@@ -35,6 +37,7 @@ const RULES: Record<Capability, string[]> = {
   sell: [P.sell],
   viewSales: [P.viewSales, P.sell],
   returns: [P.returns],
+  approveReturns: [P.approveReturns],
   overridePrice: [P.priceOverride],
   viewCustomers: [P.customersView],
   createCustomers: [P.customersCreate],
@@ -55,6 +58,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   sell: 'Create sales',
   viewSales: 'View sales',
   returns: 'Process returns',
+  approveReturns: 'Approve returns & exchanges',
   overridePrice: 'Change price / give discount',
   viewCustomers: 'View customers',
   createCustomers: 'Add customers',

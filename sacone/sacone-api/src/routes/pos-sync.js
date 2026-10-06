@@ -5,6 +5,7 @@ import { authenticateDevice } from '../middleware/device-auth.js';
 import { posSyncService, posDeviceAdminService } from '../services/pos-sync.js';
 import { currentSeq, waitForChange } from '../realtime/change-feed.js';
 import { commissionService } from '../services/commissions.js';
+import { serverAddresses } from '../core/server-addresses.js';
 
 /** Tables behind what a terminal pulls (catalogue, stock, customers, staff, settings). */
 const POS_PULL_TABLES = new Set([
@@ -100,6 +101,11 @@ posDeviceAdminRouter.get('/', asyncHandler(async (req, res) => {
 }));
 posDeviceAdminRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, posDeviceAdminService.create(req.body, req.actor, req), 201);
+}));
+
+// This PC's current LAN / Tailscale addresses, for the SAC-POS "Server URL" field.
+posDeviceAdminRouter.get('/server-addresses', asyncHandler(async (req, res) => {
+  sendSuccess(res, serverAddresses());
 }));
 
 // Sync inbox (declared before /:id so the paths don't collide)

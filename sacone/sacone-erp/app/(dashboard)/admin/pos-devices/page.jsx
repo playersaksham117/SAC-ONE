@@ -27,9 +27,48 @@ const ago = (iso) => {
   return `${Math.round(mins / 1440)} d ago`;
 };
 
+/** This PC's current server URLs for phones (the PC's address can change with DHCP). */
+function useServerUrls() {
+  const [urls, setUrls] = useState(null);
+  useEffect(() => {
+    apiRequest('/api/pos-devices/server-addresses')
+      .then((d) => setUrls((d.addresses || []).map((a) => ({ url: a.url, kind: a.kind, name: a.name }))))
+      .catch(() => setUrls([]));
+  }, []);
+  return urls;
+}
+
+function ServerUrlCard() {
+  const urls = useServerUrls();
+  if (urls === null) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm">
+      <div className="font-semibold text-sky-900">Server URL for SAC-POS phones</div>
+      {urls.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {urls.map((u) => (
+            <span key={u.url} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 ring-1 ring-sky-200">
+              <code className="font-mono text-xs">{u.url}</code>
+              <span className="text-[11px] text-slate-500">{u.kind === 'tailscale' ? 'Tailscale' : u.name}</span>
+              <button type="button" className="text-xs font-medium text-sky-700" onClick={() => navigator.clipboard?.writeText(u.url)}>Copy</button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-sky-800">No network address found. Connect this PC to the shop Wi-Fi.</p>
+      )}
+      <p className="mt-2 text-xs text-sky-800">
+        The phone must be on the same Wi-Fi (or Tailscale). This address can change when the router restarts:
+        reserve it in the router (DHCP reservation) to keep it fixed.
+      </p>
+    </div>
+  );
+}
+
 function SyncKeyBanner({ secret, onClose }) {
+  const urls = useServerUrls();
   if (!secret) return null;
-  const apiUrl = getApiBase();
+  const apiUrl = urls?.[0]?.url || getApiBase();
   return (
     <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
@@ -519,6 +558,7 @@ export default function PosDevicesPage() {
       />
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
+      <ServerUrlCard />
       <SyncKeyBanner secret={secret} onClose={() => setSecret(null)} />
 
       {loading ? <SkeletonGrid /> : (

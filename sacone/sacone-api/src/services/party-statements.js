@@ -1,4 +1,5 @@
 import { AppError } from '../core/http.js';
+import { openingBalanceFor, openingBalancesOf } from './opening-balances.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
@@ -137,6 +138,19 @@ export class PartyStatementService {
       });
     }
 
+    const ob = openingBalanceFor('customer', customerId);
+    if (ob) {
+      lines.push({
+        date: ob.asOfDate,
+        particulars: `Opening balance${ob.notes ? ` — ${ob.notes}` : ''}`,
+        documentType: 'opening_balance',
+        documentNumber: 'OB',
+        documentId: ob.id,
+        debit: ob.amount > 0 ? ob.amount : 0,
+        credit: ob.amount < 0 ? -ob.amount : 0,
+        source: 'opening_balance',
+      });
+    }
     lines.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
     // Opening = activity before dateFrom
@@ -309,6 +323,19 @@ export class PartyStatementService {
       // ignore
     }
 
+    const ob = openingBalanceFor('supplier', supplierId);
+    if (ob) {
+      lines.push({
+        date: ob.asOfDate,
+        particulars: `Opening balance${ob.notes ? ` — ${ob.notes}` : ''}`,
+        documentType: 'opening_balance',
+        documentNumber: 'OB',
+        documentId: ob.id,
+        debit: ob.amount < 0 ? -ob.amount : 0,
+        credit: ob.amount > 0 ? ob.amount : 0,
+        source: 'opening_balance',
+      });
+    }
     lines.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
     let opening = 0;
@@ -402,6 +429,17 @@ export class PartyStatementService {
       ORDER BY COALESCE(s.due_date, date(COALESCE(s.completed_at, s.created_at))) ASC
     `).all(...params);
 
+    for (const ob of openingBalancesOf('customer')) {
+      if (customerId && ob.partyId !== customerId) continue;
+      const c = db.prepare('SELECT name, code FROM customers WHERE id = ?').get(ob.partyId);
+      if (!c) continue;
+      rows.unshift({
+        id: ob.id, invoice_number: 'Opening balance', grand_total: ob.amount, amount_paid: round2(ob.amount - ob.remaining),
+        amount_credit: ob.remaining, payment_status: 'credit', due_date: ob.asOfDate, customer_id: ob.partyId,
+        customer_name: c.name, customer_code: c.code, invoice_date: ob.asOfDate, is_opening: 1,
+      });
+    }
+
     const buckets = emptyAgeing();
     const items = rows.map((row) => {
       const anchor = row.due_date || String(row.invoice_date).slice(0, 10);
@@ -462,6 +500,17 @@ export class PartyStatementService {
       WHERE ${filter}
       ORDER BY COALESCE(b.due_date, b.bill_date) ASC
     `).all(...params);
+
+    for (const ob of openingBalancesOf('supplier')) {
+      if (supplierId && ob.partyId !== supplierId) continue;
+      const sp = db.prepare('SELECT name, code FROM suppliers WHERE id = ?').get(ob.partyId);
+      if (!sp) continue;
+      rows.unshift({
+        id: ob.id, bill_number: 'Opening balance', grand_total: ob.amount, amount_paid: round2(ob.amount - ob.remaining),
+        amount_payable: ob.remaining, status: ob.remaining < ob.amount ? 'partial' : 'unpaid', due_date: ob.asOfDate, bill_date: ob.asOfDate,
+        supplier_id: ob.partyId, supplier_name: sp.name, supplier_code: sp.code, is_opening: 1,
+      });
+    }
 
     const buckets = emptyAgeing();
     const items = rows.map((row) => {

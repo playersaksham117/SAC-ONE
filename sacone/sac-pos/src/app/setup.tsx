@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { serverUrlCandidates } from '../lib/serverDiscovery';
 import { Text, View } from 'react-native';
 import { useDevice } from '../store/device';
 import { syncNow } from '../sync/engine';
@@ -9,7 +10,8 @@ import { Banner, Button, Card, Field, Screen, colors, font, space } from '../ui/
 export default function Setup() {
   const connect = useDevice((s) => s.connect);
   const saved = useDevice((s) => s.baseUrl);
-  const [url, setUrl] = useState(saved ?? 'http://');
+  // Suggest the PC that served this app (local-server mode runs the API there too).
+  const [url, setUrl] = useState(saved ?? (serverUrlCandidates(null)[0] || 'http://'));
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

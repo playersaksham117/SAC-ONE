@@ -8,10 +8,74 @@ import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../..
 import SupplierPaymentPanel from '../../../../components/parties/SupplierPaymentPanel';
 import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
+import DocumentDialog from '../../../../components/documents/DocumentDialog';
+import { documentHtml, purchaseDocument } from '../../../../lib/bill-document';
+import { downloadCsv, toCsv } from '../../../../lib/csv';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
 }
+
+/** Print / PDF / CSV support for the three purchase documents. */
+const PURCHASE_DOCS = {
+  order: {
+    path: 'orders', label: 'Purchase order', numberKey: 'poNumber', dateKey: 'orderDate',
+    columns: [
+      { label: 'PO #', value: (r) => r.poNumber }, { label: 'Supplier', value: (r) => r.supplierName },
+      { label: 'Order date', value: (r) => r.orderDate }, { label: 'Expected', value: (r) => r.expectedDate },
+      { label: 'Warehouse', value: (r) => r.warehouseName }, { label: 'Status', value: (r) => r.status },
+      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'CGST', value: (r) => r.cgstAmount },
+      { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
+      { label: 'Total', value: (r) => r.grandTotal },
+    ],
+  },
+  bill: {
+    path: 'bills', label: 'Purchase bill', numberKey: 'billNumber', dateKey: 'billDate',
+    columns: [
+      { label: 'Bill #', value: (r) => r.billNumber }, { label: 'Supplier invoice', value: (r) => r.supplierInvoiceNumber },
+      { label: 'Supplier', value: (r) => r.supplierName }, { label: 'Bill date', value: (r) => r.billDate },
+      { label: 'Due date', value: (r) => r.dueDate }, { label: 'PO #', value: (r) => r.poNumber },
+      { label: 'Warehouse', value: (r) => r.warehouseName }, { label: 'Stock posted', value: (r) => (r.stockPosted ? 'Yes' : 'No') },
+      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'CGST', value: (r) => r.cgstAmount },
+      { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
+      { label: 'Total', value: (r) => r.grandTotal }, { label: 'Paid', value: (r) => r.amountPaid },
+      { label: 'Payable', value: (r) => r.amountPayable }, { label: 'Status', value: (r) => r.status },
+    ],
+  },
+  return: {
+    path: 'returns', label: 'Purchase return', numberKey: 'returnNumber', dateKey: 'returnDate',
+    columns: [
+      { label: 'Return #', value: (r) => r.returnNumber }, { label: 'Supplier', value: (r) => r.supplierName },
+      { label: 'Return date', value: (r) => r.returnDate }, { label: 'Against bill', value: (r) => r.billNumber },
+      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'GST', value: (r) => r.gstAmount },
+      { label: 'Total', value: (r) => r.grandTotal }, { label: 'Status', value: (r) => r.status },
+    ],
+  },
+};
+const TAB_DOC = { orders: 'order', bills: 'bill', log: 'bill', returns: 'return' };
+
+async function loadPurchaseDocument(kind, id) {
+  const spec = PURCHASE_DOCS[kind];
+  const [doc, company] = await Promise.all([
+    apiRequest(`/api/purchases/${spec.path}/${id}`),
+    apiRequest('/api/company').catch(() => null),
+  ]);
+  const supplier = doc.supplierId ? await apiRequest(`/api/suppliers/${doc.supplierId}`).catch(() => null) : null;
+  const model = purchaseDocument(kind, doc, supplier);
+  return {
+    summary: [
+      [spec.label, doc[spec.numberKey]],
+      ['Date', doc[spec.dateKey] ? new Date(doc[spec.dateKey]).toLocaleDateString('en-IN') : '—'],
+      ['Supplier', doc.supplierName || '—'],
+      ['Total', money(doc.grandTotal)],
+    ],
+    html: (size) => documentHtml(model, company, size),
+    items: doc.items,
+    csvName: doc[spec.numberKey],
+  };
+}
+
+const printButton = 'btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', permission: 'purchases.orders.view' },
@@ -63,6 +127,22 @@ export default function PurchasesPage() {
   const { checkPermission } = useAuth();
   const visibleTabs = useMemo(() => TABS.filter((t) => checkPermission(t.permission)), [checkPermission]);
   const [tab, setTab] = useState(visibleTabs[0]?.id || 'dashboard');
+  const [docOpen, setDocOpen] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  const exportCsv = async () => {
+    const spec = PURCHASE_DOCS[TAB_DOC[tab]];
+    setExporting(true);
+    try {
+      const data = await apiRequest(`/api/purchases/${spec.path}?limit=5000`);
+      const rows = Array.isArray(data) ? data : data.items || [];
+      downloadCsv(`purchase-${spec.path}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, spec.columns));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const [bootstrap, setBootstrap] = useState(null);
   const [dashboard, setDashboard] = useState(null);
@@ -368,6 +448,9 @@ export default function PurchasesPage() {
             {checkPermission('purchases.returns.create') && tab === 'returns' && (
               <button type="button" className="btn-secondary" onClick={() => setReturnModal(true)}>+ Return</button>
             )}
+            {TAB_DOC[tab] && (
+              <button type="button" className="btn-secondary" onClick={exportCsv} disabled={exporting}>{exporting ? 'Exporting…' : '⬇ Export CSV'}</button>
+            )}
           </>
         )}
       />
@@ -459,6 +542,7 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3 text-right">{money(po.grandTotal)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          <button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'order', id: po.id })}>Print / PDF</button>
                           {po.status === 'draft' && checkPermission('purchases.orders.approve') && (
                             <button type="button" className="btn-secondary" onClick={() => approvePo(po.id)}>Approve</button>
                           )}
@@ -488,6 +572,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-right">Paid</th>
                   <th className="px-4 py-3 text-right">Due</th>
                   <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3" />
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {bills.map((b) => (
@@ -501,9 +586,10 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3 text-right">{money(b.amountPaid)}</td>
                       <td className="px-4 py-3 text-right">{money(b.amountPayable)}</td>
                       <td className="px-4 py-3 capitalize">{b.status}</td>
+                      <td className="px-4 py-3 text-right"><button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'bill', id: b.id })}>Print / PDF</button></td>
                     </tr>
                   ))}
-                  {!bills.length && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No purchase bills</td></tr>}
+                  {!bills.length && <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No purchase bills</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -517,6 +603,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3" />
                 </tr></thead>
                 <tbody>
                   {returns.map((r) => (
@@ -525,6 +612,7 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3">{r.supplierName}</td>
                       <td className="px-4 py-3">{r.returnDate}</td>
                       <td className="px-4 py-3 text-right">{money(r.grandTotal)}</td>
+                      <td className="px-4 py-3 text-right"><button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'return', id: r.id })}>Print / PDF</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -674,6 +762,15 @@ export default function PurchasesPage() {
           <LineEditor lines={returnLines} setLines={setReturnLines} products={products} />
         </form>
       </Modal>
+
+      {docOpen && (
+        <DocumentDialog
+          title={PURCHASE_DOCS[docOpen.kind].label}
+          documentLabel={PURCHASE_DOCS[docOpen.kind].label.toLowerCase()}
+          load={() => loadPurchaseDocument(docOpen.kind, docOpen.id)}
+          onClose={() => setDocOpen(null)}
+        />
+      )}
     </RequirePermission>
   );
 }

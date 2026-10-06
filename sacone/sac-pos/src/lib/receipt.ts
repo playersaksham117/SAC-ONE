@@ -2,6 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import type { CompanyInfo } from '../api/sacone';
+import { formatNotes } from '../domain/cash';
 import { formatMoney, formatQty } from '../domain/money';
 import type { Sale } from '../domain/types';
 
@@ -54,7 +55,10 @@ function paymentRows(sale: Sale) {
   const change = sale.change
     ? `<tr><td>Tendered</td><td class="r">${formatMoney(sale.tendered ?? 0)}</td></tr><tr><td>Change</td><td class="r">${formatMoney(sale.change)}</td></tr>`
     : '';
-  return pays + change;
+  const notes = sale.cashDrawer && formatNotes(sale.cashDrawer.received)
+    ? `<tr><td colspan="2" class="muted">Notes: ${esc(formatNotes(sale.cashDrawer.received))}${formatNotes(sale.cashDrawer.change) ? `<br>Change: ${esc(formatNotes(sale.cashDrawer.change))}` : ''}</td></tr>`
+    : '';
+  return pays + change + notes;
 }
 
 /* ───────────── thermal receipt (58 / 80 mm) ───────────── */

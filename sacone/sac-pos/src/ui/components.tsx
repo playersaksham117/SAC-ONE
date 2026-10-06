@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps, ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
   View, type StyleProp, type TextInputProps, type ViewStyle,
@@ -187,13 +187,39 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
   );
 }
 
-export function Stepper({ value, onChange, min = 0 }: { value: number; onChange: (v: number) => void; min?: number }) {
+/** − value + counter; the value can also be tapped and typed (decimals unless `integer`). */
+export function Stepper({ value, onChange, min = 0, integer = false }: {
+  value: number; onChange: (v: number) => void; min?: number; integer?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);   // null = not editing
+  useEffect(() => { setDraft(null); }, [value]);
+
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = Number(draft.replace(',', '.'));
+    setDraft(null);
+    if (draft.trim() === '' || !Number.isFinite(parsed)) return; // keep the old value
+    const next = Math.max(min, integer ? Math.floor(parsed) : Math.round(parsed * 1000) / 1000);
+    if (next !== value) onChange(next);
+  };
+
   return (
     <Row gap={0} style={styles.stepper}>
       <Pressable accessibilityLabel="Decrease" onPress={() => onChange(Math.max(min, value - 1))} style={styles.stepBtn}>
         <Ionicons name={value <= 1 ? 'trash-outline' : 'remove'} size={18} color={value <= 1 ? colors.danger : colors.text} />
       </Pressable>
-      <Text style={styles.stepValue}>{value}</Text>
+      <TextInput
+        accessibilityLabel="Quantity"
+        value={draft ?? String(value)}
+        onFocus={() => setDraft(value ? String(value) : '')}
+        onChangeText={(t) => setDraft(t.replace(integer ? /[^0-9]/g : /[^0-9.,]/g, ''))}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        keyboardType={integer ? 'number-pad' : 'decimal-pad'}
+        returnKeyType="done"
+        selectTextOnFocus
+        style={styles.stepValue}
+      />
       <Pressable accessibilityLabel="Increase" onPress={() => onChange(value + 1)} style={styles.stepBtn}>
         <Ionicons name="add" size={18} color={colors.text} />
       </Pressable>
@@ -314,7 +340,7 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: font.sm, fontWeight: '700', color: colors.textMuted },
   stepper: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface },
   stepBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  stepValue: { minWidth: 32, textAlign: 'center', fontSize: font.md, fontWeight: '700', color: colors.text },
+  stepValue: { minWidth: 48, maxWidth: 72, height: 36, paddingVertical: 0, paddingHorizontal: 4, textAlign: 'center', fontSize: font.md, fontWeight: '700', color: colors.text },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill, alignSelf: 'flex-start' },
   badgeText: { fontSize: font.xs, fontWeight: '700' },
   banner: { borderRadius: radius.md, padding: space.md, marginBottom: space.md },

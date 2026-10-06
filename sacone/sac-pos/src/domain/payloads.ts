@@ -22,6 +22,8 @@ export function salePayload(sale: Sale, userId: string) {
     due_amount: sale.amountDue,
     payments: sale.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference ?? null })),
     notes: sale.notes ?? null,
+    cash_drawer: sale.cashDrawer ?? null,
+    exchange_return_number: sale.exchange?.returnNumber ?? null,
     items: sale.totals.lines.map((l) => ({
       product_uuid: l.productId,
       sku: l.sku,
@@ -44,6 +46,10 @@ export function returnPayload(ret: SaleReturn, userId: string) {
     reason: ret.reason,
     erp_user_id: userId,
     total_amount: ret.total,
+    return_type: ret.type ?? 'return',
+    approved_by_erp_user_id: ret.approvedBy?.userId ?? null,
+    approved_by_name: ret.approvedBy?.name ?? null,
+    approved_at: ret.approvedBy?.at ?? null,
     items: ret.lines.map((l) => ({ product_uuid: l.productId, sku: l.sku, quantity: l.quantity })),
   };
 }

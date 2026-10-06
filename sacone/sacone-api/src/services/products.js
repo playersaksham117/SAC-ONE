@@ -272,6 +272,10 @@ function normalizeProductInput(data, { preserveSku = null } = {}) {
     gstPercentage: toNumber(data.gstPercentage),
     mrp: toNumber(data.mrp),
     sellingPrice: toNumber(data.sellingPrice),
+    // undefined = not sent (keep); '' / null / 0 = no separate minimum (selling price is the floor)
+    minSellingPrice: data.minSellingPrice === undefined
+      ? undefined
+      : (data.minSellingPrice === '' || data.minSellingPrice === null || !(toNumber(data.minSellingPrice) > 0) ? null : toNumber(data.minSellingPrice)),
     purchasePrice: toNumber(data.purchasePrice),
     reorderLevel: toNumber(data.reorderLevel),
     minimumStock: toNumber(data.minimumStock),
@@ -283,6 +287,9 @@ function normalizeProductInput(data, { preserveSku = null } = {}) {
 }
 
 function validateProductRefs(input) {
+  if (input.minSellingPrice != null && input.sellingPrice > 0 && input.minSellingPrice > input.sellingPrice + 0.0001) {
+    throw new AppError('Minimum selling price cannot be higher than the selling price', 400);
+  }
   if (input.categoryId && !categoryRepo.findById(input.categoryId)) {
     throw new AppError('Invalid category', 400);
   }
@@ -395,11 +402,7 @@ export class ProductService {
 
   generateBarcode(actor) {
     authService.checkPermission(actor.permissions, 'products.products.create');
-    const barcode = skuEngineRepo.allocateBarcode();
-    if (productRepo.barcodeExists(barcode)) {
-      throw new AppError('Barcode collision — retry generate', 409);
-    }
-    return { barcode };
+    return { barcode: skuEngineRepo.peekNextBarcode() };
   }
 
   checkDuplicate(data, actor) {
@@ -488,6 +491,7 @@ export class ProductService {
       ...input,
       createdBy: actor.user.id,
     });
+    skuEngineRepo.recordBarcodeUsed(product.barcode);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -529,6 +533,7 @@ export class ProductService {
     validateProductRefs(input);
 
     const updated = productRepo.update(id, input);
+    skuEngineRepo.recordBarcodeUsed(updated?.barcode);
 
     auditRepo.create({
       userId: actor.user.id,

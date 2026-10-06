@@ -18,6 +18,8 @@ interface DeviceState {
   secretLoaded: boolean;
   loadSecret: () => Promise<void>;
   connect: (baseUrl: string, deviceKey: string) => Promise<PingResult>;
+  /** Point this phone at a new server address (e.g. after the PC's IP changed); keeps the key. */
+  changeServer: (baseUrl: string) => Promise<PingResult>;
   setInfo: (info: PingResult) => void;
   disconnect: () => Promise<void>;
 }
@@ -46,6 +48,16 @@ export const useDevice = create<DeviceState>()(
         const info = await sync.ping({ baseUrl, deviceKey, deviceId });
         await secure.set(KEY_SECRET, deviceKey);
         set({ baseUrl, deviceKey, deviceId, info, lastPingAt: new Date().toISOString() });
+        return info;
+      },
+
+      async changeServer(rawUrl) {
+        const baseUrl = rawUrl.trim().replace(/\/+$/, '');
+        if (!isValidServerUrl(baseUrl)) throw new ApiError('Enter the server address, e.g. http://192.168.1.10:4000', 0, 'VALIDATION');
+        const { deviceKey, deviceId } = get();
+        if (!deviceKey || !deviceId) throw new ApiError('This phone is not connected yet', 0, 'VALIDATION');
+        const info = await sync.ping({ baseUrl, deviceKey, deviceId });
+        set({ baseUrl, info, lastPingAt: new Date().toISOString() });
         return info;
       },
 
