@@ -125,6 +125,17 @@ describe('checkout validation', () => {
   it('accepts a normal cash sale', () => {
     expect(validateCheckout(base()).errors).toEqual([]);
   });
+  it('blocks prices below the minimum selling price, including bill discounts', () => {
+    const atFloor = { ...base(), minPrices: { p1: 599 } };
+    expect(validateCheckout(atFloor).errors).toEqual([]);
+    const lines = [line({ unitPrice: 560 })];
+    const totals = calculateCart(lines);
+    const below = { ...base(), lines, totals, payments: [{ method: 'cash', amount: totals.grandTotal }] as Payment[], canOverridePrice: true, minPrices: { p1: 580 } };
+    expect(validateCheckout(below).errors.some((e) => /lowest allowed price is 580\.00/.test(e.message))).toBe(true);
+    const billDisc = calculateCart([line()], 60); // 2 × 599 − 60 → 569 each
+    const viaBill = { ...base(), totals: billDisc, payments: [{ method: 'cash', amount: billDisc.grandTotal }] as Payment[], canOverridePrice: true, minPrices: { p1: 580 } };
+    expect(validateCheckout(viaBill).errors.some((e) => /now 569\.00/.test(e.message))).toBe(true);
+  });
   it('blocks payment mismatch', () => {
     const ctx = base();
     ctx.payments = [{ method: 'cash', amount: 10 }];

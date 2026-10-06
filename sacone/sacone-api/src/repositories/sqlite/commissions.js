@@ -12,7 +12,9 @@ function mapAgent(row) {
     agentCode: row.agent_code,
     name: row.name,
     agentType: row.agent_type,
-    employeeId: row.employee_id,
+    userId: row.user_id || null,
+    loginEmail: row.login_email || null,
+    loginActive: row.login_active != null ? Boolean(row.login_active) : null,
     mobile: row.mobile,
     email: row.email,
     address: row.address,
@@ -174,9 +176,10 @@ export class SalesAgentRepository {
     }
     const wh = where.length ? `WHERE ${where.join(' AND ')}` : '';
     return getDatabase().prepare(`
-      SELECT a.*, p.name as plan_name
+      SELECT a.*, p.name as plan_name, u.email as login_email, u.is_active as login_active
       FROM sales_agents a
       LEFT JOIN commission_plans p ON p.id = a.commission_plan_id
+      LEFT JOIN users u ON u.id = a.user_id
       ${wh}
       ORDER BY a.name
       LIMIT ? OFFSET ?
@@ -185,11 +188,24 @@ export class SalesAgentRepository {
 
   findById(id) {
     return mapAgent(getDatabase().prepare(`
-      SELECT a.*, p.name as plan_name
+      SELECT a.*, p.name as plan_name, u.email as login_email, u.is_active as login_active
       FROM sales_agents a
       LEFT JOIN commission_plans p ON p.id = a.commission_plan_id
+      LEFT JOIN users u ON u.id = a.user_id
       WHERE a.id = ?
     `).get(id));
+  }
+
+  /** The agent that is this ERP user (sales staff selling under their own login). */
+  findByUserId(userId) {
+    if (!userId) return null;
+    const row = getDatabase().prepare('SELECT id FROM sales_agents WHERE user_id = ?').get(userId);
+    return row ? this.findById(row.id) : null;
+  }
+
+  setUserId(id, userId) {
+    getDatabase().prepare('UPDATE sales_agents SET user_id = ?, updated_at = ? WHERE id = ?').run(userId || null, nowIso(), id);
+    return this.findById(id);
   }
 
   codeExists(code, excludeId = null) {
@@ -209,17 +225,16 @@ export class SalesAgentRepository {
     const now = nowIso();
     getDatabase().prepare(`
       INSERT INTO sales_agents (
-        id, agent_code, name, agent_type, employee_id, mobile, email, address, joining_date,
+        id, agent_code, name, agent_type, mobile, email, address, joining_date,
         status, commission_plan_id, default_commission_rate, default_commission_basis,
         bank_account_name, bank_account_number, bank_ifsc, bank_name, remarks,
         created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.agentCode,
       data.name,
       data.agentType || 'internal',
-      null, // employee_id: HR module removed
       data.mobile || null,
       data.email || null,
       data.address || null,
@@ -245,7 +260,7 @@ export class SalesAgentRepository {
     if (!existing) return null;
     getDatabase().prepare(`
       UPDATE sales_agents SET
-        agent_code = ?, name = ?, agent_type = ?, employee_id = ?, mobile = ?, email = ?,
+        agent_code = ?, name = ?, agent_type = ?, mobile = ?, email = ?,
         address = ?, joining_date = ?, status = ?, commission_plan_id = ?,
         default_commission_rate = ?, default_commission_basis = ?,
         bank_account_name = ?, bank_account_number = ?, bank_ifsc = ?, bank_name = ?,
@@ -255,7 +270,6 @@ export class SalesAgentRepository {
       data.agentCode ?? existing.agentCode,
       data.name ?? existing.name,
       data.agentType ?? existing.agentType,
-      null,
       data.mobile !== undefined ? data.mobile : existing.mobile,
       data.email !== undefined ? data.email : existing.email,
       data.address !== undefined ? data.address : existing.address,
@@ -719,5 +733,104 @@ export class CommissionPaymentRepository {
       WHERE id = ?
     `).run(nowIso(), reason || null, nowIso(), id);
     return this.findById(id);
+  }
+}
+
+/* ───────────── minimum selling prices (Commission settings) ───────────── */
+
+function mapMinPrice(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    scope: row.scope,
+    productId: row.product_id,
+    brandId: row.brand_id,
+    categoryId: row.category_id,
+    targetName: row.target_name || null,
+    targetCode: row.target_code || null,
+    targetMrp: row.target_mrp != null ? Number(row.target_mrp) : null,
+    minPrice: row.min_price != null ? Number(row.min_price) : null,
+    minPercentOfMrp: row.min_percent_of_mrp != null ? Number(row.min_percent_of_mrp) : null,
+    isActive: Boolean(row.is_active),
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const MIN_PRICE_SELECT = `
+  SELECT m.*,
+    COALESCE(p.name, b.name, c.name) AS target_name,
+    COALESCE(p.sku, b.code, c.code) AS target_code,
+    p.mrp AS target_mrp
+  FROM min_selling_prices m
+  LEFT JOIN products p ON p.id = m.product_id
+  LEFT JOIN brands b ON b.id = m.brand_id
+  LEFT JOIN categories c ON c.id = m.category_id
+`;
+
+/** Floor for one product from the active rules: product > brand > category. */
+export function resolveFloor(product, rules) {
+  const rule = rules.product.get(product.id)
+    || (product.brandId && rules.brand.get(product.brandId))
+    || (product.categoryId && rules.category.get(product.categoryId));
+  if (!rule) return null;
+  if (rule.minPrice != null) return { floor: round2(rule.minPrice), rule };
+  const base = Number(product.mrp || product.sellingPrice || 0);
+  if (!(base > 0)) return null;
+  return { floor: round2(base * (rule.minPercentOfMrp / 100)), rule };
+}
+
+export class MinSellingPriceRepository {
+  list() {
+    return getDatabase().prepare(`${MIN_PRICE_SELECT} ORDER BY m.scope, target_name`).all().map(mapMinPrice);
+  }
+
+  findById(id) {
+    return mapMinPrice(getDatabase().prepare(`${MIN_PRICE_SELECT} WHERE m.id = ?`).get(id));
+  }
+
+  /** Active rules indexed by target, for resolveFloor(). */
+  activeRules() {
+    const rules = { product: new Map(), brand: new Map(), category: new Map() };
+    for (const r of getDatabase().prepare('SELECT * FROM min_selling_prices WHERE is_active = 1').all().map(mapMinPrice)) {
+      const key = r.scope === 'product' ? r.productId : r.scope === 'brand' ? r.brandId : r.categoryId;
+      rules[r.scope].set(key, r);
+    }
+    return rules;
+  }
+
+  /** Insert or replace the rule for one target. */
+  upsert({ scope, targetId, minPrice, minPercentOfMrp, isActive = true, notes, createdBy }) {
+    const db = getDatabase();
+    const column = `${scope}_id`;
+    const existing = db.prepare(`SELECT id FROM min_selling_prices WHERE scope = ? AND ${column} = ?`).get(scope, targetId);
+    const now = nowIso();
+    if (existing) {
+      db.prepare(`
+        UPDATE min_selling_prices
+        SET min_price = ?, min_percent_of_mrp = ?, is_active = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(minPrice, minPercentOfMrp, isActive ? 1 : 0, notes || null, now, existing.id);
+      return this.findById(existing.id);
+    }
+    const id = generateId();
+    db.prepare(`
+      INSERT INTO min_selling_prices (
+        id, scope, product_id, brand_id, category_id, min_price, min_percent_of_mrp,
+        is_active, notes, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, scope,
+      scope === 'product' ? targetId : null,
+      scope === 'brand' ? targetId : null,
+      scope === 'category' ? targetId : null,
+      minPrice, minPercentOfMrp, isActive ? 1 : 0, notes || null, createdBy || null, now, now,
+    );
+    return this.findById(id);
+  }
+
+  remove(id) {
+    return getDatabase().prepare('DELETE FROM min_selling_prices WHERE id = ?').run(id).changes > 0;
   }
 }

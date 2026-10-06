@@ -4,12 +4,13 @@ import { authenticate } from '../middleware/auth.js';
 import { authenticateDevice } from '../middleware/device-auth.js';
 import { posSyncService, posDeviceAdminService } from '../services/pos-sync.js';
 import { currentSeq, waitForChange } from '../realtime/change-feed.js';
+import { commissionService } from '../services/commissions.js';
 
 /** Tables behind what a terminal pulls (catalogue, stock, customers, staff, settings). */
 const POS_PULL_TABLES = new Set([
   'products', 'categories', 'brands', 'units', 'stock_levels', 'location_stock_levels',
   'customers', 'users', 'roles', 'role_permissions', 'pos_users', 'system_settings',
-  'companies', 'warehouses',
+  'companies', 'warehouses', 'min_selling_prices',
 ]);
 
 /* ───────────── Terminal-facing: /api/v1/sync (device key auth) ───────────── */
@@ -71,6 +72,11 @@ posSyncRouter.get('/products/pending-count', asyncHandler(async (req, res) => {
 posSyncRouter.post('/products/ack', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.acknowledge(req.device, req.body, 'products'));
 }));
+/** productId → minimum selling price (before GST, after discounts). Full list, pulled every sync. */
+posSyncRouter.get('/min-prices', asyncHandler(async (req, res) => {
+  sendSuccess(res, { prices: commissionService.minPriceMap() });
+}));
+
 posSyncRouter.get('/staff', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.staffStatus(req.device, req.query));
 }));

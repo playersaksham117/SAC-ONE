@@ -133,6 +133,11 @@ async function runCycle(): Promise<void> {
       if (!res.has_more) break;
     }
     useCatalog.getState().setCursors({ productCursor, customerCursor });
+    try {
+      useCatalog.getState().setMinPrices((await sync.minPrices(cfg)).prices);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) throw e; // older server: no minimum prices
+    }
     useLedger.getState().prune(30);
 
     const parts = [

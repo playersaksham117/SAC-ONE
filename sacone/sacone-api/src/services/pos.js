@@ -324,7 +324,8 @@ export class PosService {
     const customer = customerRepo.findById(customerId);
     if (!customer?.isActive) throw new AppError('Customer not found or inactive', 400);
 
-    let salesAgentId = data.salesAgentId || null;
+    // Agent = the staff member who sold (their ERP login), else the customer's agent.
+    let salesAgentId = data.salesAgentId || commissionService.agentForUser(actor.user.id)?.id || null;
     if (!salesAgentId && customer.primarySalesAgentId) {
       salesAgentId = customer.primarySalesAgentId;
     }
@@ -348,6 +349,16 @@ export class PosService {
       companyStateCode: company?.gstStateCode,
       customerStateCode: customer.gstStateCode,
     });
+
+    const belowMin = commissionService.belowMinPrice(totals.items);
+    if (belowMin.length) {
+      const detail = belowMin.map((l) => `${l.name}: ${l.unitPrice} < minimum ${l.floor}`).join('; ');
+      if (offlineSync) {
+        warnings.push({ code: 'BELOW_MIN_PRICE', message: `Sold below minimum selling price (no commission on these lines): ${detail}` });
+      } else {
+        throw new AppError(`Below minimum selling price: ${detail}`, 400, 'BELOW_MIN_PRICE');
+      }
+    }
 
     const { payments: normalizedPayments, amountPaid, amountCredit, paymentStatus } = this.#normalizePayments(
       data.payments,

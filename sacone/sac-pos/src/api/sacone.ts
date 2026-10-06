@@ -101,6 +101,10 @@ export const sync = {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
 
+  /** productId → minimum selling price (before GST, after discounts). Full list every sync. */
+  minPrices: (c: DeviceConfig) =>
+    request<{ prices: Record<string, number> }>(c.baseUrl, '/api/v1/sync/min-prices', { headers: deviceHeaders(c) }),
+
   /** Waits up to `wait` seconds for a catalogue / stock / customer / staff change. */
   changes: (c: DeviceConfig, since: number | undefined, wait = 25) =>
     request<ChangeFeed>(c.baseUrl, '/api/v1/sync/changes', {

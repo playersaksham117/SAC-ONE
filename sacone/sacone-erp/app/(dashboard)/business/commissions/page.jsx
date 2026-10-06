@@ -6,6 +6,7 @@ import { useLiveRefresh } from '../../../../lib/live';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, Modal } from '../../../../components/ui';
 import { StatCard, SectionCard, ModuleTabs } from '../../../../components/module-ui';
+import MinPricePanel from '../../../../components/commissions/MinPricePanel';
 
 function money(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -14,8 +15,37 @@ function money(n) {
 const EMPTY_AGENT = {
   name: '', agentCode: '', agentType: 'internal', mobile: '', email: '',
   joiningDate: '', defaultCommissionRate: 2, defaultCommissionBasis: 'taxable',
-  commissionPlanId: '', remarks: '', status: 'active',
+  commissionPlanId: '', remarks: '', status: 'active', createLogin: true,
 };
+
+/** One-time display of a sales-staff login created or reset for an agent. */
+function CredentialsBanner({ credentials, onClose }) {
+  if (!credentials) return null;
+  const copy = (text) => { try { navigator.clipboard.writeText(text); } catch { /* clipboard unavailable */ } };
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="font-semibold text-amber-900">Sales staff login for {credentials.name}: copy it now, the password is shown only once</div>
+        <button type="button" className="text-amber-700" aria-label="Close" onClick={onClose}>✕</button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {[['Login ID (email)', credentials.loginId], ['Password', credentials.password]].map(([label, value]) => (
+          <div key={label}>
+            <div className="text-xs text-amber-800">{label}</div>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-white px-2 py-1.5 ring-1 ring-amber-200">{value}</code>
+              <button type="button" className="btn-secondary !min-h-0 !px-2 !py-1 text-xs" onClick={() => copy(value)}>Copy</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-amber-800">
+        They sign in to SAC-POS (and the ERP) with this, then set their own PIN on the phone.
+        {credentials.roleName ? ` Role: ${credentials.roleName}.` : ''} Every sale they make is credited to them for commission.
+      </p>
+    </div>
+  );
+}
 
 export default function CommissionsPage() {
   const { checkPermission } = useAuth();
@@ -43,9 +73,23 @@ export default function CommissionsPage() {
   const [allocMap, setAllocMap] = useState({});
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', salesAgentId: '', status: '' });
+  const [credentials, setCredentials] = useState(null);
 
   const canCreateAgent = checkPermission('sales.agents.create');
   const canPay = checkPermission('sales.commission_payments.create');
+  const canCreateLogins = checkPermission('core.users.create');
+  const canEditAgents = checkPermission('sales.agents.edit');
+
+  const manageLogin = async (agent, action) => {
+    if (action === 'reset' && !window.confirm(`Issue a new password for ${agent.name}? The old one stops working.`)) return;
+    try {
+      const result = await apiRequest(`/api/sales-agents/${agent.id}/login`, { method: 'POST', body: JSON.stringify({ action }) });
+      if (result.credentials) setCredentials({ ...result.credentials, name: agent.name });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const load = useCallback(async (silent = false) => {
     if (silent !== true) setLoading(true);
@@ -106,12 +150,14 @@ export default function CommissionsPage() {
         ...agentForm,
         defaultCommissionRate: Number(agentForm.defaultCommissionRate || 0),
         commissionPlanId: agentForm.commissionPlanId || null,
+        createLogin: !editingAgent && canCreateLogins && agentForm.createLogin,
       };
       if (editingAgent) {
         await apiRequest(`/api/sales-agents/${editingAgent.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setMessage('Agent updated');
       } else {
-        await apiRequest('/api/sales-agents', { method: 'POST', body: JSON.stringify(payload) });
+        const created = await apiRequest('/api/sales-agents', { method: 'POST', body: JSON.stringify(payload) });
+        if (created.credentials) setCredentials({ ...created.credentials, name: created.name });
         setMessage('Agent created');
       }
       setAgentModal(false);
@@ -183,6 +229,7 @@ export default function CommissionsPage() {
     { id: 'ledger', label: 'Commission Ledger' },
     { id: 'performance', label: 'Performance' },
     { id: 'payments', label: 'Commission Payments' },
+    ...(checkPermission('sales.commissions.view') ? [{ id: 'min-prices', label: 'Min Selling Price' }] : []),
   ];
 
   return (
@@ -199,7 +246,12 @@ export default function CommissionsPage() {
         />
         <Alert type="error" message={error} />
         <Alert type="success" message={message} />
+        <CredentialsBanner credentials={credentials} onClose={() => setCredentials(null)} />
         <ModuleTabs tabs={tabs} active={tab} onChange={setTab} />
+
+        {tab === 'min-prices' && (
+          <MinPricePanel canEdit={checkPermission('sales.commissions.edit')} onError={setError} onMessage={setMessage} />
+        )}
 
         {tab === 'agents' && (
           <SectionCard title="Sales agents">
@@ -212,6 +264,7 @@ export default function CommissionsPage() {
                     <th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2">Rate</th>
                     <th className="px-3 py-2">Plan</th>
+                    <th className="px-3 py-2">Login (SAC-POS / ERP)</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Actions</th>
                   </tr>
@@ -221,14 +274,25 @@ export default function CommissionsPage() {
                     <tr key={a.id}>
                       <td className="px-3 py-2 font-mono text-xs">{a.agentCode}</td>
                       <td className="px-3 py-2 font-medium">{a.name}</td>
-                      <td className="px-3 py-2 capitalize">{a.agentType}</td>
+                      <td className="px-3 py-2">{{ internal: 'Sales staff', external: 'External agent', employee: 'Employee (old)' }[a.agentType] || a.agentType}</td>
                       <td className="px-3 py-2">{a.defaultCommissionRate}% / {a.defaultCommissionBasis}</td>
                       <td className="px-3 py-2 text-xs">{a.commissionPlanName || '—'}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {a.loginEmail
+                          ? <span className={a.loginActive ? 'text-slate-700' : 'text-slate-400 line-through'}>{a.loginEmail}</span>
+                          : <span className="text-slate-400">No login</span>}
+                      </td>
                       <td className="px-3 py-2 capitalize">{a.status}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => openDashboard(a.id)}>Dashboard</button>
                           {canPay && <button type="button" className="btn-primary !px-2 !py-1 text-xs" onClick={() => openPay(a.id)}>Pay</button>}
+                          {canEditAgents && canCreateLogins && !a.userId && (
+                            <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => manageLogin(a, 'create')}>Create login</button>
+                          )}
+                          {canEditAgents && a.userId && checkPermission('core.users.edit') && (
+                            <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => manageLogin(a, 'reset')}>Reset password</button>
+                          )}
                           {checkPermission('sales.agents.edit') && (
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => {
                               setEditingAgent(a);
@@ -247,7 +311,7 @@ export default function CommissionsPage() {
                       </td>
                     </tr>
                   ))}
-                  {!agents.length && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No sales agents yet</td></tr>}
+                  {!agents.length && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-500">No sales agents yet</td></tr>}
                 </tbody>
               </table>
             )}
@@ -418,9 +482,9 @@ export default function CommissionsPage() {
                 </label>
                 <label className="block text-sm"><span className="mb-1 block">Type</span>
                   <select className="input w-full" value={agentForm.agentType} onChange={(e) => setAgentForm((f) => ({ ...f, agentType: e.target.value }))}>
-                    <option value="internal">Internal</option>
-                    <option value="employee">Employee</option>
-                    <option value="external">External</option>
+                    <option value="internal">Sales staff</option>
+                    <option value="external">External agent</option>
+                    {agentForm.agentType === 'employee' && <option value="employee">Employee (old)</option>}
                   </select>
                 </label>
               </div>
@@ -443,6 +507,9 @@ export default function CommissionsPage() {
                   {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </label>
+              <label className="block text-sm"><span className="mb-1 block">Email</span>
+                <input type="email" className="input w-full" value={agentForm.email} onChange={(e) => setAgentForm((f) => ({ ...f, email: e.target.value }))} placeholder="Optional: used as their login ID" />
+              </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm"><span className="mb-1 block">Mobile</span>
                   <input className="input w-full" value={agentForm.mobile} onChange={(e) => setAgentForm((f) => ({ ...f, mobile: e.target.value }))} />
@@ -454,6 +521,18 @@ export default function CommissionsPage() {
                   </select>
                 </label>
               </div>
+              {!editingAgent && canCreateLogins && (
+                <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <input type="checkbox" className="mt-0.5" checked={agentForm.createLogin} onChange={(e) => setAgentForm((f) => ({ ...f, createLogin: e.target.checked }))} />
+                  <span>
+                    <span className="font-medium">Create their sales staff login automatically</span>
+                    <span className="block text-xs text-slate-500">ERP login with the Sales Staff role and a generated password, shown once. They use it to sign in to SAC-POS, and their sales count toward their commission.</span>
+                  </span>
+                </label>
+              )}
+              {editingAgent?.loginEmail && (
+                <p className="text-xs text-slate-500">Login {editingAgent.loginEmail}: name, mobile and active status stay in step with this agent.</p>
+              )}
               <div className="flex justify-end gap-2">
                 <button type="button" className="btn-secondary" onClick={() => setAgentModal(false)}>Cancel</button>
                 <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>

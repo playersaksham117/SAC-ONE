@@ -100,6 +100,22 @@ export interface CheckoutContext {
   pendingQty: Record<string, number>;   // qty already sold on this device but not yet synced
   allowNegativeStock: boolean;
   canOverridePrice: boolean;
+  /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Commission settings. */
+  minPrices?: Record<string, number>;
+}
+
+/** Lines whose effective unit price (after line + bill discounts, before GST) is below the floor. */
+export function belowMinPrice(totals: CartTotals, minPrices: Record<string, number> = {}): Issue[] {
+  const issues: Issue[] = [];
+  for (const l of totals.lines) {
+    const floor = minPrices[l.productId];
+    if (floor == null || !(l.quantity > 0)) continue;
+    const price = round2(l.taxableAmount / l.quantity);
+    if (price + 0.005 < floor) {
+      issues.push({ field: 'unitPrice', message: `${l.name}: lowest allowed price is ${floor.toFixed(2)} before GST (now ${price.toFixed(2)})` });
+    }
+  }
+  return issues;
 }
 
 export function validateCheckout(ctx: CheckoutContext): CheckResult {
@@ -107,6 +123,7 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
   if (!ctx.lines.length) r.errors.push({ message: 'Cart is empty' });
 
   for (const line of ctx.lines) r.errors.push(...validateLine(line, { canOverridePrice: ctx.canOverridePrice }));
+  r.errors.push(...belowMinPrice(ctx.totals, ctx.minPrices));
 
   if (ctx.totals.invoiceDiscount > 0 && !ctx.canOverridePrice) {
     r.errors.push({ field: 'invoiceDiscount', message: 'You are not allowed to give a bill discount' });

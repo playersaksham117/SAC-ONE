@@ -14,6 +14,11 @@ salesAgentRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.createAgent(req.body, req.actor, req), 201);
 }));
 
+/** Sales staff login for an agent: { action: create | link | unlink | reset, userId?, roleId? } */
+salesAgentRouter.post('/:id/login', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.manageLogin(req.params.id, req.body || {}, req.actor, req));
+}));
+
 salesAgentRouter.get('/:id/dashboard', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.agentDashboard(req.params.id, req.query, req.actor));
 }));
@@ -47,6 +52,17 @@ commissionRouter.get('/plans/:id/rules', asyncHandler(async (req, res) => {
 
 commissionRouter.post('/plans/:id/rules', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.createRule(req.params.id, req.body, req.actor, req), 201);
+}));
+
+// Minimum selling prices live only in Commission settings.
+commissionRouter.get('/min-prices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.listMinPrices(req.actor));
+}));
+commissionRouter.post('/min-prices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.saveMinPrice(req.body || {}, req.actor, req), 201);
+}));
+commissionRouter.delete('/min-prices/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.deleteMinPrice(req.params.id, req.actor, req));
 }));
 
 commissionRouter.post('/preview', asyncHandler(async (req, res) => {

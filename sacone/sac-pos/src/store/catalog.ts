@@ -20,6 +20,9 @@ interface CatalogState {
   productCursor: string;
   customerCursor: string;
   lastPullAt: string | null;
+  /** productId → minimum selling price (before GST), from ERP Commission settings. */
+  minPrices: Record<string, number>;
+  setMinPrices: (prices: Record<string, number>) => void;
   applyProducts: (rows: ServerProduct[]) => void;
   /** Returns localId → serverId for local customers now superseded by their ERP record. */
   applyCustomers: (rows: ServerCustomer[]) => Record<string, string>;
@@ -74,6 +77,11 @@ export const useCatalog = create<CatalogState>()(
     (set) => ({
       products: {},
       customers: {},
+      minPrices: {},
+
+      setMinPrices(prices) {
+        set({ minPrices: prices || {} });
+      },
       productCursor: EPOCH,
       customerCursor: EPOCH,
       lastPullAt: null,
@@ -144,7 +152,7 @@ export const useCatalog = create<CatalogState>()(
       },
 
       reset() {
-        set({ products: {}, customers: {}, productCursor: EPOCH, customerCursor: EPOCH, lastPullAt: null });
+        set({ products: {}, customers: {}, minPrices: {}, productCursor: EPOCH, customerCursor: EPOCH, lastPullAt: null });
       },
     }),
     { name: 'sacpos.catalog', storage: jsonStorage },

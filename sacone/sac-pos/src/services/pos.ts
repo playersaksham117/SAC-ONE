@@ -66,6 +66,7 @@ export function checkCheckout(payments: Payment[]): CheckResult {
     pendingQty: pendingQty(ledger.sales, ledger.returns),
     allowNegativeStock: Boolean(useDevice.getState().info?.settings.allowNegativeStock),
     canOverridePrice: can(user?.permissions, 'overridePrice'),
+    minPrices: useCatalog.getState().minPrices,
   });
 }
 

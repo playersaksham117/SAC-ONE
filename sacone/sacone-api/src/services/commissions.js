@@ -1,8 +1,12 @@
+import crypto from 'crypto';
 import { AppError } from '../core/http.js';
+import { config } from '../config/index.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { authService, userService } from './index.js';
 import {
   round2,
+  resolveFloor,
+  MinSellingPriceRepository,
   SalesAgentRepository,
   CommissionPlanRepository,
   SaleCommissionRepository,
@@ -17,6 +21,19 @@ const auditRepo = repos.auditLogs;
 const numberingRepo = repos.documentNumbering;
 const productRepo = repos.products;
 const cashRepo = repos.cashBook;
+const minPriceRepo = new MinSellingPriceRepository();
+
+/** Readable one-time password: no 0/O/1/l/I, always letters + digits + a symbol. */
+function generatePassword() {
+  const pick = (chars, n) => Array.from(crypto.randomBytes(n), (b) => chars[b % chars.length]).join('');
+  return `${pick('ABCDEFGHJKLMNPQRSTUVWXYZ', 2)}${pick('abcdefghjkmnpqrstuvwxyz', 4)}${pick('23456789', 3)}@`;
+}
+
+/** Effective unit price (before GST, after line + invoice discounts) of a sale line. */
+function unitNetPrice(line) {
+  const qty = Number(line.quantity || 0);
+  return qty > 0 ? round2(Number(line.taxableAmount || 0) / qty) : 0;
+}
 
 function meta(req) {
   return {
@@ -83,13 +100,91 @@ export class CommissionService {
     if (!data.name) throw new AppError('Agent name is required', 400);
     const code = data.agentCode || agentRepo.nextCode();
     if (agentRepo.codeExists(code)) throw new AppError('Agent code already exists', 409);
-    const agent = agentRepo.create({ ...data, agentCode: code, createdBy: actor.user.id });
+    if (data.createLogin) authService.checkPermission(actor.permissions, 'core.users.create');
+    if (data.linkUserId) this.#assertLinkable(data.linkUserId);
+
+    let agent = agentRepo.create({ ...data, agentCode: code, createdBy: actor.user.id });
     auditRepo.create({
       userId: actor.user.id, userName: actor.user.fullName,
       action: 'create', module: 'sales', recordType: 'sales_agent', recordId: agent.id,
       newValue: agent, ...meta(req),
     });
-    return agent;
+
+    let credentials = null;
+    if (data.createLogin) {
+      ({ agent, credentials } = this.#createLogin(agent, data.loginRoleId, actor, req));
+    } else if (data.linkUserId) {
+      agent = agentRepo.setUserId(agent.id, data.linkUserId);
+    }
+    return credentials ? { ...agent, credentials } : agent;
+  }
+
+  /**
+   * One agent = one sales-staff login. Actions:
+   *   create  new ERP login (Sales Staff role by default), password shown once
+   *   link    use an existing ERP user
+   *   unlink  keep the user, stop treating them as this agent
+   *   reset   new one-time password for the linked login
+   */
+  manageLogin(id, { action, userId, roleId } = {}, actor, req) {
+    requirePerm(actor, 'sales.agents.edit');
+    const agent = agentRepo.findById(id);
+    if (!agent) throw new AppError('Sales agent not found', 404);
+
+    if (action === 'create') {
+      authService.checkPermission(actor.permissions, 'core.users.create');
+      if (agent.userId) throw new AppError('This agent already has a login', 409);
+      const result = this.#createLogin(agent, roleId, actor, req);
+      return { ...result.agent, credentials: result.credentials };
+    }
+    if (action === 'link') {
+      if (!userId) throw new AppError('userId is required', 400);
+      this.#assertLinkable(userId, id);
+      return agentRepo.setUserId(id, userId);
+    }
+    if (action === 'unlink') return agentRepo.setUserId(id, null);
+    if (action === 'reset') {
+      if (!agent.userId) throw new AppError('This agent has no login yet', 400);
+      const password = generatePassword();
+      userService.update(agent.userId, { password, isActive: true }, actor, req);
+      return { ...agentRepo.findById(id), credentials: { loginId: agent.loginEmail, password } };
+    }
+    throw new AppError('action must be create, link, unlink or reset', 400);
+  }
+
+  #assertLinkable(userId, agentId = null) {
+    const user = repos.users.findById(userId);
+    if (!user) throw new AppError('User not found', 404);
+    const other = agentRepo.findByUserId(userId);
+    if (other && other.id !== agentId) throw new AppError(`That login already belongs to agent ${other.name}`, 409);
+  }
+
+  #loginEmailFor(agent) {
+    const own = String(agent.email || '').trim().toLowerCase();
+    if (own && !repos.users.emailExists(own)) return own;
+    const base = String(agent.agentCode).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const domain = config.localDomain || 'sacone.local';
+    for (let i = 0; ; i += 1) {
+      const candidate = `${base}${i ? `-${i}` : ''}@${domain}`;
+      if (!repos.users.emailExists(candidate)) return candidate;
+    }
+  }
+
+  #createLogin(agent, roleId, actor, req) {
+    const role = roleId ? repos.roles.findById(roleId) : repos.roles.findBySlug('sales_staff');
+    if (!role?.id) throw new AppError('Sales Staff role not found; pick a role for the login', 400);
+    const loginId = this.#loginEmailFor(agent);
+    const password = generatePassword();
+    const user = userService.create({
+      email: loginId, password, fullName: agent.name, phone: agent.mobile || null, roleId: role.id,
+    }, actor, req);
+    return { agent: agentRepo.setUserId(agent.id, user.id), credentials: { loginId, password, roleName: role.name } };
+  }
+
+  /** The active agent that is this ERP user (sales staff selling under their own login). */
+  agentForUser(userId) {
+    const agent = agentRepo.findByUserId(userId);
+    return agent?.status === 'active' ? agent : null;
   }
 
   updateAgent(id, data, actor, req) {
@@ -100,15 +195,109 @@ export class CommissionService {
       throw new AppError('Agent code already exists', 409);
     }
     const updated = agentRepo.update(id, data);
+    // Agent and login are the same person: keep name, phone and active status in step.
+    if (updated.userId && repos.users.findById(updated.userId)) {
+      const loginChanges = {};
+      if (updated.name !== existing.name) loginChanges.fullName = updated.name;
+      if (updated.mobile !== existing.mobile) loginChanges.phone = updated.mobile;
+      if (updated.status !== existing.status) loginChanges.isActive = updated.status === 'active';
+      if (Object.keys(loginChanges).length) {
+        try {
+          userService.update(updated.userId, loginChanges, actor, req);
+        } catch (err) {
+          if (err.statusCode !== 403) throw err; // no core.users.edit: agent saved, login unchanged
+        }
+      }
+    }
     auditRepo.create({
       userId: actor.user.id, userName: actor.user.fullName,
       action: 'update', module: 'sales', recordType: 'sales_agent', recordId: id,
       previousValue: existing, newValue: updated, ...meta(req),
     });
-    return updated;
+    return agentRepo.findById(id);
   }
 
   // ── Plans ───────────────────────────────────────────────
+  // ── Minimum selling prices (only managed here, in Commission settings) ──
+  listMinPrices(actor) {
+    requirePerm(actor, 'sales.commissions.view');
+    return minPriceRepo.list();
+  }
+
+  saveMinPrice(data, actor, req) {
+    requirePerm(actor, 'sales.commissions.edit');
+    const scope = String(data.scope || '');
+    if (!['product', 'brand', 'category'].includes(scope)) throw new AppError('scope must be product, brand or category', 400);
+    const targetId = data.targetId;
+    const target = scope === 'product' ? repos.products.findById(targetId)
+      : scope === 'brand' ? repos.brands.findById(targetId) : repos.categories.findById(targetId);
+    if (!target) throw new AppError(`${scope} not found`, 404);
+
+    const minPrice = data.minPrice === '' || data.minPrice == null ? null : Number(data.minPrice);
+    const minPercentOfMrp = data.minPercentOfMrp === '' || data.minPercentOfMrp == null ? null : Number(data.minPercentOfMrp);
+    if (minPrice == null && minPercentOfMrp == null) throw new AppError('Set a minimum price or a % of MRP', 400);
+    if (minPrice != null && minPercentOfMrp != null) throw new AppError('Use either a minimum price or a % of MRP, not both', 400);
+    if (minPrice != null && !(minPrice >= 0)) throw new AppError('Minimum price must be zero or more', 400);
+    if (minPrice != null && scope !== 'product') throw new AppError('A fixed minimum price applies to one product; use % of MRP for brands and categories', 400);
+    if (minPercentOfMrp != null && !(minPercentOfMrp > 0 && minPercentOfMrp <= 100)) throw new AppError('% of MRP must be between 0 and 100', 400);
+
+    const saved = minPriceRepo.upsert({
+      scope, targetId, minPrice, minPercentOfMrp,
+      isActive: data.isActive !== false, notes: data.notes, createdBy: actor.user.id,
+    });
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'update', module: 'sales', recordType: 'min_selling_price', recordId: saved.id,
+      newValue: saved, ...meta(req),
+    });
+    return saved;
+  }
+
+  deleteMinPrice(id, actor, req) {
+    requirePerm(actor, 'sales.commissions.edit');
+    const existing = minPriceRepo.findById(id);
+    if (!existing) throw new AppError('Minimum price rule not found', 404);
+    minPriceRepo.remove(id);
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'delete', module: 'sales', recordType: 'min_selling_price', recordId: id,
+      previousValue: existing, ...meta(req),
+    });
+    return { deleted: true };
+  }
+
+  /** productId → floor for every active product with a rule (SAC-POS pulls this). */
+  minPriceMap() {
+    const rules = minPriceRepo.activeRules();
+    const map = {};
+    if (!rules.product.size && !rules.brand.size && !rules.category.size) return map;
+    for (const product of repos.products.findAll({ isActive: '1', limit: 100000 }).items || []) {
+      const hit = resolveFloor(product, rules);
+      if (hit) map[product.id] = hit.floor;
+    }
+    return map;
+  }
+
+  /**
+   * Lines priced below their floor. Lines need productId, quantity, taxableAmount
+   * (after all discounts, before GST) and a name.
+   */
+  belowMinPrice(lines) {
+    const rules = minPriceRepo.activeRules();
+    if (!rules.product.size && !rules.brand.size && !rules.category.size) return [];
+    const out = [];
+    for (const line of lines) {
+      const product = repos.products.findById(line.productId);
+      if (!product) continue;
+      const hit = resolveFloor(product, rules);
+      const price = unitNetPrice(line);
+      if (hit && price + 0.005 < hit.floor) {
+        out.push({ productId: line.productId, name: line.productName || product.name, unitPrice: price, floor: hit.floor });
+      }
+    }
+    return out;
+  }
+
   listPlans(query, actor) {
     requirePerm(actor, 'sales.commissions.view');
     return planRepo.list({ activeOnly: query.activeOnly === 'true' });
@@ -205,22 +394,37 @@ export class CommissionService {
     if (!allocations.length) return [];
 
     const created = [];
-    const items = sale.items || [];
+    // Lines sold below their minimum selling price earn no commission.
+    const below = new Set(this.belowMinPrice(sale.items || []).map((l) => l.productId));
+    const items = (sale.items || []).filter((i) => !below.has(i.productId));
+    if (!items.length) return [];
+    let basisSale = sale;
+    if (below.size) {
+      const kept = round2(items.reduce((s, i) => s + Number(i.taxableAmount || 0), 0));
+      const ratio = Number(sale.taxableAmount || 0) > 0 ? kept / Number(sale.taxableAmount) : 0;
+      basisSale = {
+        ...sale,
+        grandTotal: round2(items.reduce((s, i) => s + Number(i.lineTotal || 0), 0)),
+        taxableAmount: kept,
+        gstAmount: round2(items.reduce((s, i) => s + Number(i.gstAmount || 0), 0)),
+        amountPaid: round2(Number(sale.amountPaid || 0) * ratio),
+      };
+    }
     const cogs = this.#estimateCogs(items.map((i) => ({
       productId: i.productId,
       quantity: i.quantity,
     })));
-    const grossProfit = round2(Number(sale.taxableAmount || 0) - cogs);
-    const paymentReceived = Number(sale.amountPaid || 0);
+    const grossProfit = round2(Number(basisSale.taxableAmount || 0) - cogs);
+    const paymentReceived = Number(basisSale.amountPaid || 0);
 
     for (const share of allocations) {
       const agent = agentRepo.findById(share.salesAgentId);
       if (!agent || agent.status !== 'active') continue;
 
       const sharePct = Number(share.sharePercent || 100) / 100;
-      const salesAmount = round2(sale.grandTotal * sharePct);
-      const taxableAmount = round2(sale.taxableAmount * sharePct);
-      const gstAmount = round2((sale.gstAmount || 0) * sharePct);
+      const salesAmount = round2(basisSale.grandTotal * sharePct);
+      const taxableAmount = round2(basisSale.taxableAmount * sharePct);
+      const gstAmount = round2((basisSale.gstAmount || 0) * sharePct);
       const shareCogs = round2(cogs * sharePct);
       const shareGp = round2(grossProfit * sharePct);
       const sharePaid = round2(paymentReceived * sharePct);
@@ -285,6 +489,7 @@ export class CommissionService {
         commissionPaid: 0,
         status,
         appliedRuleLabel: resolved.label,
+        remarks: below.size ? `${below.size} line(s) below minimum selling price excluded` : null,
         createdBy: actor?.user?.id,
       });
       created.push(row);
