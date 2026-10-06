@@ -144,10 +144,30 @@ export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStat
   };
 }
 
+/** Defaults match migration 028; empty values print nothing. */
+export function invoicePrintSettings() {
+  const get = (key, fallback = '') => {
+    const value = settingsRepo.get(key)?.value;
+    return value === undefined || value === null ? fallback : String(value);
+  };
+  return {
+    layout: get('invoice.layout', 'classic') === 'modern' ? 'modern' : 'classic',
+    copyLabel: get('invoice.copy_label', 'ORIGINAL FOR RECIPIENT'),
+    bankDetails: get('invoice.bank_details'),
+    terms: get('invoice.terms'),
+    declaration: get('invoice.declaration', 'Certified that the particulars given above are true and correct.'),
+  };
+}
+
 export class SettingsService {
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.system_settings.view');
     return settingsRepo.getAll();
+  }
+
+  /** Invoice print settings (any signed-in user prints invoices; editing needs system settings). */
+  getInvoiceSettings() {
+    return invoicePrintSettings();
   }
 
   getPublicPosSettings() {

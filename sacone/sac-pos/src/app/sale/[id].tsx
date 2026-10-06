@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
-import { billHtml, PDF_SIZES, PRINT_SIZES, printBill, savePdf, sharePdf, type PaperSize, type PdfSize } from '../../lib/receipt';
+import { billHtml, LAYOUTS, PDF_SIZES, PRINT_SIZES, printBill, savePdf, sharePdf, type Layout, type PaperSize, type PdfSize } from '../../lib/receipt';
 import { usePref } from '../../lib/usePref';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
@@ -22,6 +22,8 @@ export default function SaleDetail() {
   const canReturn = useCan('returns');
   const [printSize, setPrintSize] = usePref<PaperSize>('sacpos.printSize', '80mm', PRINT_SIZES.map((p) => p.value));
   const [pdfSize, setPdfSize] = usePref<PdfSize>('sacpos.pdfSize', 'A4', PDF_SIZES.map((p) => p.value));
+  const invoiceSettings = useDevice((s) => s.info?.settings.invoice);
+  const [layout, setLayout] = usePref<Layout>('sacpos.invoiceLayout', invoiceSettings?.layout ?? 'classic', LAYOUTS.map((l) => l.value));
 
   if (!sale) {
     return (
@@ -35,7 +37,7 @@ export default function SaleDetail() {
   const t = sale.totals;
   const saleReturns = returns.filter((r) => r.saleId === sale.id);
   const returnable = t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
-  const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size);
+  const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const title = `Bill ${sale.serverNumber ?? sale.number}`;
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
@@ -55,6 +57,9 @@ export default function SaleDetail() {
         ) : null}
 
         <Card>
+          <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>A5 / A4 LAYOUT</Text>
+          <Segmented value={layout} options={LAYOUTS} onChange={setLayout} />
+          <Divider />
           <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>PRINT</Text>
           <Row gap={space.xs} style={{ flexWrap: 'wrap', marginBottom: space.sm }}>
             {PRINT_SIZES.map((p) => (

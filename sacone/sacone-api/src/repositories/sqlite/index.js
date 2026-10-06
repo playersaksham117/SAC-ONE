@@ -353,6 +353,13 @@ export class RoleRepository {
     `).all(roleId);
   }
 
+  permissionKeysForIds(permissionIds) {
+    if (!permissionIds?.length) return [];
+    const marks = permissionIds.map(() => '?').join(',');
+    return getDatabase().prepare(`SELECT permission_key FROM permissions WHERE id IN (${marks})`)
+      .all(...permissionIds).map((r) => r.permission_key);
+  }
+
   setPermissions(roleId, permissionIds) {
     const db = getDatabase();
     const deleteStmt = db.prepare('DELETE FROM role_permissions WHERE role_id = ?');

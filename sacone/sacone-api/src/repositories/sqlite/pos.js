@@ -95,6 +95,7 @@ function mapSaleItem(row) {
     productName: row.product_name,
     sku: row.sku,
     hsnCode: row.hsn_code,
+    unit: row.unit_abbreviation || null,
     quantity: Number(row.quantity || 0),
     unitPrice: Number(row.unit_price || 0),
     discountAmount: Number(row.discount_amount || 0),
@@ -201,7 +202,8 @@ export class PosSaleRepository {
 
   listItems(saleId) {
     return getDatabase().prepare(`
-      SELECT * FROM pos_sale_items WHERE sale_id = ? ORDER BY sort_order ASC, product_name ASC
+      SELECT i.*, u.abbreviation AS unit_abbreviation FROM pos_sale_items i LEFT JOIN products p ON p.id = i.product_id LEFT JOIN units u ON u.id = p.unit_id
+      WHERE i.sale_id = ? ORDER BY i.sort_order ASC, i.product_name ASC
     `).all(saleId).map(mapSaleItem);
   }
 

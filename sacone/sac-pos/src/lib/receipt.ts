@@ -191,8 +191,203 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
 </body></html>`;
 }
 
-export function billHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PaperSize): string {
-  return isSheet(size) ? sheetHtml(sale, company, deviceCode, size) : thermalHtml(sale, company, deviceCode, size);
+
+/* ───────────── classic GST tax invoice (A4 / A5), layout type 1 ───────────── */
+
+export type Layout = 'classic' | 'modern';
+export const LAYOUTS: { value: Layout; label: string }[] = [
+  { value: 'classic', label: '1 · GST classic' },
+  { value: 'modern', label: '2 · Modern' },
+];
+
+/** ERP → System Settings → Invoice printing (sent with each sync ping). */
+export interface InvoiceSettings {
+  layout?: Layout;
+  copyLabel?: string;
+  bankDetails?: string;
+  terms?: string;
+  declaration?: string;
+}
+
+const GST_STATES: Record<string, string> = {
+  '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
+  '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',
+  '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '26': 'Dadra & Nagar Haveli and Daman & Diu', '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa',
+  '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman & Nicobar Islands',
+  '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh', '97': 'Other Territory',
+};
+const stateCode = (code?: string | null, gstin?: string | null) => {
+  const c = String(code || gstin?.slice(0, 2) || '').trim();
+  return /^\d{2}$/.test(c) ? c : '';
+};
+
+const ONES = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE',
+  'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+const TENS = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+const two = (n: number) => (n < 20 ? ONES[n] : `${TENS[Math.floor(n / 10)]}${n % 10 ? ` ${ONES[n % 10]}` : ''}`);
+const three = (n: number) => (n < 100 ? two(n) : `${ONES[Math.floor(n / 100)]} HUNDRED${n % 100 ? ` ${two(n % 100)}` : ''}`);
+function indian(n: number): string {
+  if (n < 1000) return three(n);
+  if (n < 100000) return `${two(Math.floor(n / 1000))} THOUSAND${n % 1000 ? ` ${three(n % 1000)}` : ''}`;
+  if (n < 10000000) return `${two(Math.floor(n / 100000))} LAKH${n % 100000 ? ` ${indian(n % 100000)}` : ''}`;
+  return `${indian(Math.floor(n / 10000000))} CRORE${n % 10000000 ? ` ${indian(n % 10000000)}` : ''}`;
+}
+/** 1180 → "ONE THOUSAND ONE HUNDRED EIGHTY ONLY" (Indian numbering). */
+export function amountInWords(amount: number): string {
+  const n = Math.round(Number(amount || 0) * 100) / 100;
+  const rupees = Math.floor(n);
+  const paise = Math.round((n - rupees) * 100);
+  return `${rupees ? indian(rupees) : 'ZERO'}${paise ? ` AND ${two(paise)} PAISE` : ''} ONLY`;
+}
+
+function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PdfSize, invoice: InvoiceSettings) {
+  const t = sale.totals;
+  const a5 = size === 'A5';
+  const page = a5 ? { h: 210, m: 5 } : { h: 297, m: 6 };
+  const fs = a5 ? 6.6 : 9.5;
+  const n2 = (v: number) => Number(v || 0).toFixed(2);
+  const blank = (v: number) => (Number(v) ? n2(v) : '');
+  const inter = t.taxSplit === 'igst';
+  const lines = t.lines.map((l) => {
+    const half = Math.round((l.gstAmount / 2) * 100) / 100;
+    return {
+      ...l, disc: Math.round((l.gross - l.taxableAmount) * 100) / 100,
+      sgst: inter ? 0 : half, cgst: inter ? 0 : Math.round((l.gstAmount - half) * 100) / 100, igst: inter ? l.gstAmount : 0,
+    };
+  });
+  const sum = (k: 'gross' | 'disc' | 'taxableAmount' | 'sgst' | 'cgst' | 'igst') => lines.reduce((s, l) => s + Number(l[k] || 0), 0);
+  const qtySum = lines.reduce((s, l) => s + l.quantity, 0);
+  const companyCode = stateCode(company?.gstStateCode, company?.gstNumber);
+  const cust = sale.customer;
+  const custCode = stateCode(cust?.gstStateCode, cust?.gstin);
+  const posCode = custCode || companyCode;
+  const date = new Date(sale.createdAt).toLocaleDateString('en-GB');
+  const party = (label: string) => `
+    <div class="plabel">${esc(label)}</div>
+    <div class="pname">${esc(cust?.name || 'CASH')}</div>
+    ${cust?.phone ? `<div class="pline">Mobile: ${esc(cust.phone)}</div>` : ''}
+    ${cust?.gstin ? `<div class="pline">GSTIN: ${esc(cust.gstin)}</div>` : ''}
+    <div class="pstate"><span>State : ${esc(GST_STATES[custCode] || '')}</span><span>State Code : ${esc(custCode)}</span></div>`;
+  const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
+  const rows = lines.map((l, i) => `<tr>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}</td><td>${esc(l.hsn || '')}</td>
+      <td class="r">${l.quantity.toFixed(3)}</td><td>${esc(l.unit || '')}</td><td class="r b">${n2(l.unitPrice)}</td>
+      <td class="r b">${n2(l.gross)}</td><td class="r">${blank(l.disc)}</td><td class="r b">${n2(l.taxableAmount)}</td>
+      <td class="r">${l.sgst ? l.gstRate / 2 : ''}</td><td class="r">${blank(l.sgst)}</td>
+      <td class="r">${l.cgst ? l.gstRate / 2 : ''}</td><td class="r">${blank(l.cgst)}</td>
+      <td class="r">${l.igst ? l.gstRate : ''}</td><td class="r">${n2(l.igst)}</td></tr>`).join('');
+  const terms = String(invoice.terms || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const subTotal = sum('taxableAmount') + sum('sgst') + sum('cgst') + sum('igst');
+  const pad = a5 ? '1px 3px' : '2px 5px';
+
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  @page{size:${size} portrait;margin:${page.m}mm}
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;color:#000}
+  .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 1.5}mm;display:flex;flex-direction:column}
+  .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '1.5px 3px' : '3px 5px'}}
+  .vr{border-right:1px solid #000} .b{font-weight:700} .c{text-align:center} .r{text-align:right} .u{text-decoration:underline}
+  .head{position:relative;text-align:center;width:100%}
+  .head .gst{position:absolute;left:${a5 ? 3 : 5}px;top:${a5 ? 2 : 4}px;font-weight:700}
+  .head .mob{position:absolute;right:${a5 ? 3 : 5}px;top:${a5 ? 2 : 4}px;font-weight:700}
+  .head .ttl{font-weight:700;font-size:${fs * 1.3}px}
+  .head .firm{font-family:'Times New Roman',Times,serif;font-weight:700;font-size:${a5 ? 18 : 30}px;margin:${a5 ? 1 : 2}px 0}
+  .plabel{text-align:center;font-weight:700;font-size:${fs * 1.1}px;margin:${a5 ? 2 : 4}px 0 1px}
+  .pname{font-weight:700;font-size:${fs * 1.12}px} .pline{font-weight:700}
+  .pstate{display:flex;gap:${a5 ? 14 : 30}px;font-weight:700;margin-top:${a5 ? 3 : 8}px}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  .items th{font-weight:700;border:1px solid #000;border-top:0;padding:1px 2px;font-size:${fs * 0.95}px}
+  .items td{border-left:1px solid #000;border-right:1px solid #000;padding:${a5 ? '1px 1.5px' : '2px 3px'};vertical-align:top;overflow:hidden;word-wrap:break-word}
+  .grow{flex:1;display:flex;flex-direction:column} .grow table{flex:1;height:100%}
+  .tot td{border:1px solid #000;padding:1px 3px;font-weight:700}
+  .kv{display:grid;grid-template-columns:1fr 1fr;column-gap:8px}
+  .net{font-size:${fs * 1.35}px;font-weight:700;display:flex;justify-content:space-between;border-top:1px solid #000;border-bottom:1px solid #000;padding:${a5 ? 2 : 4}px 3px}
+  .terms{font-size:${fs * 0.82}px;font-weight:700}
+</style></head><body>
+<div class="sheet">
+  <div class="row"><div class="head">
+    <div class="gst">GSTIN : ${esc(company?.gstNumber || '')}</div>
+    <div class="mob">${company?.phone ? `Mobile: ${esc(company.phone)}` : ''}</div>
+    <div class="ttl">Tax Invoice</div>
+    ${invoice.copyLabel ? `<div class="u">${esc(invoice.copyLabel)}</div>` : ''}
+    <div class="b">${sale.amountDue > 0 ? 'CREDIT MEMO' : 'CASH-MEMO'}</div>
+    <div class="firm">${esc(company?.businessName || 'SACONE')}</div>
+    <div class="b">${esc([company?.address, company?.city, company?.state].filter(Boolean).join(', '))}</div>
+  </div></div>
+  <div class="row">
+    <div class="vr" style="width:50%">
+      <div style="display:flex;justify-content:space-between"><span class="b">Invoice No. ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
+      <div class="b">E-Way Bill No. :</div>
+    </div>
+    <div style="width:50%">
+      <div class="b">Mode of Transport :</div>
+      <div style="display:flex;justify-content:space-between"><span class="b">Vehicle No. :</span><span class="b">Driver :</span></div>
+      <div class="b">Goods Dispatch :</div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="vr" style="width:50%">${party('Detail of Receiver (Billed To)')}
+      <div class="c b" style="margin-top:${a5 ? 2 : 6}px">P.O.S. ${esc(posCode)}${GST_STATES[posCode] ? `-${esc(GST_STATES[posCode])}` : ''}</div></div>
+    <div style="width:50%">${party('Detail of Consignee (Shipped To)')}
+      <div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div></div>
+  </div>
+  <table class="items">${cols}<thead><tr>
+    <th rowspan="2">Sr</th><th rowspan="2">Description of Goods</th><th rowspan="2">HSN/<br>SAC<br>code</th>
+    <th rowspan="2">Qty.</th><th rowspan="2">UOM</th><th rowspan="2">Rate</th><th rowspan="2">Total<br>Amount</th>
+    <th rowspan="2">Disc.</th><th rowspan="2">Taxable<br>Amount <sup>1</sup></th>
+    <th colspan="4">Within State Tax</th><th colspan="2">Central Tax</th></tr>
+    <tr><th>Tax%</th><th>SGST <sup>2</sup></th><th>Tax%</th><th>CGST <sup>3</sup></th><th>Tax%</th><th>IGST <sup>4</sup></th></tr>
+  </thead><tbody>${rows}</tbody></table>
+  <div class="grow"><table class="items">${cols}<tbody><tr>${'<td></td>'.repeat(15)}</tr></tbody></table></div>
+  <table class="tot">${cols}<tr>
+    <td colspan="3">TOTAL :</td><td class="r">${qtySum.toFixed(3)}</td><td></td><td></td>
+    <td class="r">${n2(sum('gross'))}</td><td class="r">${n2(sum('disc'))}</td><td class="r">${n2(sum('taxableAmount'))}</td>
+    <td></td><td class="r">${n2(sum('sgst'))}</td><td></td><td class="r">${n2(sum('cgst'))}</td><td></td><td class="r">${n2(sum('igst'))}</td></tr></table>
+  <div style="display:flex">
+    <div class="vr" style="width:70%;display:flex;flex-direction:column">
+      <div style="display:flex;border-bottom:1px solid #000"><div class="vr" style="width:65%;padding:${pad}"><div class="kv">
+        <span>Order No. :</span><span>Dated :</span><span>Transport :</span><span>Pvt.Mark :</span><span>GR/RR No. :</span><span>Dated :</span>
+        <span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span><span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span>
+      </div></div><div style="width:35%"></div></div>
+      <div style="border-bottom:1px solid #000;padding:${pad}"><span class="b">Amount In Words :</span> <span class="b">${esc(amountInWords(t.grandTotal))}</span></div>
+      <div style="padding:${pad};flex:1">
+        <div class="b">Agent : ${esc(sale.userName || '')}</div>
+        <div class="b u">Note:</div><div>${esc(sale.notes || '')}</div>
+        ${invoice.declaration ? `<div class="c b" style="margin-top:${a5 ? 2 : 4}px">${esc(invoice.declaration)}</div>` : ''}
+      </div>
+      <div style="display:flex;border-top:1px solid #000">
+        <div class="vr b" style="padding:${pad};width:12%">Our's<br>Bankers</div>
+        <div class="b u" style="padding:${pad};flex:1">${esc(invoice.bankDetails || '')}</div>
+      </div>
+      <div style="display:flex;border-top:1px solid #000;flex:1">
+        <div class="vr terms" style="width:60%;padding:${pad}"><div class="u">Terms &amp; Conditions:-</div>${terms.map((x, i) => `<div>${i + 1}. ${esc(x)}</div>`).join('')}</div>
+        <div class="b" style="width:40%;display:flex;align-items:flex-end;padding:${pad}">Customer's Signature</div>
+      </div>
+    </div>
+    <div style="width:30%;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;padding:${pad}"><span>Sub-Total (1+2+3+4) :</span><span>${n2(subTotal)}</span></div>
+      ${Math.abs(t.grandTotal - subTotal) >= 0.01 ? `<div style="display:flex;justify-content:space-between;padding:${pad}"><span>Round Off :</span><span>${n2(t.grandTotal - subTotal)}</span></div>` : ''}
+      <div style="flex:1"></div>
+      <div class="net"><span>NET AMOUNT :</span><span>${n2(t.grandTotal)}</span></div>
+      <div style="flex:1;min-height:${a5 ? 14 : 26}mm;padding:${a5 ? '2px 3px' : '4px 5px'};display:flex;flex-direction:column;justify-content:space-between;text-align:right;font-weight:700">
+        <div>For ${esc(company?.businessName || 'SACONE')}</div><div>Auth.Signatory</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+}
+
+/** A5 / A4 use the chosen layout (type 1 = GST classic by default); 58 / 80 mm are receipts. */
+export function billHtml(
+  sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PaperSize,
+  { layout = 'classic', invoice = {} }: { layout?: Layout; invoice?: InvoiceSettings } = {},
+): string {
+  if (!isSheet(size)) return thermalHtml(sale, company, deviceCode, size);
+  return layout === 'modern' ? sheetHtml(sale, company, deviceCode, size) : classicHtml(sale, company, deviceCode, size, invoice);
 }
 
 /* ───────────── actions ───────────── */

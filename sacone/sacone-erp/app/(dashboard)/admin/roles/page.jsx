@@ -11,6 +11,7 @@ import PermissionMatrix from '../../../../components/PermissionMatrix';
 const EMPTY_ROLE = {
   name: '',
   description: '',
+  isActive: true,
   permissionIds: [],
 };
 
@@ -64,6 +65,7 @@ export default function RolesPage() {
       setForm({
         name: detail.name,
         description: detail.description || '',
+        isActive: detail.isActive !== false,
         permissionIds: detail.permissions.map((p) => p.id),
       });
       setModalOpen(true);
@@ -80,6 +82,7 @@ export default function RolesPage() {
       const payload = {
         name: form.name,
         description: form.description,
+        isActive: form.isActive,
         permissionIds: form.permissionIds,
       };
 
@@ -123,6 +126,17 @@ export default function RolesPage() {
           ? prev.permissionIds.filter((id) => id !== permissionId)
           : [...prev.permissionIds, permissionId],
       };
+    });
+  };
+
+  const setManyPermissions = (ids, checked) => {
+    setForm((prev) => {
+      const next = new Set(prev.permissionIds);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return { ...prev, permissionIds: [...next] };
     });
   };
 
@@ -192,11 +206,9 @@ export default function RolesPage() {
         footer={(
           <>
             <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
-            {!isOwnerAdmin && (
-              <button type="submit" form="role-form" className="btn-primary" disabled={saving}>
-                {saving ? 'Saving...' : 'Save Role'}
-              </button>
-            )}
+            <button type="submit" form="role-form" className="btn-primary" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Role'}
+            </button>
           </>
         )}
       >
@@ -209,7 +221,6 @@ export default function RolesPage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
-              disabled={isOwnerAdmin}
             />
           </div>
           <div>
@@ -219,21 +230,33 @@ export default function RolesPage() {
               className="input-field min-h-[80px]"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              disabled={isOwnerAdmin}
             />
           </div>
-
-          {isOwnerAdmin ? (
-            <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
-              Owner/Admin always has full access. Permissions cannot be modified.
-            </p>
-          ) : (
-            <PermissionMatrix
-              tree={permissionTree}
-              selectedIds={form.permissionIds}
-              onToggle={togglePermission}
-            />
+          {editing && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.isActive}
+                disabled={isOwnerAdmin}
+                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+              />
+              Active <span className="text-xs text-slate-500">(users with an inactive role cannot sign in to its features)</span>
+            </label>
           )}
+
+          {editing?.isSystem && (
+            <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+              {isOwnerAdmin
+                ? 'Owner/Admin stays active and keeps user and role management (view/edit users and roles), so nobody gets locked out.'
+                : 'Built-in role: your changes are kept. New features only add their own new permissions.'}
+            </p>
+          )}
+          <PermissionMatrix
+            tree={permissionTree}
+            selectedIds={form.permissionIds}
+            onToggle={togglePermission}
+            onSetMany={setManyPermissions}
+          />
         </form>
       </Modal>
     </RequirePermission>

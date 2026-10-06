@@ -379,6 +379,23 @@ export class RoleService {
     const existing = roleRepo.findById(id);
     if (!existing) throw new AppError('Role not found', 404);
 
+    // No lockout: the role you are signed in with, and Owner/Admin, stay active and keep the
+    // permissions needed to manage users and roles (so any mistake can be fixed).
+    const guarded = existing.slug === 'owner_admin' || existing.id === actor.user.roleId;
+    if (guarded && data.isActive === false) {
+      throw new AppError(existing.slug === 'owner_admin'
+        ? 'The Owner/Admin role cannot be deactivated'
+        : 'You cannot deactivate the role you are signed in with', 400);
+    }
+    if (guarded && Array.isArray(data.permissionIds)) {
+      const keep = ['core.roles.view', 'core.roles.edit', 'core.users.view', 'core.users.edit'];
+      const keys = new Set(roleRepo.permissionKeysForIds(data.permissionIds));
+      const missing = keep.filter((k) => !keys.has(k));
+      if (missing.length) {
+        throw new AppError(`${existing.name} must keep ${missing.join(', ')} so users and roles can still be managed`, 400);
+      }
+    }
+
     const updated = roleRepo.update(id, {
       name: data.name,
       description: data.description,
@@ -386,9 +403,6 @@ export class RoleService {
     });
 
     if (Array.isArray(data.permissionIds)) {
-      if (existing.isSystem && existing.slug === 'owner_admin') {
-        throw new AppError('Owner/Admin permissions cannot be modified', 400);
-      }
       roleRepo.setPermissions(id, data.permissionIds);
     }
 

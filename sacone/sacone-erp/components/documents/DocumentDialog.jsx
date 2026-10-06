@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PDF_SIZES, PRINT_SIZES, printHtml } from '../../lib/bill-document';
+import { LAYOUTS, PDF_SIZES, PRINT_SIZES, printHtml } from '../../lib/bill-document';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { Alert, LoadingState, Modal } from '../ui';
 
@@ -38,13 +38,18 @@ export const ITEM_CSV_COLUMNS = [
 
 /**
  * Print (58mm / 80mm / A5 / A4), Save PDF (A5 / A4) and line-item CSV for one document.
- *   load(): Promise<{ summary: [[label, value]], html: (size) => string, items: [], csvName }>
+ *   load(): Promise<{ summary: [[label, value]], html: (size, layout) => string, items: [], csvName, defaultLayout? }>
+ * A5 / A4 come in two layouts: 1 · GST classic (boxed tax-invoice grid) and 2 · Modern.
  */
 export default function DocumentDialog({ title, load, onClose, documentLabel = 'invoice' }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState('');
   const [printSize, setPrintSize] = useStoredChoice('sacone.printSize', 'A4', PRINT_SIZES.map((p) => p.value));
   const [pdfSize, setPdfSize] = useStoredChoice('sacone.pdfSize', 'A4', PDF_SIZES.map((p) => p.value));
+  // '' = follow System Settings → Invoice printing; otherwise this browser's own choice.
+  const [layoutChoice, setLayout] = useStoredChoice('sacone.invoiceLayout', '', LAYOUTS.map((l) => l.value));
+  const layout = layoutChoice || doc?.defaultLayout || 'classic';
+  const html = (size) => doc.html(size, layout);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +74,22 @@ export default function DocumentDialog({ title, load, onClose, documentLabel = '
             ))}
           </div>
 
+          <section className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-4">
+            <h4 className="mr-1 text-xs font-bold uppercase tracking-wide text-slate-500">A5 / A4 layout</h4>
+            <div className="inline-flex rounded-lg bg-slate-100 p-1">
+              {LAYOUTS.map((l) => (
+                <button
+                  key={l.value}
+                  type="button"
+                  onClick={() => setLayout(l.value)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium ${layout === l.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="rounded-xl border border-slate-200 p-4">
             <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Print</h4>
             <div className="flex flex-wrap gap-2">
@@ -83,7 +104,7 @@ export default function DocumentDialog({ title, load, onClose, documentLabel = '
                 </button>
               ))}
             </div>
-            <button type="button" className="btn-primary mt-3 w-full sm:w-auto" onClick={() => printHtml(doc.html(printSize))}>
+            <button type="button" className="btn-primary mt-3 w-full sm:w-auto" onClick={() => printHtml(html(printSize))}>
               🖨 Print {PRINT_SIZES.find((p) => p.value === printSize)?.label} {printSize.endsWith('mm') ? 'receipt' : documentLabel}
             </button>
             {printSize.endsWith('mm') && (
@@ -106,7 +127,7 @@ export default function DocumentDialog({ title, load, onClose, documentLabel = '
                   </button>
                 ))}
               </div>
-              <button type="button" className="btn-secondary" onClick={() => printHtml(doc.html(pdfSize))}>📄 Save PDF</button>
+              <button type="button" className="btn-secondary" onClick={() => printHtml(html(pdfSize))}>📄 Save PDF</button>
             </div>
             <p className="mt-2 text-xs text-slate-500">In the dialog that opens, pick <b>Save as PDF</b> as the destination.</p>
           </section>

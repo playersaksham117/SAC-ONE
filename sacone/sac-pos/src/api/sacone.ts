@@ -24,7 +24,10 @@ export interface PingResult {
   device: { id: string; code: string; name: string };
   warehouse: { id: string; code: string; name: string } | null;
   company: CompanyInfo | null;
-  settings: { invoicePrefix: string; allowNegativeStock: boolean };
+  settings: {
+    invoicePrefix: string; allowNegativeStock: boolean;
+    invoice?: { layout?: 'classic' | 'modern'; copyLabel?: string; bankDetails?: string; terms?: string; declaration?: string };
+  };
 }
 
 export interface LoginResult {

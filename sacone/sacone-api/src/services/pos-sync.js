@@ -19,7 +19,7 @@ import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { generateApiKeySecret, hashApiKey } from '../repositories/sqlite/webstore.js';
 import { authService } from './index.js';
-import { posService } from './pos.js';
+import { posService, invoicePrintSettings } from './pos.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
@@ -225,6 +225,7 @@ export class PosSyncService {
       settings: {
         invoicePrefix: `${device.code}-`,
         allowNegativeStock: repos.systemSettings.getBoolean('allow_negative_stock', false),
+        invoice: invoicePrintSettings(),
       },
     };
   }

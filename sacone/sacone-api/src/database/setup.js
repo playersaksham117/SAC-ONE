@@ -176,6 +176,47 @@ function seedCompanyAndAdmin(db) {
   console.log(`  Password: ${config.defaultAdmin.password}`);
 }
 
+/**
+ * Keep built-in roles current without undoing the owner's edits. For each role we remember the
+ * default permission set we applied last time (system_settings `role_defaults.<slug>`), then
+ *   - grant keys the defaults gained since (new features),
+ *   - revoke keys the defaults dropped since (retired features),
+ *   - leave everything else exactly as the owner set it in Administration → Roles.
+ */
+function syncBuiltInRoleDefaults(db, now) {
+  const allPermissions = db.prepare('SELECT id, permission_key, action FROM permissions').all();
+  const idByKey = Object.fromEntries(allPermissions.map((p) => [p.permission_key, p.id]));
+  const grant = db.prepare('INSERT OR IGNORE INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?)');
+  const revoke = db.prepare('DELETE FROM role_permissions WHERE role_id = ? AND permission_id = ?');
+  const getSnapshot = db.prepare('SELECT value FROM system_settings WHERE key = ?');
+  const saveSnapshot = db.prepare(`
+    INSERT INTO system_settings (key, value, description, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
+
+  for (const roleDef of DEFAULT_ROLES) {
+    const role = db.prepare('SELECT id FROM roles WHERE slug = ?').get(roleDef.slug);
+    if (!role) continue;
+    const defaults = roleDef.allPermissions
+      ? allPermissions.map((p) => p.permission_key)
+      : roleDef.viewOnly
+        ? allPermissions.filter((p) => p.action === 'view').map((p) => p.permission_key)
+        : (roleDef.permissionKeys || []).filter((k) => idByKey[k]);
+
+    const snapshotKey = `role_defaults.${roleDef.slug}`;
+    let previous = null;
+    try { previous = JSON.parse(getSnapshot.get(snapshotKey)?.value || 'null'); } catch { previous = null; }
+
+    const before = new Set(previous || []);
+    const toGrant = previous ? defaults.filter((k) => !before.has(k)) : defaults;
+    const toRevoke = previous ? previous.filter((k) => !defaults.includes(k) && idByKey[k]) : [];
+    for (const key of toGrant) grant.run(generateId(), role.id, idByKey[key], now);
+    for (const key of toRevoke) revoke.run(role.id, idByKey[key]);
+
+    saveSnapshot.run(snapshotKey, JSON.stringify(defaults), `Built-in defaults last applied to ${roleDef.name}`, now);
+  }
+}
+
 function syncPermissionsFromDefinitions(db) {
   const now = nowIso();
   let addedCount = 0;
@@ -245,54 +286,7 @@ function syncPermissionsFromDefinitions(db) {
     });
   }
 
-  const ownerAdmin = db.prepare("SELECT id FROM roles WHERE slug = 'owner_admin'").get();
-  if (ownerAdmin) {
-    const allPermissions = db.prepare('SELECT id FROM permissions').all();
-    const existing = new Set(
-      db.prepare('SELECT permission_id FROM role_permissions WHERE role_id = ?')
-        .all(ownerAdmin.id)
-        .map((r) => r.permission_id)
-    );
-    for (const perm of allPermissions) {
-      if (!existing.has(perm.id)) {
-        insertRolePermission.run(generateId(), ownerAdmin.id, perm.id, now);
-      }
-    }
-  }
-
-  const viewer = db.prepare("SELECT id FROM roles WHERE slug = 'viewer'").get();
-  if (viewer) {
-    const viewPermissions = db.prepare("SELECT id FROM permissions WHERE action = 'view'").all();
-    const existing = new Set(
-      db.prepare('SELECT permission_id FROM role_permissions WHERE role_id = ?')
-        .all(viewer.id)
-        .map((r) => r.permission_id)
-    );
-    for (const perm of viewPermissions) {
-      if (!existing.has(perm.id)) {
-        insertRolePermission.run(generateId(), viewer.id, perm.id, now);
-      }
-    }
-  }
-
-  // Sync explicit permission keys for system roles that already exist
-  const permissionMap = Object.fromEntries(
-    db.prepare('SELECT id, permission_key FROM permissions').all().map((p) => [p.permission_key, p.id])
-  );
-  for (const roleDef of DEFAULT_ROLES) {
-    if (roleDef.allPermissions || roleDef.viewOnly) continue;
-    const role = db.prepare('SELECT id FROM roles WHERE slug = ?').get(roleDef.slug);
-    if (!role || !Array.isArray(roleDef.permissionKeys)) continue;
-
-    // Replace so role restrictions (e.g. Cashier) stay accurate across phase updates
-    db.prepare('DELETE FROM role_permissions WHERE role_id = ?').run(role.id);
-    for (const key of roleDef.permissionKeys) {
-      const permissionId = permissionMap[key];
-      if (permissionId) {
-        insertRolePermission.run(generateId(), role.id, permissionId, now);
-      }
-    }
-  }
+  syncBuiltInRoleDefaults(db, now);
 
   if (addedCount > 0) {
     console.log(`Synced permission definitions (${addedCount} items added/updated)`);

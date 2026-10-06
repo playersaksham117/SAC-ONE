@@ -13,6 +13,7 @@ function mapPoItem(row) {
     productName: row.product_name,
     sku: row.sku,
     hsnCode: row.hsn_code,
+    unit: row.unit_abbreviation || null,
     quantity: Number(row.quantity || 0),
     unitPrice: Number(row.unit_price || 0),
     discountPercent: Number(row.discount_percent || 0),
@@ -60,6 +61,7 @@ function mapBillItem(row) {
     productName: row.product_name,
     sku: row.sku,
     hsnCode: row.hsn_code,
+    unit: row.unit_abbreviation || null,
     quantity: Number(row.quantity || 0),
     unitPrice: Number(row.unit_price || 0),
     discountPercent: Number(row.discount_percent || 0),
@@ -223,7 +225,8 @@ export class PurchaseRepository {
     const row = db.prepare(`${PO_SELECT} WHERE po.id = ?`).get(id);
     if (!row) return null;
     const items = db.prepare(`
-      SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY sort_order ASC
+      SELECT i.*, u.abbreviation AS unit_abbreviation FROM purchase_order_items i LEFT JOIN products p ON p.id = i.product_id LEFT JOIN units u ON u.id = p.unit_id
+      WHERE i.purchase_order_id = ? ORDER BY i.sort_order ASC
     `).all(id).map(mapPoItem);
     return mapPo(row, items);
   }
@@ -344,7 +347,8 @@ export class PurchaseRepository {
     const row = db.prepare(`${BILL_SELECT} WHERE b.id = ?`).get(id);
     if (!row) return null;
     const items = db.prepare(`
-      SELECT * FROM supplier_bill_items WHERE bill_id = ? ORDER BY sort_order ASC
+      SELECT i.*, u.abbreviation AS unit_abbreviation FROM supplier_bill_items i LEFT JOIN products p ON p.id = i.product_id LEFT JOIN units u ON u.id = p.unit_id
+      WHERE i.bill_id = ? ORDER BY i.sort_order ASC
     `).all(id).map(mapBillItem);
     return mapBill(row, items);
   }

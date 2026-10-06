@@ -56,9 +56,10 @@ const TAB_DOC = { orders: 'order', bills: 'bill', log: 'bill', returns: 'return'
 
 async function loadPurchaseDocument(kind, id) {
   const spec = PURCHASE_DOCS[kind];
-  const [doc, company] = await Promise.all([
+  const [doc, company, invoice] = await Promise.all([
     apiRequest(`/api/purchases/${spec.path}/${id}`),
     apiRequest('/api/company').catch(() => null),
+    apiRequest('/api/settings/invoice').catch(() => ({})),
   ]);
   const supplier = doc.supplierId ? await apiRequest(`/api/suppliers/${doc.supplierId}`).catch(() => null) : null;
   const model = purchaseDocument(kind, doc, supplier);
@@ -69,7 +70,8 @@ async function loadPurchaseDocument(kind, id) {
       ['Supplier', doc.supplierName || '—'],
       ['Total', money(doc.grandTotal)],
     ],
-    html: (size) => documentHtml(model, company, size),
+    html: (size, layout) => documentHtml(model, company, size, { layout, invoice }),
+    defaultLayout: invoice.layout,
     items: doc.items,
     csvName: doc[spec.numberKey],
   };

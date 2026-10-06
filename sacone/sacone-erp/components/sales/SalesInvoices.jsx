@@ -162,7 +162,11 @@ export default function SalesInvoices() {
 
 /** Everything the document dialog needs for one sales invoice. */
 async function loadInvoice(saleId) {
-  const [sale, company] = await Promise.all([apiRequest(`/api/pos/sales/${saleId}`), apiRequest('/api/company').catch(() => null)]);
+  const [sale, company, invoice] = await Promise.all([
+    apiRequest(`/api/pos/sales/${saleId}`),
+    apiRequest('/api/company').catch(() => null),
+    apiRequest('/api/settings/invoice').catch(() => ({})),
+  ]);
   const customer = sale.customerId && !sale.customerIsWalkIn
     ? await apiRequest(`/api/customers/${sale.customerId}`).catch(() => null)
     : null;
@@ -175,7 +179,8 @@ async function loadInvoice(saleId) {
       ['Total', money(sale.grandTotal)],
       ...(sale.notes ? [['Notes', sale.notes]] : []),
     ],
-    html: (size) => documentHtml(model, company, size),
+    html: (size, layout) => documentHtml(model, company, size, { layout, invoice }),
+    defaultLayout: invoice.layout,
     items: sale.items,
     csvName: sale.invoiceNumber,
   };
