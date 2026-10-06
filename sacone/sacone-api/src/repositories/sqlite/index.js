@@ -16,6 +16,10 @@ function mapUser(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: row.created_by,
+    createdByName: row.created_by_name || null,
+    salesAgent: row.agent_id
+      ? { id: row.agent_id, agentCode: row.agent_code, name: row.agent_name, status: row.agent_status }
+      : null,
   };
 }
 
@@ -35,9 +39,12 @@ export class UserRepository {
   findById(id) {
     const db = getDatabase();
     const row = db.prepare(`
-      SELECT u.*, r.name as role_name, r.slug as role_slug
+      SELECT u.*, r.name as role_name, r.slug as role_slug, cb.full_name as created_by_name,
+        a.id as agent_id, a.agent_code, a.name as agent_name, a.status as agent_status
       FROM users u
       JOIN roles r ON r.id = u.role_id
+      LEFT JOIN users cb ON cb.id = u.created_by
+      LEFT JOIN sales_agents a ON a.user_id = u.id
       WHERE u.id = ?
     `).get(id);
     return mapUser(row);
@@ -75,7 +82,7 @@ export class UserRepository {
     return this.findById(id);
   }
 
-  update(id, { fullName, phone, roleId, isActive, passwordHash }) {
+  update(id, { email, fullName, phone, roleId, isActive, passwordHash }) {
     const db = getDatabase();
     const existing = this.findById(id);
     if (!existing) return null;
@@ -83,6 +90,7 @@ export class UserRepository {
     const now = nowIso();
     db.prepare(`
       UPDATE users SET
+        email = ?,
         full_name = ?,
         phone = ?,
         role_id = ?,
@@ -91,6 +99,7 @@ export class UserRepository {
         updated_at = ?
       WHERE id = ?
     `).run(
+      email ?? existing.email,
       fullName ?? existing.fullName,
       phone !== undefined ? phone : existing.phone,
       roleId ?? existing.roleId,

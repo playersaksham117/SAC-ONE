@@ -239,8 +239,15 @@ export class UserService {
     const existing = userRepo.findById(id);
     if (!existing) throw new AppError('User not found', 404);
 
-    if (data.email && userRepo.emailExists(data.email, id)) {
+    const email = data.email !== undefined ? String(data.email).trim().toLowerCase() : undefined;
+    if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AppError('Enter a valid email (it is the login ID)', 400);
+    }
+    if (email && userRepo.emailExists(email, id)) {
       throw new AppError('Email already exists', 409);
+    }
+    if (data.isActive === false && id === actor.user.id) {
+      throw new AppError('You cannot deactivate your own account', 400);
     }
 
     if (data.roleId) {
@@ -256,6 +263,7 @@ export class UserService {
     }
 
     const updated = userRepo.update(id, {
+      email,
       fullName: data.fullName,
       phone: data.phone,
       roleId: data.roleId,
