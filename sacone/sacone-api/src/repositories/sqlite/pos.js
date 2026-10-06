@@ -207,13 +207,59 @@ export class PosSaleRepository {
     `).all(saleId).map(mapSaleItem);
   }
 
+  /** Customer receipts already allocated against this invoice. */
+  receiptAllocationCount(saleId) {
+    return getDatabase().prepare(`
+      SELECT COUNT(*) AS c FROM customer_receipt_allocations WHERE document_id = ?
+    `).get(saleId).c;
+  }
+
+  commissionPaid(saleId) {
+    return Number(getDatabase().prepare(
+      'SELECT COALESCE(SUM(commission_paid), 0) AS paid FROM sale_commissions WHERE sale_id = ?',
+    ).get(saleId).paid || 0);
+  }
+
+  cancelCommissions(saleId, remark) {
+    getDatabase().prepare(`
+      UPDATE sale_commissions
+      SET status = 'cancelled', commission_eligible = 0, commission_due = 0, remarks = ?, updated_at = ?
+      WHERE sale_id = ? AND status != 'cancelled'
+    `).run(remark, nowIso(), saleId);
+  }
+
+  /** Mark voided (deleted); optionally move it aside under a new number so an edit can reuse the old one. */
+  markVoided(saleId, { note, newInvoiceNumber = null }) {
+    getDatabase().prepare(`
+      UPDATE pos_sales
+      SET status = 'voided',
+          invoice_number = COALESCE(?, invoice_number),
+          notes = TRIM(COALESCE(notes, '') || CASE WHEN COALESCE(notes, '') = '' THEN '' ELSE ' · ' END || ?)
+      WHERE id = ?
+    `).run(newInvoiceNumber, note, saleId);
+  }
+
+  /** Free suffix for the voided copy of an edited invoice: INV-1 → INV-1-E1, INV-1-E2 … */
+  editedCopyNumber(invoiceNumber) {
+    const db = getDatabase();
+    for (let i = 1; ; i += 1) {
+      const candidate = `${invoiceNumber}-E${i}`;
+      if (!db.prepare('SELECT 1 FROM pos_sales WHERE invoice_number = ?').get(candidate)) return candidate;
+    }
+  }
+
+  /** An edited invoice keeps its original date and creator. */
+  restoreOrigin(saleId, { createdAt, createdBy }) {
+    getDatabase().prepare('UPDATE pos_sales SET created_at = ?, created_by = ? WHERE id = ?').run(createdAt, createdBy, saleId);
+  }
+
   listPayments(saleId) {
     return getDatabase().prepare(`
       SELECT * FROM pos_payments WHERE sale_id = ? ORDER BY created_at ASC
     `).all(saleId).map(mapPayment);
   }
 
-  findAll({ search = '', customerId = '', warehouseId = '', status = '', dateFrom = '', dateTo = '', limit = 50, offset = 0 } = {}) {
+  findAll({ search = '', customerId = '', warehouseId = '', status = '', dateFrom = '', dateTo = '', includeVoided = false, limit = 50, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
     const params = [];
@@ -233,6 +279,8 @@ export class PosSaleRepository {
     if (status) {
       where.push('s.status = ?');
       params.push(status);
+    } else if (!includeVoided) {
+      where.push("s.status != 'voided'");
     }
     // Dates are YYYY-MM-DD, inclusive; created_at is an ISO timestamp.
     if (dateFrom) {

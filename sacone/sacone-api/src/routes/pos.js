@@ -179,6 +179,14 @@ posRouter.get('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.getSale(req.params.id, req.actor));
 }));
 
+// Owner only: edit or delete (void) an invoice; products go back to stock.
+posRouter.put('/sales/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, posService.editSale(req.params.id, req.body || {}, req.actor, req));
+}));
+posRouter.delete('/sales/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, posService.deleteSale(req.params.id, req.body || {}, req.actor, req));
+}));
+
 posRouter.post('/hold', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.holdBill(req.body, req.actor, req), 201);
 }));

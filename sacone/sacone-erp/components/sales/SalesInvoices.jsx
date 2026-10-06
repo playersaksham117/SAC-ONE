@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
+import { useAuth } from '../../lib/auth-context';
 import { useLiveRefresh } from '../../lib/live';
 import { documentHtml, saleDocument } from '../../lib/bill-document';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import PageHeader, { Alert, LoadingState } from '../ui';
 import DocumentDialog from '../documents/DocumentDialog';
+import EditInvoiceDialog from './EditInvoiceDialog';
 import { EmptyPanel, StatCard, Toolbar } from '../module-ui';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -49,6 +51,11 @@ export default function SalesInvoices() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [message, setMessage] = useState('');
+  const { session } = useAuth();
+  // Only the owner may change or delete a bill.
+  const isOwner = session?.user?.roleSlug === 'owner_admin';
 
   const load = useCallback(async (silent = false) => {
     if (silent !== true) setLoading(true);
@@ -78,6 +85,22 @@ export default function SalesInvoices() {
     }
   };
 
+  const deleteInvoice = async (s) => {
+    const reason = window.prompt(`Delete invoice ${s.invoiceNumber} (${money(s.grandTotal)})?
+Its items go back to stock and any credit comes off the customer.
+
+Reason (optional):`);
+    if (reason === null) return;
+    try {
+      await apiRequest(`/api/pos/sales/${s.id}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+      setMessage(`Invoice ${s.invoiceNumber} deleted; stock restored.`);
+      setError('');
+      load(true);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   const rows = data.items || [];
   const sum = (key) => rows.reduce((s, r) => s + Number(r[key] || 0), 0);
 
@@ -89,6 +112,7 @@ export default function SalesInvoices() {
         actions={<button type="button" className="btn-secondary" onClick={exportCsv} disabled={exporting}>{exporting ? 'Exporting…' : '⬇ Export CSV'}</button>}
       />
       <Alert message={error} />
+      <Alert type="success" message={message} />
 
       <Toolbar>
         <input
@@ -143,7 +167,15 @@ export default function SalesInvoices() {
                   <td className="px-4 py-3 text-right font-semibold">{money(s.grandTotal)}</td>
                   <td className={`px-4 py-3 text-right ${s.amountCredit > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{s.amountCredit > 0 ? money(s.amountCredit) : '—'}</td>
                   <td className="px-4 py-3 text-right">
-                    <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / PDF</button>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / PDF</button>
+                      {isOwner && s.status === 'completed' && (
+                        <>
+                          <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(s.id); }}>Edit</button>
+                          <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs !text-red-600" onClick={() => deleteInvoice(s)}>Delete</button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -155,6 +187,13 @@ export default function SalesInvoices() {
         </div>
       )}
 
+      {editId && (
+        <EditInvoiceDialog
+          saleId={editId}
+          onClose={() => setEditId(null)}
+          onSaved={(saved) => { setEditId(null); setMessage(`Invoice ${saved.invoiceNumber} updated; stock adjusted.`); load(true); }}
+        />
+      )}
       {openId && <DocumentDialog title="Invoice" load={() => loadInvoice(openId)} onClose={() => setOpenId(null)} />}
     </div>
   );

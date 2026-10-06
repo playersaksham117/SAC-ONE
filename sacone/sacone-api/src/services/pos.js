@@ -1,6 +1,7 @@
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
+import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
 import { inventoryMovementService } from './inventory.js';
@@ -546,11 +547,123 @@ export class PosService {
       customerId: filters.customerId || '',
       warehouseId: filters.warehouseId || '',
       status: filters.status || '',
+      includeVoided: filters.includeVoided === 'true' || filters.includeVoided === true,
       dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom || '') ? filters.dateFrom : '',
       dateTo: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo || '') ? filters.dateTo : '',
       limit: filters.limit ? Math.min(parseInt(filters.limit, 10) || 50, 5000) : 50,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });
+  }
+
+  /** Edit / delete are owner-only (Owner/Admin role), on top of the sales edit/delete permission. */
+  #assertOwner(actor, action) {
+    authService.checkPermission(actor.permissions, `pos.sales.${action}`);
+    if (actor.user.roleSlug !== 'owner_admin') {
+      throw new AppError(`Only the owner can ${action} invoices`, 403, 'OWNER_ONLY');
+    }
+  }
+
+  #editableSale(id, verb) {
+    const sale = saleRepo.findById(id);
+    if (!sale) throw new AppError('Sale not found', 404);
+    if (sale.status === 'voided') throw new AppError('This invoice is already deleted', 400);
+    if (sale.status !== 'completed') {
+      throw new AppError(`This invoice has returns; it cannot be ${verb}. Handle it with a return instead.`, 400, 'SALE_HAS_RETURNS');
+    }
+    if (saleRepo.receiptAllocationCount(id) > 0) {
+      throw new AppError(`A customer receipt is allocated to this invoice; remove that allocation before it can be ${verb}.`, 400, 'SALE_HAS_RECEIPTS');
+    }
+    if (saleRepo.commissionPaid(id) > 0) {
+      throw new AppError(`Commission on this invoice has already been paid; it cannot be ${verb}.`, 400, 'COMMISSION_PAID');
+    }
+    return sale;
+  }
+
+  /** Undo a sale's effects: items back to stock, credit off the customer, commission cancelled. */
+  #reverseSale(sale, label, actor, req) {
+    for (const item of sale.items || []) {
+      inventoryMovementService.createMovement({
+        productId: item.productId,
+        warehouseId: sale.warehouseId,
+        movementType: MOVEMENT_TYPES.SALES_RETURN,
+        quantity: item.quantity,
+        referenceType: 'pos_sale_void',
+        referenceId: sale.id,
+        reason: `${label} ${sale.invoiceNumber}`,
+        notes: item.sku || null,
+      }, actor, req, { skipPermissionCheck: true });
+    }
+    if (Number(sale.amountCredit) > 0) customerRepo.adjustOutstanding(sale.customerId, -Number(sale.amountCredit));
+    saleRepo.cancelCommissions(sale.id, `${label} by ${actor.user.fullName}`);
+  }
+
+  /** Delete (void) an invoice: products return to stock as before the sale. Kept for audit, hidden everywhere. */
+  deleteSale(id, { reason } = {}, actor, req) {
+    this.#assertOwner(actor, 'delete');
+    const sale = this.#editableSale(id, 'deleted');
+    const note = `Deleted by ${actor.user.fullName} on ${new Date().toLocaleString('en-IN')}${reason ? `: ${reason}` : ''}`;
+    getDatabase().transaction(() => {
+      this.#reverseSale(sale, 'Deleted invoice', actor, req);
+      saleRepo.markVoided(id, { note });
+    })();
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'delete', module: 'pos', recordType: 'pos_sale', recordId: id,
+      previousValue: sale, newValue: { status: 'voided', reason: reason || null }, ...getRequestMeta(req),
+    });
+    return saleRepo.findById(id);
+  }
+
+  /**
+   * Edit an invoice. Atomically: the old version goes back to stock and is kept voided as
+   * <number>-E1 for audit, and the corrected invoice is posted under the same number and date
+   * through the normal checkout rules (stock, minimum price, credit limit, commission).
+   */
+  editSale(id, data = {}, actor, req) {
+    this.#assertOwner(actor, 'edit');
+    const old = this.#editableSale(id, 'edited');
+    if (!Array.isArray(data.items) || !data.items.length) throw new AppError('An invoice needs at least one item', 400);
+    const customerId = data.customerId ?? old.customerId;
+    const invoiceDiscount = data.invoiceDiscount ?? old.invoiceDiscount;
+
+    // Either explicit payments, or one method + amount received (the rest goes on credit).
+    let payments = data.payments;
+    if (!Array.isArray(payments) || !payments.length) {
+      const total = this.preview({ items: data.items, invoiceDiscount, customerId }, actor).grandTotal;
+      const method = data.paymentMethod || 'cash';
+      const received = method === 'credit' ? 0 : Math.min(total, Math.max(0, Number(data.amountReceived ?? total)));
+      payments = [
+        ...(received > 0 ? [{ method, amount: received }] : []),
+        ...(total - received > 0.009 ? [{ method: 'credit', amount: Math.round((total - received) * 100) / 100 }] : []),
+      ];
+    }
+
+    const updated = getDatabase().transaction(() => {
+      this.#reverseSale(old, 'Edited invoice', actor, req);
+      saleRepo.markVoided(id, {
+        note: `Edited by ${actor.user.fullName} on ${new Date().toLocaleString('en-IN')}; replaced by the corrected ${old.invoiceNumber}`,
+        newInvoiceNumber: saleRepo.editedCopyNumber(old.invoiceNumber),
+      });
+      const created = this.checkout({
+        warehouseId: old.warehouseId,
+        customerId,
+        items: data.items,
+        invoiceDiscount,
+        payments,
+        invoiceNumber: old.invoiceNumber,
+        salesAgentId: data.salesAgentId !== undefined ? data.salesAgentId : old.salesAgentId,
+        notes: data.notes !== undefined ? data.notes : old.notes,
+      }, actor, req, { completedAt: old.completedAt || old.createdAt });
+      saleRepo.restoreOrigin(created.id, { createdAt: old.createdAt, createdBy: old.createdBy });
+      return created;
+    })();
+
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'update', module: 'pos', recordType: 'pos_sale', recordId: updated.id,
+      previousValue: old, newValue: saleRepo.findById(updated.id), ...getRequestMeta(req),
+    });
+    return saleRepo.findById(updated.id);
   }
 
   getSale(id, actor) {
