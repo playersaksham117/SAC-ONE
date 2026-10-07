@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 import { repos } from '../repositories/index.js';
@@ -187,7 +188,7 @@ export class PurchaseService {
   listOrders(filters, actor) {
     authService.checkPermission(actor.permissions, 'purchases.orders.view');
     return purchaseRepo.listOrders({
-      ...filters,
+      ...withFinancialYear(filters),
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });
@@ -411,7 +412,7 @@ export class PurchaseService {
       'purchases.bills.view',
       'purchases.orders.view',
     ]);
-    return purchaseRepo.listBills(filters);
+    return purchaseRepo.listBills(withFinancialYear(filters));
   }
 
   getBill(id, actor) {
@@ -532,7 +533,7 @@ export class PurchaseService {
 
   listReturns(filters, actor) {
     authService.checkPermission(actor.permissions, 'purchases.returns.view');
-    return purchaseRepo.listReturns(filters);
+    return purchaseRepo.listReturns(withFinancialYear(filters));
   }
 
   createReturn(data, actor, req) {

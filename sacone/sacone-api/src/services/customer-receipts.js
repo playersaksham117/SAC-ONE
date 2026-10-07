@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
@@ -80,6 +81,7 @@ function validateAllocationsAgainstOpen(customerId, amount, allocations) {
 
 export class CustomerReceiptService {
   list(query, actor) {
+    query = withFinancialYear(query);
     requirePerm(actor, 'parties.customer_receipts.view');
     return receiptRepo.list({
       customerId: query.customerId,

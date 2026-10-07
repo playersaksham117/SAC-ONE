@@ -199,6 +199,8 @@ export class PurchaseRepository {
     const params = [];
     if (supplierId) { conditions.push('po.supplier_id = ?'); params.push(supplierId); }
     if (status) { conditions.push('po.status = ?'); params.push(status); }
+    if (filters.dateFrom) { conditions.push('substr(po.order_date, 1, 10) >= ?'); params.push(filters.dateFrom); }
+    if (filters.dateTo) { conditions.push('substr(po.order_date, 1, 10) <= ?'); params.push(filters.dateTo); }
     if (search) {
       conditions.push('(po.po_number LIKE ? OR s.name LIKE ?)');
       const like = `%${search}%`;
@@ -321,6 +323,8 @@ export class PurchaseRepository {
     const params = [];
     if (supplierId) { conditions.push('b.supplier_id = ?'); params.push(supplierId); }
     if (status) { conditions.push('b.status = ?'); params.push(status); }
+    if (filters.dateFrom) { conditions.push('substr(b.bill_date, 1, 10) >= ?'); params.push(filters.dateFrom); }
+    if (filters.dateTo) { conditions.push('substr(b.bill_date, 1, 10) <= ?'); params.push(filters.dateTo); }
     if (search) {
       conditions.push('(b.bill_number LIKE ? OR b.supplier_invoice_number LIKE ? OR s.name LIKE ?)');
       const like = `%${search}%`;
@@ -483,6 +487,8 @@ export class PurchaseRepository {
     const conditions = [];
     const params = [];
     if (supplierId) { conditions.push('pr.supplier_id = ?'); params.push(supplierId); }
+    if (filters.dateFrom) { conditions.push('substr(pr.return_date, 1, 10) >= ?'); params.push(filters.dateFrom); }
+    if (filters.dateTo) { conditions.push('substr(pr.return_date, 1, 10) <= ?'); params.push(filters.dateTo); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countParams = [...params];
     params.push(limit, offset);

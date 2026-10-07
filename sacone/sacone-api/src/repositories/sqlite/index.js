@@ -1,4 +1,4 @@
-import { getDatabase } from '../../database/connection.js';
+import { getCoreDatabase, getDatabase } from '../../database/connection.js';
 import { generateId, nowIso, parseJson } from '../../core/utils.js';
 
 function mapUser(row) {
@@ -25,7 +25,7 @@ function mapUser(row) {
 
 export class UserRepository {
   findAll({ includeInactive = false } = {}) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const sql = `
       SELECT u.*, r.name as role_name, r.slug as role_slug
       FROM users u
@@ -37,7 +37,7 @@ export class UserRepository {
   }
 
   findById(id) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const row = db.prepare(`
       SELECT u.*, r.name as role_name, r.slug as role_slug, cb.full_name as created_by_name,
         a.id as agent_id, a.agent_code, a.name as agent_name, a.status as agent_status
@@ -51,7 +51,7 @@ export class UserRepository {
   }
 
   findByEmail(email) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const row = db.prepare(`
       SELECT u.*, r.name as role_name, r.slug as role_slug
       FROM users u
@@ -62,7 +62,7 @@ export class UserRepository {
   }
 
   findByEmailWithPassword(email) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     return db.prepare(`
       SELECT u.*, r.name as role_name, r.slug as role_slug
       FROM users u
@@ -72,7 +72,7 @@ export class UserRepository {
   }
 
   create({ email, passwordHash, fullName, phone, roleId, createdBy }) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const id = generateId();
     const now = nowIso();
     db.prepare(`
@@ -83,7 +83,7 @@ export class UserRepository {
   }
 
   update(id, { email, fullName, phone, roleId, isActive, passwordHash }) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const existing = this.findById(id);
     if (!existing) return null;
 
@@ -112,12 +112,12 @@ export class UserRepository {
   }
 
   updateLastLogin(id) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowIso(), id);
   }
 
   emailExists(email, excludeId = null) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const row = excludeId
       ? db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?').get(email, excludeId)
       : db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
@@ -127,7 +127,7 @@ export class UserRepository {
 
 export class SessionRepository {
   create({ userId, token, expiresAt, ipAddress, userAgent }) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const id = generateId();
     db.prepare(`
       INSERT INTO sessions (id, user_id, token, expires_at, ip_address, user_agent, created_at)
@@ -137,7 +137,7 @@ export class SessionRepository {
   }
 
   findByToken(token) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     return db.prepare(`
       SELECT s.*, u.email, u.full_name, u.is_active, u.role_id,
              r.name as role_name, r.slug as role_slug
@@ -149,17 +149,17 @@ export class SessionRepository {
   }
 
   deleteByToken(token) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
 
   deleteByUserId(userId) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
   }
 
   purgeExpired() {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(nowIso());
   }
 }
@@ -278,7 +278,7 @@ export class CompanyRepository {
 
 export class RoleRepository {
   findAll({ includeInactive = false } = {}) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const sql = `
       SELECT * FROM roles
       ${includeInactive ? '' : 'WHERE is_active = 1'}
@@ -288,17 +288,17 @@ export class RoleRepository {
   }
 
   findById(id) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     return this._mapRole(db.prepare('SELECT * FROM roles WHERE id = ?').get(id));
   }
 
   findBySlug(slug) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     return this._mapRole(db.prepare('SELECT * FROM roles WHERE slug = ?').get(slug));
   }
 
   create({ name, slug, description, isSystem = false, createdBy }) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const id = generateId();
     const now = nowIso();
     db.prepare(`
@@ -309,7 +309,7 @@ export class RoleRepository {
   }
 
   update(id, { name, description, isActive }) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const existing = this.findById(id);
     if (!existing) return null;
 
@@ -332,7 +332,7 @@ export class RoleRepository {
   }
 
   delete(id) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const role = this.findById(id);
     if (!role) return false;
     if (role.isSystem) {
@@ -348,7 +348,7 @@ export class RoleRepository {
   }
 
   getPermissions(roleId) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     return db.prepare(`
       SELECT p.id, p.permission_key, p.action,
              f.code as feature_code, f.name as feature_name,
@@ -365,12 +365,12 @@ export class RoleRepository {
   permissionKeysForIds(permissionIds) {
     if (!permissionIds?.length) return [];
     const marks = permissionIds.map(() => '?').join(',');
-    return getDatabase().prepare(`SELECT permission_key FROM permissions WHERE id IN (${marks})`)
+    return getCoreDatabase().prepare(`SELECT permission_key FROM permissions WHERE id IN (${marks})`)
       .all(...permissionIds).map((r) => r.permission_key);
   }
 
   setPermissions(roleId, permissionIds) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const deleteStmt = db.prepare('DELETE FROM role_permissions WHERE role_id = ?');
     const insertStmt = db.prepare(`
       INSERT INTO role_permissions (id, role_id, permission_id, created_at)
@@ -380,7 +380,7 @@ export class RoleRepository {
     const tx = db.transaction(() => {
       deleteStmt.run(roleId);
       const now = nowIso();
-      for (const permissionId of permissionIds) {
+      for (const permissionId of new Set(permissionIds)) {
         insertStmt.run(generateId(), roleId, permissionId, now);
       }
     });
@@ -388,7 +388,7 @@ export class RoleRepository {
   }
 
   slugExists(slug, excludeId = null) {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const row = excludeId
       ? db.prepare('SELECT id FROM roles WHERE slug = ? AND id != ?').get(slug, excludeId)
       : db.prepare('SELECT id FROM roles WHERE slug = ?').get(slug);
@@ -396,7 +396,7 @@ export class RoleRepository {
   }
 
   getPermissionTree() {
-    const db = getDatabase();
+    const db = getCoreDatabase();
     const modules = db.prepare(`
       SELECT * FROM modules WHERE is_active = 1 ORDER BY sort_order ASC
     `).all();

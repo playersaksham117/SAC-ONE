@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import QRCode from 'qrcode';
 import { AppError } from '../core/http.js';
 import { nowIso } from '../core/utils.js';
@@ -299,7 +300,10 @@ export class WarehouseService {
   // ── Transfers ──────────────────────────────────────────
   listTransfers(filters, actor) {
     authService.checkPermission(actor.permissions, 'warehouse.transfers.view');
+    filters = withFinancialYear(filters);
     return transferRepo.findAll({
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
       status: filters.status || '',
       warehouseId: filters.warehouseId || '',
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,
@@ -526,7 +530,10 @@ export class WarehouseService {
   // ── Stock counts ───────────────────────────────────────
   listStockCounts(filters, actor) {
     authService.checkPermission(actor.permissions, 'warehouse.stock_counts.view');
+    filters = withFinancialYear(filters);
     return stockCountRepo.findAll({
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
       warehouseId: filters.warehouseId || '',
       status: filters.status || '',
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,

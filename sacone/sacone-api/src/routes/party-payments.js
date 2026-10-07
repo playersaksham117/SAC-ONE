@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
 import { authenticate } from '../middleware/auth.js';
@@ -82,11 +83,12 @@ cashBookRouter.use(authenticate());
 
 cashBookRouter.get('/', asyncHandler(async (req, res) => {
   authService.checkPermission(req.actor.permissions, 'finance.ledger.view');
+  const q = withFinancialYear(req.query);
   sendSuccess(res, repos.cashBook.list({
     accountType: req.query.accountType,
     paymentAccountId: req.query.paymentAccountId,
-    dateFrom: req.query.dateFrom,
-    dateTo: req.query.dateTo,
+    dateFrom: q.dateFrom,
+    dateTo: q.dateTo,
     direction: req.query.direction,
     firmId: req.query.firmId,
     limit: req.query.limit ? parseInt(req.query.limit, 10) : 200,
@@ -96,9 +98,10 @@ cashBookRouter.get('/', asyncHandler(async (req, res) => {
 
 cashBookRouter.get('/summary', asyncHandler(async (req, res) => {
   authService.checkPermission(req.actor.permissions, 'finance.ledger.view');
+  const q = withFinancialYear(req.query);
   sendSuccess(res, repos.cashBook.summaryByAccountType({
-    dateFrom: req.query.dateFrom,
-    dateTo: req.query.dateTo,
+    dateFrom: q.dateFrom,
+    dateTo: q.dateTo,
   }));
 }));
 

@@ -15,6 +15,7 @@
  */
 
 import fs from 'fs';
+import Database from 'better-sqlite3';
 import path from 'path';
 import { config } from '../config/index.js';
 import { closeMongo, pingMongo } from '../database/mongo.js';
@@ -93,12 +94,33 @@ function pruneOldSnapshots() {
   }
 }
 
+/**
+ * The MongoDB export copies the main database file only. A second firm keeps its books in its
+ * own file, which this export would leave behind, so refuse rather than lose that data.
+ */
+function assertSingleFirmBooks() {
+  const db = new Database(liveDatabasePath(), { readonly: true, fileMustExist: true });
+  try {
+    const hasFirms = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'firms'").get();
+    const extra = hasFirms ? db.prepare('SELECT name FROM firms WHERE db_file IS NOT NULL').all() : [];
+    if (extra.length) {
+      throw new Error(
+        `MongoDB export covers the first firm only, and ${extra.map((f) => `"${f.name}"`).join(', ')} keep${extra.length === 1 ? 's' : ''} `
+        + 'separate books. Export stopped so no firm data is left out. (Supabase sign-in data can still be exported with --supabase.)',
+      );
+    }
+  } finally {
+    db.close();
+  }
+}
+
 async function exportCommand() {
   const targets = selectedTargets();
   if (!targets.mongo && !targets.supabase) {
     throw new Error('No cloud target configured. Set MONGODB_URI and/or SUPABASE_* in sacone-api/.env (see docs/CLOUD_LINK.md).');
   }
   if (targets.mongo && !flag('dry-run')) assertMongoWritable();
+  if (targets.mongo) assertSingleFirmBooks();
 
   log('Taking a consistent snapshot of the local database…');
   const snapshot = await takeSnapshot();

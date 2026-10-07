@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { authenticateDevice } from '../middleware/device-auth.js';
 import { posSyncService, posDeviceAdminService } from '../services/pos-sync.js';
 import { currentSeq, waitForChange } from '../realtime/change-feed.js';
+import { currentFirmId } from '../database/context.js';
 import { commissionService } from '../services/commissions.js';
 import { serverAddresses } from '../core/server-addresses.js';
 
@@ -56,6 +57,7 @@ posSyncRouter.get('/changes', asyncHandler(async (req, res) => {
   const event = await waitForChange({
     since: Number.isFinite(since) ? since : currentSeq(),
     tables: POS_PULL_TABLES,
+    firmId: currentFirmId(),
     timeoutMs: wait * 1000,
   });
   if (res.destroyed) return;

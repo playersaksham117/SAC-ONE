@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
@@ -541,6 +542,7 @@ export class PosService {
   }
 
   listSales(filters, actor) {
+    filters = withFinancialYear(filters);
     authService.checkPermission(actor.permissions, 'pos.sales.view');
     return saleRepo.findAll({
       search: filters.search || '',
@@ -883,8 +885,12 @@ export class PosService {
 
   listReturns(filters, actor) {
     authService.checkPermission(actor.permissions, 'pos.returns.view');
+    // Returns of one sale are shown whatever year they fall in.
+    if (!filters.saleId) filters = withFinancialYear(filters);
     return returnRepo.findAll({
       saleId: filters.saleId || '',
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
       limit: filters.limit ? parseInt(filters.limit, 10) : 50,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });

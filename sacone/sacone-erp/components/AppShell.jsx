@@ -9,6 +9,29 @@ import { useOwnerAppUrl } from '../lib/app-urls';
 import { LiveIndicator } from '../lib/live';
 import { recordModuleVisit } from '../lib/recent-modules';
 
+/** Financial year containing today (India), e.g. '2026-27'. */
+function currentFinancialYear() {
+  const ist = new Date(Date.now() + 330 * 60000);
+  const start = ist.getUTCMonth() + 1 >= 4 ? ist.getUTCFullYear() : ist.getUTCFullYear() - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
+/** Which firm and year this screen shows, with a link back to the picker. */
+function FirmYearBadge({ session }) {
+  if (!session?.firm) return null;
+  return (
+    <Link
+      href="/select-firm"
+      title="Switch firm or financial year"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 ring-1 ring-brand-200 hover:bg-brand-100"
+    >
+      <span className="truncate">{session.firm.name}</span>
+      {session.financialYear && <span className="shrink-0 text-brand-500">· FY {session.financialYear.code}</span>}
+      <span className="shrink-0 text-brand-500">⇄</span>
+    </Link>
+  );
+}
+
 function NavLink({ item, active, onNavigate }) {
   return (
     <Link
@@ -153,12 +176,12 @@ export default function AppShell({ children }) {
             </button>
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-base font-semibold text-slate-900 sm:text-lg">{title}</h1>
-              <p className="truncate text-xs text-slate-500 sm:text-sm">
-                {session?.company?.businessName || 'SACONE ERP'}
+              <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                <FirmYearBadge session={session} />
                 {!isHome && currentModule && (
-                  <span className="hidden text-slate-400 sm:inline"> · {currentModule.description}</span>
+                  <span className="hidden truncate text-xs text-slate-400 md:inline">{currentModule.description}</span>
                 )}
-              </p>
+              </div>
             </div>
             <LiveIndicator />
             {!isHome && (
@@ -168,6 +191,13 @@ export default function AppShell({ children }) {
             )}
           </div>
         </header>
+        {session?.financialYear && session.financialYear.code !== currentFinancialYear() && (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 sm:px-6 lg:px-8">
+            Showing <b>FY {session.financialYear.code}</b> ({session.financialYear.from} to {session.financialYear.to}).
+            New entries are dated today and belong to FY {currentFinancialYear()}.{' '}
+            <Link href="/select-firm" className="font-semibold underline">Switch year</Link>
+          </div>
+        )}
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>

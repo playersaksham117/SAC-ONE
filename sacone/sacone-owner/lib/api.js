@@ -79,6 +79,10 @@ export async function apiRequest(path, options = {}) {
     const error = new Error(message);
     error.status = response.status;
     error.code = payload?.error?.code;
+    // The firm was switched off or access withdrawn: choose again.
+    if (error.code === 'FIRM_NOT_SELECTED' && typeof window !== 'undefined' && window.location.pathname !== '/select-firm') {
+      window.location.assign('/select-firm');
+    }
     throw error;
   }
 

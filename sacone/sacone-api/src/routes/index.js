@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
 import { authenticate } from '../middleware/auth.js';
+import { firmService } from '../services/firms.js';
+
+const signedIn = () => authenticate(true, { firm: 'optional' });
 import {
   authService,
   companyService,
@@ -12,18 +15,27 @@ import {
 const router = Router();
 
 router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-  const result = await authService.login(email, password, req);
+  const { email, password, firmId, financialYear } = req.body || {};
+  const result = await authService.login(email, password, req, { firmId, financialYear });
   sendSuccess(res, result);
 }));
 
-router.post('/logout', authenticate(), asyncHandler(async (req, res) => {
+router.post('/logout', signedIn(), asyncHandler(async (req, res) => {
   const result = authService.logout(req.token, req);
   sendSuccess(res, result);
 }));
 
-router.get('/me', authenticate(), asyncHandler(async (req, res) => {
+router.get('/me', signedIn(), asyncHandler(async (req, res) => {
   sendSuccess(res, req.actor);
+}));
+
+// Firm and financial year picker, shown after every sign-in and from the header switcher.
+router.get('/firms', signedIn(), asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.choices(req.actor.user));
+}));
+router.post('/select-firm', signedIn(), asyncHandler(async (req, res) => {
+  firmService.select(req.token, req.actor.user, req.body || {});
+  sendSuccess(res, authService.getSession(req.token));
 }));
 
 export default router;
@@ -38,7 +50,7 @@ companyRouter.put('/', asyncHandler(async (req, res) => {
 }));
 
 export const userRouter = Router();
-userRouter.use(authenticate());
+userRouter.use(signedIn());
 userRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.list(req.actor));
 }));
@@ -57,9 +69,28 @@ userRouter.post('/:id/deactivate', asyncHandler(async (req, res) => {
 userRouter.post('/:id/activate', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.activate(req.params.id, req.actor, req));
 }));
+userRouter.get('/:id/firms', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.userFirms(req.params.id, req.actor));
+}));
+userRouter.put('/:id/firms', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.setUserFirms(req.params.id, req.body?.firmIds, req.actor, req));
+}));
+
+// Firms (owner): add a firm with its own books, rename, switch off.
+export const firmRouter = Router();
+firmRouter.use(signedIn());
+firmRouter.get('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.list(req.actor));
+}));
+firmRouter.post('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.create(req.body || {}, req.actor, req), 201);
+}));
+firmRouter.put('/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.update(req.params.id, req.body || {}, req.actor, req));
+}));
 
 export const roleRouter = Router();
-roleRouter.use(authenticate());
+roleRouter.use(signedIn());
 roleRouter.get('/permission-tree', asyncHandler(async (req, res) => {
   sendSuccess(res, roleService.getPermissionTree(req.actor));
 }));

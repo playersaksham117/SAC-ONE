@@ -2,6 +2,7 @@ import { AppError } from '../core/http.js';
 import { generateId } from '../core/utils.js';
 import { extractApiKey } from './api-key.js';
 import { authenticateDeviceKey } from '../services/pos-sync.js';
+import { firmService } from '../services/firms.js';
 
 /**
  * Authenticate a POS terminal.
@@ -18,14 +19,16 @@ export function authenticateDevice() {
         return next(new AppError('Device sync key required (X-API-Key header)', 401, 'UNAUTHORIZED'));
       }
       const fingerprint = String(req.headers['x-device-id'] || '').trim() || null;
-      const device = authenticateDeviceKey(rawKey, fingerprint);
-      if (!device) {
-        return next(new AppError('Invalid or revoked device sync key', 401, 'UNAUTHORIZED'));
-      }
-      req.device = device;
-      req.requestId = req.headers['x-request-id'] || generateId();
-      res.setHeader('X-Request-Id', req.requestId);
-      return next();
+      // A terminal belongs to the firm it was registered in; the request runs in that firm's books.
+      return firmService.inFirmOf(() => authenticateDeviceKey(rawKey, fingerprint), (device) => {
+        if (!device) {
+          return next(new AppError('Invalid or revoked device sync key', 401, 'UNAUTHORIZED'));
+        }
+        req.device = device;
+        req.requestId = req.headers['x-request-id'] || generateId();
+        res.setHeader('X-Request-Id', req.requestId);
+        return next();
+      });
     } catch (err) {
       return next(err);
     }

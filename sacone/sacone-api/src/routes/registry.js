@@ -2,7 +2,7 @@
  * Single source of truth for every API mount point.
  * Add a module here — app.js wires it up; nothing else needs editing.
  */
-import authRouter, { companyRouter, userRouter, roleRouter, auditRouter } from './index.js';
+import authRouter, { companyRouter, userRouter, roleRouter, auditRouter, firmRouter } from './index.js';
 import { categoryRouter, brandRouter, unitRouter, productRouter } from './products.js';
 import { inventoryRouter } from './inventory.js';
 import { warehouseRouter } from './warehouse.js';
@@ -29,6 +29,7 @@ export const ROUTES = [
   ['/api/company', companyRouter],
   ['/api/users', userRouter],
   ['/api/roles', roleRouter],
+  ['/api/firms', firmRouter],
   ['/api/audit-logs', auditRouter],
   ['/api/settings', settingsRouter],
   ['/api/approvals', approvalRouter],

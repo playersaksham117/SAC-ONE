@@ -524,13 +524,16 @@ export class PosReturnRepository {
     return ret;
   }
 
-  findAll({ saleId = '', limit = 50, offset = 0 } = {}) {
+  findAll({ saleId = '', dateFrom = '', dateTo = '', limit = 50, offset = 0 } = {}) {
     const params = [];
-    let where = '';
+    const conditions = [];
     if (saleId) {
-      where = 'WHERE r.sale_id = ?';
+      conditions.push('r.sale_id = ?');
       params.push(saleId);
     }
+    if (dateFrom) { conditions.push('substr(r.created_at, 1, 10) >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('substr(r.created_at, 1, 10) <= ?'); params.push(dateTo); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const items = getDatabase().prepare(`
       SELECT r.*, s.invoice_number, c.name as customer_name
       FROM pos_sales_returns r

@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import {
   MOVEMENT_TYPES,
@@ -157,7 +158,7 @@ export class InventoryMovementService {
   listMovements(filters, actor) {
     authService.checkPermission(actor.permissions, 'inventory.movements.view');
     return movementRepo.findAll({
-      ...filters,
+      ...(filters.productId ? filters : withFinancialYear(filters)),
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });

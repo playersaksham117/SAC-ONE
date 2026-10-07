@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { nowIso } from '../core/utils.js';
 import { repos } from '../repositories/index.js';
@@ -174,6 +175,7 @@ export class FinanceService {
 
   // ── Transactions ────────────────────────────────────────
   listTransactions(query, actor) {
+    query = withFinancialYear(query);
     authService.checkPermission(actor.permissions, 'finance.ledger.view');
     return txnRepo.findAll({
       search: query.search,

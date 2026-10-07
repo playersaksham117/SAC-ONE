@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { Router } from 'express';
 import { hsnStockSummary } from '../services/hsn-summary.js';
 import { asyncHandler, sendSuccess } from '../core/http.js';
@@ -21,7 +22,7 @@ inventoryRouter.get('/warehouses', asyncHandler(async (req, res) => {
 
 /** HSN-wise opening / IN (+) / OUT (−) / closing quantity and value for a period. */
 inventoryRouter.get('/hsn-summary', asyncHandler(async (req, res) => {
-  sendSuccess(res, hsnStockSummary(req.query, req.actor));
+  sendSuccess(res, hsnStockSummary(withFinancialYear(req.query), req.actor));
 }));
 
 inventoryRouter.get('/stock', asyncHandler(async (req, res) => {

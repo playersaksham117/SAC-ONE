@@ -2,6 +2,7 @@ import { AppError } from '../core/http.js';
 import { generateId } from '../core/utils.js';
 import { repos } from '../repositories/index.js';
 import { hashApiKey } from '../repositories/sqlite/webstore.js';
+import { firmService } from '../services/firms.js';
 
 const apiKeyRepo = repos.apiKeys;
 const logRepo = repos.apiRequestLogs;
@@ -31,28 +32,31 @@ export function authenticateApiKey(requiredScopes = []) {
       return next(new AppError('API key required. Pass X-API-Key header.', 401, 'UNAUTHORIZED'));
     }
 
-    const record = apiKeyRepo.findByHash(hashApiKey(rawKey));
-    if (!record) {
-      return next(new AppError('Invalid or revoked API key', 401, 'UNAUTHORIZED'));
-    }
-
-    const scopes = Array.isArray(record.scopes) ? record.scopes : [];
-    for (const scope of requiredScopes) {
-      if (!scopes.includes(scope) && !scopes.includes('*')) {
-        return next(new AppError(`API key missing scope: ${scope}`, 403, 'FORBIDDEN'));
+    // A web-store key belongs to one firm; the request runs in that firm's books.
+    const keyHash = hashApiKey(rawKey);
+    return firmService.inFirmOf(() => apiKeyRepo.findByHash(keyHash), (record) => {
+      if (!record) {
+        return next(new AppError('Invalid or revoked API key', 401, 'UNAUTHORIZED'));
       }
-    }
 
-    apiKeyRepo.touchLastUsed(record.id);
-    req.apiKeyActor = {
-      id: record.id,
-      name: record.name,
-      scopes,
-      keyPrefix: record.keyPrefix,
-    };
-    req.requestId = req.headers['x-request-id'] || generateId();
-    res.setHeader('X-Request-Id', req.requestId);
-    next();
+      const scopes = Array.isArray(record.scopes) ? record.scopes : [];
+      for (const scope of requiredScopes) {
+        if (!scopes.includes(scope) && !scopes.includes('*')) {
+          return next(new AppError(`API key missing scope: ${scope}`, 403, 'FORBIDDEN'));
+        }
+      }
+
+      apiKeyRepo.touchLastUsed(record.id);
+      req.apiKeyActor = {
+        id: record.id,
+        name: record.name,
+        scopes,
+        keyPrefix: record.keyPrefix,
+      };
+      req.requestId = req.headers['x-request-id'] || generateId();
+      res.setHeader('X-Request-Id', req.requestId);
+      return next();
+    });
   };
 }
 

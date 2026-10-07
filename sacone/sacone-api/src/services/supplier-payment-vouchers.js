@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
@@ -80,6 +81,7 @@ function validateAllocationsAgainstOpen(supplierId, amount, allocations) {
 
 export class SupplierPaymentVoucherService {
   list(query, actor) {
+    query = withFinancialYear(query);
     requirePerm(actor, 'parties.supplier_payments.view');
     return voucherRepo.list({
       supplierId: query.supplierId,

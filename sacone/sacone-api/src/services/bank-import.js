@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
@@ -347,6 +348,7 @@ export class BankImportService {
   }
 
   listTransactions(query, actor) {
+    query = withFinancialYear(query);
     requirePerm(actor, 'finance.bank_import.view');
     return bankRepo.list({
       paymentAccountId: query.paymentAccountId,

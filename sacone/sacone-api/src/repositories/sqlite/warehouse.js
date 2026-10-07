@@ -540,11 +540,13 @@ export class WarehouseTransferRepository {
     }));
   }
 
-  findAll({ status = '', warehouseId = '', limit = 100, offset = 0 } = {}) {
+  findAll({ status = '', warehouseId = '', dateFrom = '', dateTo = '', limit = 100, offset = 0 } = {}) {
     const db = getDatabase();
     const conditions = [];
     const params = [];
     if (status) { conditions.push('t.status = ?'); params.push(status); }
+    if (dateFrom) { conditions.push('substr(t.created_at, 1, 10) >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('substr(t.created_at, 1, 10) <= ?'); params.push(dateTo); }
     if (warehouseId) {
       conditions.push('(t.source_warehouse_id = ? OR t.destination_warehouse_id = ?)');
       params.push(warehouseId, warehouseId);
@@ -668,12 +670,14 @@ export class StockCountRepository {
     }));
   }
 
-  findAll({ warehouseId = '', status = '', limit = 100, offset = 0 } = {}) {
+  findAll({ warehouseId = '', status = '', dateFrom = '', dateTo = '', limit = 100, offset = 0 } = {}) {
     const db = getDatabase();
     const conditions = [];
     const params = [];
     if (warehouseId) { conditions.push('sc.warehouse_id = ?'); params.push(warehouseId); }
     if (status) { conditions.push('sc.status = ?'); params.push(status); }
+    if (dateFrom) { conditions.push('substr(sc.created_at, 1, 10) >= ?'); params.push(dateFrom); }
+    if (dateTo) { conditions.push('substr(sc.created_at, 1, 10) <= ?'); params.push(dateTo); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countParams = [...params];
     params.push(limit, offset);

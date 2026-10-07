@@ -96,6 +96,19 @@ src/ui/         design system: reuse components.tsx, don't restyle per screen
 ```
 - Dependency direction: app → services → store/domain. The domain layer imports nothing.
 
+## 3a. Firms and financial years
+
+Each firm keeps fully separate books.
+
+- **Core file** (`DATABASE_PATH`, e.g. `data/sacone.db`): users, roles, sessions, the `firms` list and `user_firms` access, plus the books of the first firm.
+- **Firm files** (`data/firms/<id>.db`): one per additional firm, holding only that firm's books. Each keeps a password-less copy of users/roles so its records can reference them (`database/identity-mirror.js`).
+- `getDatabase()` returns the file of the firm chosen for the current request (`database/context.js`, set by `authenticate`). `getCoreDatabase()` always returns the core file, and only the user, session and role repositories use it. Code running outside a request (setup, scripts) uses the core file.
+- After signing in, a user picks a firm and an Indian financial year (Apr–Mar). Business routes return `409 FIRM_NOT_SELECTED` until then. The owner can open every firm; other users only their assigned firms, or the first firm if none are assigned.
+- Transaction lists and reports default to the chosen year (`withFinancialYear`); explicit `dateFrom`/`dateTo` or `allYears=true` override it. Masters and balances are all-time.
+- POS device keys and web-store API keys belong to the firm where they were created. Their requests run in that firm.
+- `npm run db:setup` migrates the core file and every firm file. Back up the whole `data/` folder, not only the main file.
+- `cloud:export` to MongoDB covers the core file only, so it stops when a second firm exists rather than leave that firm's data behind.
+
 ## 4. Integration contract (summary)
 
 Full spec: `sacone-api/docs/POS_SYNC_API.md`.

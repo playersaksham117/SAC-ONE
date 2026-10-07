@@ -26,9 +26,17 @@ export default function OwnerShell({ children }) {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-lg">👑</span>
             <span className="hidden leading-tight sm:block">
               <span className="block text-sm font-bold tracking-tight">SACONE Owner</span>
-              <span className="block max-w-[14rem] truncate text-[11px] text-slate-400">{session?.company?.businessName || 'Business'}</span>
+              <span className="block max-w-[14rem] truncate text-[11px] text-slate-400">
+                {session?.firm?.name || session?.company?.businessName || 'Business'}
+                {session?.financialYear ? ` · FY ${session.financialYear.code}` : ''}
+              </span>
             </span>
           </Link>
+          {session?.firm && (
+            <Link href="/select-firm" title="Switch firm or financial year" className="rounded-lg px-2 py-1 text-xs text-slate-300 ring-1 ring-slate-700 hover:bg-slate-800 hover:text-white">
+              ⇄ <span className="sm:hidden">{session.firm.name} · FY {session.financialYear?.code}</span><span className="hidden sm:inline">Switch</span>
+            </Link>
+          )}
 
           <nav className="scrollbar-none order-last -mx-1 flex w-full gap-1 overflow-x-auto px-1 sm:order-none sm:mx-0 sm:ml-2 sm:w-auto sm:flex-1 sm:px-0">
             {items.map((n) => {

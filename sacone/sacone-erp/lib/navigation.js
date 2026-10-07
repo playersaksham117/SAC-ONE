@@ -168,6 +168,16 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
+    id: 'firms',
+    section: 'administration',
+    label: 'Firms',
+    description: 'Separate books per firm, who can open which firm',
+    href: '/admin/firms',
+    permission: 'core.company.edit',
+    icon: '🏢',
+    placeholder: false,
+  },
+  {
     id: 'approval-rules',
     section: 'administration',
     label: 'Approval Rules',

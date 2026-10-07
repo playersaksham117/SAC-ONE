@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import './database/firm-provision.js'; // registers how firm database files are prepared
 import { config, isLocalNetworkOrigin } from './config/index.js';
 import { AppError, sendError } from './core/http.js';
 import { ROUTES } from './routes/registry.js';

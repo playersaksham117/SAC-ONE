@@ -105,7 +105,7 @@ export class QuotationRepository {
     `).all(quotationId).map(mapItem);
   }
 
-  findAll({ search = '', status = '', customerId = '', limit = 50, offset = 0 } = {}) {
+  findAll({ search = '', status = '', customerId = '', dateFrom = '', dateTo = '', limit = 50, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
     const params = [];
@@ -122,6 +122,8 @@ export class QuotationRepository {
       where.push('q.customer_id = ?');
       params.push(customerId);
     }
+    if (dateFrom) { where.push('substr(q.created_at, 1, 10) >= ?'); params.push(dateFrom); }
+    if (dateTo) { where.push('substr(q.created_at, 1, 10) <= ?'); params.push(dateTo); }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const items = db.prepare(`
       ${QUOTE_SELECT} ${clause}

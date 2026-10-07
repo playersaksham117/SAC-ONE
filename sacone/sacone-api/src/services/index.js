@@ -4,7 +4,9 @@ import { AppError } from '../core/http.js';
 import { addHours } from '../core/utils.js';
 import { config } from '../config/index.js';
 import { repos } from '../repositories/index.js';
-import { getDatabase } from '../database/connection.js';
+import { getCoreDatabase } from '../database/connection.js';
+import { currentFirmId, runWithFirm } from '../database/context.js';
+import { firmService } from './firms.js';
 
 const userRepo = repos.users;
 const sessionRepo = repos.sessions;
@@ -28,7 +30,7 @@ function getRequestMeta(req) {
 }
 
 export class AuthService {
-  async login(email, password, req) {
+  async login(email, password, req, { firmId, financialYear } = {}) {
     if (!email || !password) {
       throw new AppError('Email and password are required', 400);
     }
@@ -68,11 +70,24 @@ export class AuthService {
     });
 
     const permissions = roleRepo.getPermissions(userRow.role_id).map((p) => p.permission_key);
-    const company = companyRepo.get();
+    const sessionUser = { id: userRow.id, roleSlug: userRow.role_slug };
+    const firms = firmService.choices(sessionUser);
+    if (!firms.length) {
+      sessionRepo.deleteByToken(token);
+      throw new AppError('No firm is assigned to this user. Ask the owner to give you access.', 403, 'NO_FIRM');
+    }
+    // Firm and financial year: as asked, or the only firm in its current year (ERP still shows the picker).
+    let selection = null;
+    if (firmId) selection = firmService.select(token, sessionUser, { firmId, financialYear });
+    else if (firms.length === 1) selection = firmService.select(token, sessionUser, { firmId: firms[0].id });
+    const company = selection ? runWithFirm({ firmId: selection.firm.id }, () => companyRepo.get()) : null;
 
     return {
       token,
       expiresAt,
+      firms,
+      firm: selection?.firm || null,
+      financialYear: selection?.financialYear || null,
       user: {
         id: userRow.id,
         email: userRow.email,
@@ -112,9 +127,12 @@ export class AuthService {
     if (!session.is_active) return null;
 
     const permissions = roleRepo.getPermissions(session.role_id).map((p) => p.permission_key);
-    const company = companyRepo.get();
+    const selection = firmService.sessionSelection(session);
+    const company = selection ? runWithFirm({ firmId: selection.firm.id }, () => companyRepo.get()) : null;
 
     return {
+      firm: selection ? { id: selection.firm.id, name: company?.businessName || selection.firm.name, isPrimary: selection.firm.isPrimary } : null,
+      financialYear: selection?.financialYear || null,
       user: {
         id: session.user_id,
         email: session.email,
@@ -162,6 +180,7 @@ export class CompanyService {
       },
       actor.user.id
     );
+    firmService.syncName(currentFirmId(), updated?.businessName);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -299,7 +318,7 @@ export class UserService {
 
     const target = userRepo.findById(id);
     if (target?.roleSlug === 'owner_admin') {
-      const activeOwners = getDatabase().prepare(`
+      const activeOwners = getCoreDatabase().prepare(`
         SELECT COUNT(*) as c FROM users u
         JOIN roles r ON r.id = u.role_id
         WHERE r.slug = 'owner_admin' AND u.is_active = 1

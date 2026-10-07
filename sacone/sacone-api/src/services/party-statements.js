@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { openingBalanceFor, openingBalancesOf } from './opening-balances.js';
 import { getDatabase } from '../database/connection.js';
@@ -25,6 +26,7 @@ function emptyAgeing() {
 
 export class PartyStatementService {
   customerStatement(customerId, query, actor) {
+    query = withFinancialYear(query);
     authService.checkPermission(actor.permissions, 'parties.customers.view');
     const customer = customerRepo.findById(customerId);
     if (!customer) throw new AppError('Customer not found', 404);
@@ -230,6 +232,7 @@ export class PartyStatementService {
   }
 
   supplierStatement(supplierId, query, actor) {
+    query = withFinancialYear(query);
     authService.checkPermission(actor.permissions, 'parties.suppliers.view');
     const supplier = supplierRepo.findById(supplierId);
     if (!supplier) throw new AppError('Supplier not found', 404);

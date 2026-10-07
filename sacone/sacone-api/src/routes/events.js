@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AppError } from '../core/http.js';
 import { extractToken } from '../middleware/auth.js';
 import { authService } from '../services/index.js';
-import { currentSeq, onChange } from '../realtime/change-feed.js';
+import { concernsFirm, currentSeq, onChange } from '../realtime/change-feed.js';
 
 const HEARTBEAT_MS = 25_000;
 
@@ -19,9 +19,12 @@ export const eventsRouter = Router();
 
 eventsRouter.get('/', (req, res, next) => {
   const token = extractToken(req);
-  if (!token || !authService.getSession(token)) {
+  const session = token ? authService.getSession(token) : null;
+  if (!session) {
     return next(new AppError('Invalid or expired session', 401, 'UNAUTHORIZED'));
   }
+  // Only changes to this session's firm (or shared data) wake the screen.
+  const firmId = session.firm?.id || null;
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -36,7 +39,7 @@ eventsRouter.get('/', (req, res, next) => {
   res.write('retry: 3000\n\n');
   send('ready', { seq: currentSeq() });
 
-  const unsubscribe = onChange((change) => send('change', change));
+  const unsubscribe = onChange((change) => { if (concernsFirm(change, firmId)) send('change', change); });
   const heartbeat = setInterval(() => {
     if (!authService.getSession(token)) {
       send('expired', {});

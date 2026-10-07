@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { getFinancialYear } from '../core/financial-year.js';
@@ -90,7 +91,10 @@ export class QuotationService {
 
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'pos.quotations.view');
+    filters = withFinancialYear(filters);
     return quoteRepo.findAll({
+      dateFrom: filters.dateFrom || '',
+      dateTo: filters.dateTo || '',
       search: filters.search || '',
       status: filters.status || '',
       customerId: filters.customerId || '',

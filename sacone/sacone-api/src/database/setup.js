@@ -3,7 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-import { getDatabase, closeDatabase } from './connection.js';
+import { getDatabase, closeDatabase, getFirmDatabase } from './connection.js';
+import { ensurePrimaryFirm } from './firm-provision.js';
 import { config } from '../config/index.js';
 import { generateId, nowIso } from '../core/utils.js';
 import {
@@ -17,7 +18,7 @@ import { CommissionPlanRepository } from '../repositories/sqlite/commissions.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function runMigrations(db) {
+export function runMigrations(db, { quiet = false } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,7 +41,7 @@ function runMigrations(db) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     db.exec(sql);
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, nowIso());
-    console.log(`Applied migration: ${version}`);
+    if (!quiet) console.log(`Applied migration: ${version}`);
   }
 }
 
@@ -381,7 +382,7 @@ function seedProductMaster(db) {
   console.log('Seeded product master with 10 sample products');
 }
 
-function seedDefaultWarehouse(db) {
+export function seedDefaultWarehouse(db) {
   const count = db.prepare('SELECT COUNT(*) as count FROM warehouses').get().count;
   const now = nowIso();
   const admin = db.prepare('SELECT id FROM users ORDER BY created_at ASC LIMIT 1').get();
@@ -438,7 +439,7 @@ function seedDefaultWarehouse(db) {
   }
 }
 
-function seedWalkInCustomer(db) {
+export function seedWalkInCustomer(db) {
   const existing = db.prepare('SELECT id FROM customers WHERE is_walk_in = 1 LIMIT 1').get();
   if (existing) return;
 
@@ -608,6 +609,14 @@ function main() {
       console.log('Real-data mode: no sample products, parties, or demo API keys seeded.');
       console.log('  Add company details, warehouse, products, and customers through the ERP.');
       reportLeftoverDemoData(db);
+    }
+
+    // Firms: register the first firm (this file's books), then bring every other firm's file up to date.
+    const primary = ensurePrimaryFirm(db);
+    if (primary.created) console.log(`Registered firm "${primary.name}" (books in the main database file)`);
+    for (const firm of db.prepare('SELECT id, name FROM firms WHERE db_file IS NOT NULL ORDER BY created_at').all()) {
+      getFirmDatabase(firm.id);
+      console.log(`Firm "${firm.name}": database file up to date`);
     }
 
     console.log('Database setup complete.');

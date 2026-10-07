@@ -1,3 +1,4 @@
+import { withFinancialYear } from '../database/context.js';
 import crypto from 'crypto';
 import { AppError } from '../core/http.js';
 import { config } from '../config/index.js';
@@ -601,6 +602,7 @@ export class CommissionService {
   }
 
   listCommissions(query, actor) {
+    query = withFinancialYear(query);
     requirePerm(actor, 'sales.commissions.view');
     return commissionRepo.list({
       salesAgentId: query.salesAgentId,
