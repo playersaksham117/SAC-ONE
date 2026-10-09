@@ -10,6 +10,9 @@ import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { config } from '../config/index.js';
 import { connectMongo, closeMongo, isMongoConfigured, getMongoConfigStatus } from '../database/mongo.js';
+import { currentFirmId } from '../database/context.js';
+import { firmMongoDatabase } from '../cloud/mongo-export.js';
+import { FirmRepository } from '../repositories/sqlite/firms.js';
 import {
   ID_STRATEGY,
   JSON_TO_MONGO_MAP,
@@ -203,8 +206,12 @@ export async function importJsonToMongo({
   }
 
   const { envelopes } = loadExportBatch(exportDir);
-  const { db } = await connectMongo();
-  const summary = { collections: {}, inserted: 0, skipped: 0, failed: 0 };
+  // JSON exports are made from the firm that is open; import into that firm's own Mongo database
+  // (same layout as npm run cloud:export), never into another firm's.
+  const { client, db: coreMongo } = await connectMongo();
+  const firm = currentFirmId() ? new FirmRepository().findById(currentFirmId()) : null;
+  const db = firm && !firm.isPrimary ? client.db(firmMongoDatabase(firm.id)) : coreMongo;
+  const summary = { database: db.databaseName, collections: {}, inserted: 0, skipped: 0, failed: 0 };
   const datasetKeys = datasets?.length
     ? datasets
     : COMPLETE_EXPORT_ORDER.filter((k) => JSON_TO_MONGO_MAP[k]);

@@ -107,7 +107,7 @@ Each firm keeps fully separate books.
 - Transaction lists and reports default to the chosen year (`withFinancialYear`); explicit `dateFrom`/`dateTo` or `allYears=true` override it. Masters and balances are all-time.
 - POS device keys and web-store API keys belong to the firm where they were created. Their requests run in that firm.
 - `npm run db:setup` migrates the core file and every firm file. Back up the whole `data/` folder, not only the main file.
-- `cloud:export` to MongoDB covers the core file only, so it stops when a second firm exists rather than leave that firm's data behind.
+- `cloud:export` sends every firm to MongoDB. The main file goes to `MONGODB_DATABASE`; each other firm goes to its own `<MONGODB_DATABASE>_firm_<id>` database, verified field by field (see `sacone-api/docs/CLOUD_LINK.md`).
 
 ## 4. Integration contract (summary)
 

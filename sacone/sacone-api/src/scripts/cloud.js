@@ -15,14 +15,17 @@
  */
 
 import fs from 'fs';
-import Database from 'better-sqlite3';
 import path from 'path';
 import { config } from '../config/index.js';
 import { closeMongo, pingMongo } from '../database/mongo.js';
 import {
-  SNAPSHOT_ROOT, latestSnapshotDir, liveDatabasePath, openSnapshot, takeSnapshot,
+  SNAPSHOT_ROOT, firmsInSnapshot, latestSnapshotDir, liveDatabasePath, openFirmSnapshots, openSnapshot,
+  takeFirmSnapshots, takeSnapshot,
 } from '../cloud/snapshot.js';
-import { assertMongoWritable, exportToMongo, mongoPlan, verifyMongo } from '../cloud/mongo-export.js';
+import {
+  FIRM_FILE_SKIPPED_TABLES, MONGO_SKIPPED_TABLES, assertMongoWritable, exportToMongo, firmMongoDatabase,
+  mongoPlan, recordFirmDatabases, verifyMongo,
+} from '../cloud/mongo-export.js';
 import {
   exportToSupabase, isSupabaseConfigured, pingSupabase, prepareSupabaseRows, verifySupabase,
 } from '../cloud/supabase-export.js';
@@ -49,6 +52,11 @@ async function status() {
     const snap = openSnapshot(path.dirname(liveDatabasePath()), liveDatabasePath());
     const rows = snap.tables.reduce((s, t) => s + t.rowCount, 0);
     log(`                 ${snap.tables.length} tables, ${rows} rows`);
+    const firms = firmsInSnapshot(snap);
+    log(`Firms            ${primaryFirmName(snap).name} (main file) → MongoDB "${config.mongodbDatabase || '—'}"`);
+    for (const firm of firms) {
+      log(`                 ${firm.name}${firm.isActive ? '' : ' [switched off]'} (${firm.dbFile}) → MongoDB "${config.mongodbDatabase ? firmMongoDatabase(firm.id) : '—'}"`);
+    }
     snap.close();
   } else {
     log('                 missing (run npm run db:setup)');
@@ -94,25 +102,28 @@ function pruneOldSnapshots() {
   }
 }
 
-/**
- * The MongoDB export copies the main database file only. A second firm keeps its books in its
- * own file, which this export would leave behind, so refuse rather than lose that data.
- */
-function assertSingleFirmBooks() {
-  const db = new Database(liveDatabasePath(), { readonly: true, fileMustExist: true });
-  try {
-    const hasFirms = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'firms'").get();
-    const extra = hasFirms ? db.prepare('SELECT name FROM firms WHERE db_file IS NOT NULL').all() : [];
-    if (extra.length) {
-      throw new Error(
-        `MongoDB export covers the first firm only, and ${extra.map((f) => `"${f.name}"`).join(', ')} keep${extra.length === 1 ? 's' : ''} `
-        + 'separate books. Export stopped so no firm data is left out. (Supabase sign-in data can still be exported with --supabase.)',
-      );
-    }
-  } finally {
-    db.close();
-  }
+/** Name of the first firm (books in the main file), from its company profile. */
+function primaryFirmName(main) {
+  const firms = main.table('firms') ? main.db.prepare('SELECT id, name FROM firms WHERE is_primary = 1').get() : null;
+  const company = main.table('companies') ? main.db.prepare('SELECT id, business_name FROM companies ORDER BY created_at LIMIT 1').get() : null;
+  return { id: firms?.id || company?.id || null, name: company?.business_name || firms?.name || 'First firm' };
 }
+
+/**
+ * What goes where in MongoDB: the main file (core + first firm) into MONGODB_DATABASE, and each
+ * other firm's own file into its own database. Firm files skip the tables that only repeat the core.
+ */
+function mongoTargets(main, firmParts) {
+  const first = primaryFirmName(main);
+  return [
+    { firm: { ...first, isPrimary: true, isActive: true }, snapshot: main, database: config.mongodbDatabase, skip: MONGO_SKIPPED_TABLES },
+    ...firmParts.map(({ firm, snapshot }) => ({
+      firm: { ...firm, isPrimary: false }, snapshot, database: firmMongoDatabase(firm.id), skip: FIRM_FILE_SKIPPED_TABLES,
+    })),
+  ];
+}
+
+const firmLabel = (t) => `${t.firm.name}${t.firm.isPrimary ? ' (first firm + users/roles)' : ''}${t.firm.isActive === false ? ' [switched off]' : ''}`;
 
 async function exportCommand() {
   const targets = selectedTargets();
@@ -120,13 +131,10 @@ async function exportCommand() {
     throw new Error('No cloud target configured. Set MONGODB_URI and/or SUPABASE_* in sacone-api/.env (see docs/CLOUD_LINK.md).');
   }
   if (targets.mongo && !flag('dry-run')) assertMongoWritable();
-  if (targets.mongo) assertSingleFirmBooks();
 
-  log('Taking a consistent snapshot of the local database…');
+  log('Taking a consistent snapshot of the local databases…');
   const snapshot = await takeSnapshot();
-  const totalRows = snapshot.tables.reduce((s, t) => s + t.rowCount, 0);
-  log(`  ${snapshot.id}: ${snapshot.tables.length} tables, ${totalRows} rows\n`);
-
+  let firmParts = [];
   const report = {
     snapshotId: snapshot.id,
     snapshotTakenAt: snapshot.takenAt,
@@ -136,16 +144,24 @@ async function exportCommand() {
   };
 
   try {
+    firmParts = await takeFirmSnapshots(snapshot);
+    const totalRows = [snapshot, ...firmParts.map((f) => f.snapshot)]
+      .reduce((s, snap) => s + snap.tables.reduce((n, t) => n + t.rowCount, 0), 0);
+    log(`  ${snapshot.id}: main file + ${firmParts.length} firm file${firmParts.length === 1 ? '' : 's'}, ${totalRows} rows\n`);
+    const mongoParts = targets.mongo ? mongoTargets(snapshot, firmParts) : [];
+
     if (flag('dry-run')) {
       if (targets.mongo) {
-        const plan = mongoPlan(snapshot);
-        log(`MongoDB plan: ${plan.filter((p) => !p.skipped).length} collections`);
-        for (const p of plan.filter((x) => x.skipped || x.omittedColumns.length)) {
-          log(`  ${p.table}: ${p.skipped ? `skipped (${p.skipped})` : `without ${p.omittedColumns.join(', ')}`}`);
+        report.mongo = { databases: [] };
+        for (const t of mongoParts) {
+          const plan = mongoPlan(t.snapshot, { skip: t.skip });
+          log(`MongoDB "${t.database}" ← ${firmLabel(t)}: ${plan.filter((p) => !p.skipped).length} collections, `
+            + `${plan.filter((p) => !p.skipped).reduce((n, p) => n + p.rows, 0)} rows`);
+          report.mongo.databases.push({ firm: t.firm, database: t.database, plan });
         }
         const ping = await pingMongo();
         log(`  connection: ${ping.ok ? 'OK' : ping.message}\n`);
-        report.mongo = { plan, ping };
+        report.mongo.ping = ping;
       }
       if (targets.supabase) {
         const prepared = prepareSupabaseRows(snapshot);
@@ -160,11 +176,22 @@ async function exportCommand() {
     }
 
     if (targets.mongo) {
-      log(`MongoDB → "${config.mongodbDatabase}"`);
-      report.mongo = { export: await exportToMongo(snapshot, { prune: flag('prune'), log }) };
-      report.mongo.verify = await verifyMongo(snapshot, { log });
-      printVerify('MongoDB', report.mongo.verify);
-      log('');
+      report.mongo = { databases: [] };
+      for (const t of mongoParts) {
+        log(`MongoDB "${t.database}" ← ${firmLabel(t)}`);
+        const exported = await exportToMongo(t.snapshot, {
+          prune: flag('prune'), log, database: t.database, skip: t.skip, firm: t.firm,
+        });
+        const verify = await verifyMongo(t.snapshot, { log, database: t.database, skip: t.skip });
+        printVerify(`MongoDB "${t.database}"`, verify);
+        report.mongo.databases.push({ firm: t.firm, database: t.database, export: exported, verify });
+        log('');
+      }
+      await recordFirmDatabases(mongoParts.map((t) => ({
+        firmId: t.firm.id, name: t.firm.name, isPrimary: t.firm.isPrimary, isActive: t.firm.isActive !== false,
+        database: t.database, snapshotId: snapshot.id,
+      })));
+      report.mongo.verify = { ok: report.mongo.databases.every((d) => d.verify.ok) };
     }
     if (targets.supabase) {
       log(`Supabase → ${config.supabase.url}`);
@@ -179,6 +206,7 @@ async function exportCommand() {
     report.finishedAt = new Date().toISOString();
     fs.writeFileSync(path.join(snapshot.dir, 'report.json'), JSON.stringify(report, null, 2));
     if (!report.dryRun) fs.writeFileSync(path.join(SNAPSHOT_ROOT, 'latest.json'), JSON.stringify(report, null, 2));
+    for (const part of firmParts) part.snapshot.close();
     snapshot.close();
     pruneOldSnapshots();
   }
@@ -190,12 +218,16 @@ async function verifyCommand() {
   const snapshot = openSnapshot(path.isAbsolute(dir) ? dir : path.join(SNAPSHOT_ROOT, dir));
   const targets = selectedTargets();
   log(`Verifying snapshot ${snapshot.id} (${snapshot.takenAt})\n`);
+  let firmParts = [];
   try {
     const results = [];
     if (targets.mongo) {
-      const result = await verifyMongo(snapshot, { log });
-      printVerify('MongoDB', result);
-      results.push(result);
+      firmParts = openFirmSnapshots(snapshot);
+      for (const t of mongoTargets(snapshot, firmParts)) {
+        const result = await verifyMongo(t.snapshot, { log, database: t.database, skip: t.skip });
+        printVerify(`MongoDB "${t.database}" (${firmLabel(t)})`, result);
+        results.push(result);
+      }
     }
     if (targets.supabase) {
       const result = await verifySupabase(snapshot, { log });
@@ -204,6 +236,7 @@ async function verifyCommand() {
     }
     return { ok: results.every((r) => r.ok) };
   } finally {
+    for (const part of firmParts) part.snapshot.close();
     snapshot.close();
   }
 }

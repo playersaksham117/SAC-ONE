@@ -46,6 +46,54 @@ export async function takeSnapshot() {
   return openSnapshot(dir);
 }
 
+const FIRM_FILE = /^firms\/[0-9a-f-]+\.db$/;
+
+/**
+ * Firms whose books live in their own database file, as recorded in a snapshot of the main
+ * file. Switched-off firms are included: their books are kept, so they are exported too.
+ */
+export function firmsInSnapshot(main) {
+  if (!main.table('firms')) return [];
+  return main.db.prepare(`
+    SELECT id, name, db_file, is_active FROM firms WHERE db_file IS NOT NULL ORDER BY created_at, id
+  `).all().map((firm) => {
+    if (!FIRM_FILE.test(firm.db_file)) throw new Error(`Firm "${firm.name}" has an unexpected database file name: ${firm.db_file}`);
+    return { id: firm.id, name: firm.name, dbFile: firm.db_file, isActive: Boolean(firm.is_active) };
+  });
+}
+
+/** Snapshot every firm file into the main snapshot's folder (firms/<id>.db). */
+export async function takeFirmSnapshots(main) {
+  const parts = [];
+  for (const firm of firmsInSnapshot(main)) {
+    const source = path.join(path.dirname(liveDatabasePath()), firm.dbFile);
+    if (!fs.existsSync(source)) {
+      throw new Error(`Firm "${firm.name}" has no database file at ${source}. Open it once in the ERP or run "npm run db:setup".`);
+    }
+    const file = path.join(main.dir, firm.dbFile);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const live = new Database(source, { readonly: true, fileMustExist: true });
+    try {
+      await live.backup(file);
+    } finally {
+      live.close();
+    }
+    parts.push({ firm, snapshot: openSnapshot(main.dir, file) });
+  }
+  return parts;
+}
+
+/** Re-open the firm snapshots stored next to an earlier main snapshot (for verify). */
+export function openFirmSnapshots(main) {
+  return firmsInSnapshot(main).map((firm) => {
+    const file = path.join(main.dir, firm.dbFile);
+    if (!fs.existsSync(file)) {
+      throw new Error(`Snapshot ${main.id} has no copy of firm "${firm.name}". Run "npm run cloud:export" to take a new one.`);
+    }
+    return { firm, snapshot: openSnapshot(main.dir, file) };
+  });
+}
+
 /** Most recent snapshot folder, or null. */
 export function latestSnapshotDir() {
   if (!fs.existsSync(SNAPSHOT_ROOT)) return null;

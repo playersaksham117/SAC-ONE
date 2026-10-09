@@ -77,6 +77,21 @@ npm run cloud:verify
 | `roles`, `permissions`, `role_permissions`, `modules`, `features` | same-name collections | same-name tables in `public` |
 | `sessions` | skipped | skipped |
 
+### Several firms
+
+Each firm keeps its books in its own SQLite file, and each one gets its own MongoDB database:
+
+| Local file | MongoDB database |
+|---|---|
+| main file (`DATABASE_PATH`): users, roles, the firm list, and the first firm's books | `MONGODB_DATABASE`, e.g. `sacone` |
+| `data/firms/<id>.db`: another firm's books | `<MONGODB_DATABASE>_firm_<first 12 hex digits of the firm id>`, e.g. `sacone_firm_c90e89444019` |
+
+- Every firm is exported, including switched-off ones, because their books are kept.
+- A firm file's copies of users, roles and permissions are not exported again; they come from the main file.
+- `_sacone_sync.firm_databases` in the main database lists which MongoDB database holds each firm.
+- `npm run cloud:status` shows the same mapping before you export.
+- Verify and `--prune` work per database, exactly as for one firm.
+
 The Supabase schema (`src/cloud/supabase/schema.sql`) is applied automatically and is safe to
 re-run. It enables row-level security (signed-in users can read the RBAC catalogue and their
 own profile; only the service role writes) and adds:

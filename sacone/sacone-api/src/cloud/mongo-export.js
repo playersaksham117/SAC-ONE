@@ -11,6 +11,7 @@
 import { Long } from 'mongodb';
 import { config } from '../config/index.js';
 import { connectMongo } from '../database/mongo.js';
+import { IDENTITY_TABLES } from '../database/identity-mirror.js';
 import { iterateRows, rowFingerprint, rowKey } from './snapshot.js';
 
 /** Tables that are not business data. */
@@ -23,13 +24,40 @@ export const MONGO_SKIPPED_COLUMNS = {
   users: { password_hash: 'kept by Supabase Auth (npm run cloud:export -- --supabase)' },
 };
 
+/**
+ * Tables in a firm's own file that only repeat the core (users, roles, permissions copied
+ * without passwords, and sign-in bookkeeping). They are exported once, from the main file.
+ */
+export const FIRM_FILE_SKIPPED_TABLES = Object.fromEntries([
+  ...[...IDENTITY_TABLES].map((t) => [t, 'copy of the core; exported with the first firm']),
+  ['sessions', MONGO_SKIPPED_TABLES.sessions],
+  ['firms', 'kept in the core only'],
+  ['user_firms', 'kept in the core only'],
+]);
+
 export const SYNC_META_COLLECTION = '_sacone_sync';
+
+/**
+ * MongoDB database for a firm's books. The first firm (main file) uses MONGODB_DATABASE,
+ * so earlier exports keep their place; every other firm gets its own database named from
+ * its id, which never changes.
+ */
+export function firmMongoDatabase(firmId) {
+  const name = `${config.mongodbDatabase}_firm_${String(firmId).replace(/[^0-9a-f]/gi, '').slice(0, 12).toLowerCase()}`;
+  if (name.length > 63) throw new Error(`MongoDB database name "${name}" is too long; shorten MONGODB_DATABASE.`);
+  return name;
+}
+
+async function targetDb(database) {
+  const { client, db } = await connectMongo();
+  return database && database !== config.mongodbDatabase ? client.db(database) : db;
+}
 const BATCH = 1000;
 
-export function mongoPlan(snapshot) {
+export function mongoPlan(snapshot, { skip = MONGO_SKIPPED_TABLES } = {}) {
   return snapshot.tables.map((table) => {
-    if (MONGO_SKIPPED_TABLES[table.name]) {
-      return { table: table.name, rows: table.rowCount, skipped: MONGO_SKIPPED_TABLES[table.name] };
+    if (skip[table.name]) {
+      return { table: table.name, rows: table.rowCount, skipped: skip[table.name] };
     }
     const omitted = Object.keys(MONGO_SKIPPED_COLUMNS[table.name] || {});
     return {
@@ -59,12 +87,14 @@ function toDocument(table, row, columns) {
   return doc;
 }
 
-export async function exportToMongo(snapshot, { prune = false, log = () => {} } = {}) {
+export async function exportToMongo(snapshot, {
+  prune = false, log = () => {}, database = null, skip = MONGO_SKIPPED_TABLES, firm = null,
+} = {}) {
   assertMongoWritable();
-  const { db } = await connectMongo();
+  const db = await targetDb(database);
   const results = [];
 
-  for (const item of mongoPlan(snapshot)) {
+  for (const item of mongoPlan(snapshot, { skip })) {
     if (item.skipped) {
       results.push(item);
       continue;
@@ -101,6 +131,7 @@ export async function exportToMongo(snapshot, { prune = false, log = () => {} } 
     { _id: 'last_export' },
     {
       _id: 'last_export',
+      firm,
       snapshotId: snapshot.id,
       snapshotTakenAt: snapshot.takenAt,
       exportedAt: new Date(),
@@ -155,10 +186,10 @@ async function mirrorIndexes(collection, table, columns) {
  * ok = no row missing and no field different. Extra documents (rows deleted locally)
  * are reported; remove them with --prune.
  */
-export async function verifyMongo(snapshot, { log = () => {} } = {}) {
-  const { db } = await connectMongo();
+export async function verifyMongo(snapshot, { log = () => {}, database = null, skip = MONGO_SKIPPED_TABLES } = {}) {
+  const db = await targetDb(database);
   const tables = [];
-  for (const item of mongoPlan(snapshot)) {
+  for (const item of mongoPlan(snapshot, { skip })) {
     if (item.skipped) continue;
     const table = snapshot.table(item.table);
     const expected = new Map();
@@ -197,4 +228,14 @@ export async function verifyMongo(snapshot, { log = () => {} } = {}) {
     }
   }
   return { ok: tables.every((t) => t.ok), tables };
+}
+
+/** Record in the core database where each firm's books were exported (for restore). */
+export async function recordFirmDatabases(entries) {
+  const db = await targetDb(null);
+  await db.collection(SYNC_META_COLLECTION).replaceOne(
+    { _id: 'firm_databases' },
+    { _id: 'firm_databases', updatedAt: new Date(), firms: entries },
+    { upsert: true },
+  );
 }
