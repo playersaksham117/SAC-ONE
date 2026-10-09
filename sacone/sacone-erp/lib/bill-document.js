@@ -52,7 +52,7 @@ function partyFrom(name, contact) {
 /* ───────────── classic GST invoice helpers ───────────── */
 
 /** GST state codes → state names (for "P.O.S." and state code boxes). */
-const GST_STATES = {
+export const GST_STATES = {
   '01': 'Jammu & Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
   '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
   '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',

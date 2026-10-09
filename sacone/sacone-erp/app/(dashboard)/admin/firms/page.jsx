@@ -4,20 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiRequest } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/auth-context';
-import PageHeader, { Alert, LoadingState, Modal } from '../../../../components/ui';
-
-/** Financial year containing today (India), e.g. '2026-27'. */
-function thisYear() {
-  const ist = new Date(Date.now() + 330 * 60000);
-  const start = ist.getUTCMonth() + 1 >= 4 ? ist.getUTCFullYear() : ist.getUTCFullYear() - 1;
-  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
-}
-const yearsBack = (n) => Array.from({ length: n }, (_, i) => {
-  const s = Number(thisYear().slice(0, 4)) - i;
-  return `${s}-${String((s + 1) % 100).padStart(2, '0')}`;
-});
-
-const EMPTY = { name: '', gstNumber: '', state: '', city: '', firstFinancialYear: thisYear() };
+import PageHeader, { Alert, LoadingState } from '../../../../components/ui';
+import FirmForm from '../../../../components/firms/FirmForm';
 
 export default function FirmsPage() {
   const { session, refreshSession } = useAuth();
@@ -25,9 +13,8 @@ export default function FirmsPage() {
   const [firms, setFirms] = useState(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState(EMPTY);
-  const [editing, setEditing] = useState(null);
+  // undefined = form closed, null = adding a firm, id = editing that firm
+  const [formFor, setFormFor] = useState(undefined);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -41,32 +28,29 @@ export default function FirmsPage() {
   };
   useEffect(() => { if (isOwner) load(); }, [isOwner]);
 
-  const create = async (e) => {
-    e.preventDefault();
-    setSaving(true);
+  const openForm = (id) => {
     setError('');
-    try {
-      const firm = await apiRequest('/api/firms', { method: 'POST', body: JSON.stringify(form) });
-      setAdding(false);
-      setForm(EMPTY);
-      setMessage(`"${firm.name}" is ready with its own empty books. Switch to it from the header to add its products, parties and opening stock.`);
-      load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
+    setMessage('');
+    setFormFor(id);
   };
 
-  const update = async (firm, patch, done) => {
+  const saved = async (firm, wasEditing) => {
+    setFormFor(undefined);
+    setMessage(wasEditing
+      ? `"${firm.name}" saved.`
+      : `"${firm.name}" is ready with its own empty books. Switch to it from the header to add its products, parties and opening stock.`);
+    await load();
+    if (firm.id === session?.firm?.id) refreshSession();
+  };
+
+  const toggleActive = async (firm) => {
+    if (firm.isActive && !window.confirm(`Switch off "${firm.name}"? Nobody can open it and its POS phones stop syncing until you switch it on again. Its books are kept.`)) return;
     setSaving(true);
     setError('');
     try {
-      await apiRequest(`/api/firms/${firm.id}`, { method: 'PUT', body: JSON.stringify(patch) });
-      setMessage(done);
-      setEditing(null);
+      await apiRequest(`/api/firms/${firm.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !firm.isActive }) });
+      setMessage(firm.isActive ? `"${firm.name}" switched off. Its books are kept.` : `"${firm.name}" switched on.`);
       await load();
-      if (firm.id === session?.firm?.id) refreshSession();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,7 +72,7 @@ export default function FirmsPage() {
       <PageHeader
         title="Firms"
         description="Each firm keeps fully separate books: its own products, customers, suppliers, stock, invoices and accounts."
-        actions={<button type="button" className="btn-primary" onClick={() => { setError(''); setAdding(true); }}>+ Add firm</button>}
+        actions={<button type="button" className="btn-primary" onClick={() => openForm(null)}>+ Add firm</button>}
       />
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
@@ -107,9 +91,11 @@ export default function FirmsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {firms.map((f) => (
-                <tr key={f.id}>
+                <tr key={f.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{f.name}</div>
+                    <button type="button" className="text-left font-medium text-slate-900 hover:text-brand-700 hover:underline" onClick={() => openForm(f.id)}>
+                      {f.name}
+                    </button>
                     <div className="text-xs text-slate-500">
                       {[f.city, f.state].filter(Boolean).join(', ') || '—'}
                       {f.isPrimary && ' · first firm'}
@@ -125,17 +111,9 @@ export default function FirmsPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => setEditing({ ...f })}>Edit</button>
+                      <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => openForm(f.id)}>Edit</button>
                       {!f.isPrimary && (
-                        <button
-                          type="button"
-                          className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs"
-                          disabled={saving}
-                          onClick={() => {
-                            if (f.isActive && !window.confirm(`Switch off "${f.name}"? Nobody can open it and its POS phones stop syncing until you switch it on again. Its books are kept.`)) return;
-                            update(f, { isActive: !f.isActive }, f.isActive ? `"${f.name}" switched off. Its books are kept.` : `"${f.name}" switched on.`);
-                          }}
-                        >
+                        <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" disabled={saving} onClick={() => toggleActive(f)}>
                           {f.isActive ? 'Switch off' : 'Switch on'}
                         </button>
                       )}
@@ -150,77 +128,12 @@ export default function FirmsPage() {
 
       <p className="mt-4 text-xs text-slate-500">
         Who may open which firm is set per user in <Link href="/admin/users" className="text-brand-600 hover:underline">Users → Edit</Link>.
-        The owner can open every firm. A firm&apos;s address, GSTIN and invoice details are edited in Company Settings while that firm is open.
+        The owner can open every firm. Invoice layout, bank details and terms are set in System Settings while that firm is open.
       </p>
 
-      <Modal
-        open={adding}
-        title="Add firm"
-        onClose={() => setAdding(false)}
-        footer={(
-          <>
-            <button type="button" className="btn-secondary" onClick={() => setAdding(false)} disabled={saving}>Cancel</button>
-            <button type="submit" form="firm-form" className="btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create firm'}</button>
-          </>
-        )}
-      >
-        <form id="firm-form" onSubmit={create} className="space-y-4">
-          <label className="block text-sm"><span className="label">Firm name *</span>
-            <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120} />
-          </label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm"><span className="label">GSTIN</span>
-              <input className="input-field uppercase" value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} maxLength={15} />
-            </label>
-            <label className="block text-sm"><span className="label">Books start from</span>
-              <select className="input-field" value={form.firstFinancialYear} onChange={(e) => setForm({ ...form, firstFinancialYear: e.target.value })}>
-                {yearsBack(6).map((y) => <option key={y} value={y}>FY {y}</option>)}
-              </select>
-            </label>
-            <label className="block text-sm"><span className="label">City</span>
-              <input className="input-field" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-            </label>
-            <label className="block text-sm"><span className="label">State</span>
-              <input className="input-field" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
-            </label>
-          </div>
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            The new firm starts with empty books, a walk-in customer and a main warehouse. Nothing is copied from your other firms.
-          </p>
-        </form>
-      </Modal>
-
-      <Modal
-        open={Boolean(editing)}
-        title={editing ? `Edit ${editing.name}` : 'Edit firm'}
-        onClose={() => setEditing(null)}
-        footer={editing && (
-          <>
-            <button type="button" className="btn-secondary" onClick={() => setEditing(null)} disabled={saving}>Cancel</button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={saving || !editing.name.trim()}
-              onClick={() => update(editing, { name: editing.name, firstFinancialYear: editing.firstFinancialYear }, 'Firm saved.')}
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        )}
-      >
-        {editing && (
-          <div className="space-y-4">
-            <label className="block text-sm"><span className="label">Firm name</span>
-              <input className="input-field" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} maxLength={120} />
-            </label>
-            <label className="block text-sm"><span className="label">Earliest financial year offered</span>
-              <select className="input-field" value={editing.firstFinancialYear || thisYear()} onChange={(e) => setEditing({ ...editing, firstFinancialYear: e.target.value })}>
-                {yearsBack(10).map((y) => <option key={y} value={y}>FY {y}</option>)}
-              </select>
-            </label>
-          </div>
-        )}
-      </Modal>
+      {formFor !== undefined && (
+        <FirmForm firmId={formFor} onClose={() => setFormFor(undefined)} onSaved={saved} />
+      )}
     </>
   );
 }

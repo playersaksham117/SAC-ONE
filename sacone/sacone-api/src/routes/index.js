@@ -82,6 +82,9 @@ firmRouter.use(signedIn());
 firmRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.list(req.actor));
 }));
+firmRouter.get('/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.get(req.params.id, req.actor));
+}));
 firmRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.create(req.body || {}, req.actor, req), 201);
 }));
