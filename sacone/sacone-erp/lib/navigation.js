@@ -168,16 +168,6 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
-    id: 'firms',
-    section: 'administration',
-    label: 'Firms',
-    description: 'Separate books per firm, who can open which firm',
-    href: '/admin/firms',
-    permission: 'core.company.edit',
-    icon: '🏢',
-    placeholder: false,
-  },
-  {
     id: 'approval-rules',
     section: 'administration',
     label: 'Approval Rules',
@@ -190,8 +180,8 @@ export const ERP_MODULES = [
   {
     id: 'company',
     section: 'administration',
-    label: 'Company Settings',
-    description: 'Business profile and GST',
+    label: 'Company & Firms',
+    description: 'Business profile, GST and invoice details; add and manage firms',
     href: '/admin/company',
     permission: 'core.company.view',
     icon: '🏢',
@@ -340,5 +330,6 @@ export const LEGACY_REDIRECTS = {
   '/users': '/admin/users',
   '/roles': '/admin/roles',
   '/company': '/admin/company',
+  '/admin/firms': '/admin/company',
   '/audit': '/admin/audit',
 };

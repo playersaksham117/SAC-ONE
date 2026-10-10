@@ -26,6 +26,9 @@ export const EMPTY_FIRM = {
   phone: '', email: '', website: '',
 };
 
+/** API firm → form values ('' for empty, so inputs stay controlled). */
+const toForm = (firm) => ({ ...EMPTY_FIRM, ...Object.fromEntries(Object.entries(firm).map(([k, v]) => [k, v ?? ''])) });
+
 function Section({ title, hint, children }) {
   return (
     <section className="rounded-xl border border-slate-200 p-4">
@@ -49,25 +52,33 @@ function Field({ label, wide, children, note }) {
 /**
  * Add or edit a firm with its full company profile: name, GST and tax details, address,
  * contact, invoice prefix and the first financial year of its books.
- *   firmId: null to add a new firm.
+ *   firmId    null to add a new firm (pop-up), or the firm to edit (pop-up)
+ *   current   edit the firm that is open now, inline on the page (Company & Firms → This firm)
+ *   readOnly  show without editing (no company edit permission)
+ *   canSetYears  the owner may change where the firm's books start
  */
-export default function FirmForm({ firmId, onClose, onSaved }) {
-  const editing = Boolean(firmId);
+export default function FirmForm({
+  firmId = null, current = false, readOnly = false, canSetYears = true, onClose, onSaved,
+}) {
+  const editing = current || Boolean(firmId);
+  const url = current ? '/api/firms/current' : `/api/firms/${firmId}`;
+  const formId = current ? 'firm-form-current' : 'firm-form';
   const [form, setForm] = useState(editing ? null : EMPTY_FIRM);
   const [original, setOriginal] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (!editing) return;
-    apiRequest(`/api/firms/${firmId}`)
+    apiRequest(url)
       .then((firm) => {
-        const loaded = { ...EMPTY_FIRM, ...Object.fromEntries(Object.entries(firm).map(([k, v]) => [k, v ?? ''])) };
+        const loaded = toForm(firm);
         setForm(loaded);
         setOriginal(loaded);
       })
       .catch((e) => setError(e.message));
-  }, [editing, firmId]);
+  }, [editing, url]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -98,12 +109,19 @@ export default function FirmForm({ firmId, onClose, onSaved }) {
     e.preventDefault();
     setSaving(true);
     setError('');
+    setNotice('');
     try {
       const { id, isPrimary, isActive, financialYears, createdAt, ...body } = form;
       const saved = editing
-        ? await apiRequest(`/api/firms/${firmId}`, { method: 'PUT', body: JSON.stringify(body) })
+        ? await apiRequest(url, { method: 'PUT', body: JSON.stringify(body) })
         : await apiRequest('/api/firms', { method: 'POST', body: JSON.stringify(body) });
-      onSaved(saved, editing);
+      if (current) {
+        const loaded = toForm(saved);
+        setForm(loaded);
+        setOriginal(loaded);
+        setNotice('Saved.');
+      }
+      onSaved?.(saved, editing);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -112,25 +130,11 @@ export default function FirmForm({ firmId, onClose, onSaved }) {
   };
 
   const changed = editing && form && original && JSON.stringify(form) !== JSON.stringify(original);
+  const canSave = form && !readOnly && !saving && form.name.trim() && (!editing || changed);
 
-  return (
-    <Modal
-      open
-      size="xl"
-      title={editing ? `Edit firm${form?.name ? `: ${form.name}` : ''}` : 'Add firm'}
-      onClose={onClose}
-      footer={form && (
-        <>
-          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
-          <button type="submit" form="firm-form" className="btn-primary" disabled={saving || !form.name.trim() || (editing && !changed)}>
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create firm'}
-          </button>
-        </>
-      )}
-    >
-      <Alert type="error" message={error} />
-      {!form ? (!error && <LoadingState />) : (
-        <form id="firm-form" onSubmit={save} className="space-y-4">
+  const body = !form ? (!error && <LoadingState />) : (
+        <form id={formId} onSubmit={save} className="space-y-4">
+          <fieldset disabled={readOnly || saving} className="space-y-4">
           {!editing && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
               The new firm gets its own empty books with a walk-in customer and a main warehouse. Nothing is copied from your other firms.
@@ -144,8 +148,8 @@ export default function FirmForm({ firmId, onClose, onSaved }) {
             <Field label="Legal name" note="As registered, if different from the trading name">
               <input className="input-field" value={form.legalName} onChange={set('legalName')} maxLength={160} />
             </Field>
-            <Field label="Books start from" note="Earliest financial year offered when signing in">
-              <select className="input-field" value={form.firstFinancialYear || thisYear()} onChange={set('firstFinancialYear')}>
+            <Field label="Books start from" note={canSetYears ? 'Earliest financial year offered when signing in' : 'Set by the owner'}>
+              <select className="input-field" value={form.firstFinancialYear || thisYear()} onChange={set('firstFinancialYear')} disabled={!canSetYears}>
                 {yearsBack(10).map((y) => <option key={y} value={y}>FY {y}</option>)}
               </select>
             </Field>
@@ -201,8 +205,44 @@ export default function FirmForm({ firmId, onClose, onSaved }) {
               <input className="input-field" value={form.website} onChange={set('website')} maxLength={200} placeholder="https://" />
             </Field>
           </Section>
+          </fieldset>
         </form>
+  );
+
+  if (current) {
+    return (
+      <div className="space-y-3">
+        <Alert type="error" message={error} />
+        {body}
+        {form && !readOnly && (
+          <div className="sticky bottom-0 flex items-center justify-end gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+            {notice && !changed && <span className="text-sm text-emerald-700">{notice}</span>}
+            {changed && <span className="text-sm text-amber-700">Unsaved changes</span>}
+            {changed && <button type="button" className="btn-secondary" onClick={() => setForm(original)} disabled={saving}>Undo</button>}
+            <button type="submit" form={formId} className="btn-primary" disabled={!canSave}>{saving ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      open
+      size="xl"
+      title={editing ? `Edit firm${form?.name ? `: ${form.name}` : ''}` : 'Add firm'}
+      onClose={onClose}
+      footer={form && (
+        <>
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="submit" form={formId} className="btn-primary" disabled={!canSave}>
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create firm'}
+          </button>
+        </>
       )}
+    >
+      <Alert type="error" message={error} />
+      {body}
     </Modal>
   );
 }

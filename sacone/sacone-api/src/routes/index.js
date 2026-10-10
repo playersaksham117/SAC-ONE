@@ -82,6 +82,13 @@ firmRouter.use(signedIn());
 firmRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.list(req.actor));
 }));
+// The open firm's full profile (Company & Firms → "This firm").
+firmRouter.get('/current', authenticate(), asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.current(req.actor));
+}));
+firmRouter.put('/current', authenticate(), asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.updateCurrent(req.body || {}, req.actor, req));
+}));
 firmRouter.get('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.get(req.params.id, req.actor));
 }));

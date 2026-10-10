@@ -3,7 +3,7 @@ import { financialYearOf, financialYearRange, financialYearsSince, isFinancialYe
 import { generateId } from '../core/utils.js';
 import { generateFirmPrefix } from '../core/firm-prefix.js';
 import { getFirmDatabase } from '../database/connection.js';
-import { runWithFirm } from '../database/context.js';
+import { currentFirmId, runWithFirm } from '../database/context.js';
 import { ensurePrimaryFirm } from '../database/firm-provision.js';
 import { repos } from '../repositories/index.js';
 import { FirmRepository } from '../repositories/sqlite/firms.js';
@@ -213,6 +213,10 @@ export const firmService = {
   /** Everything the firm form shows: the firm list entry plus its full company profile. */
   get(id, actor) {
     requireOwner(actor);
+    return this.detail(id);
+  },
+
+  detail(id) {
     const firm = firmRepo.findById(id);
     if (!firm) throw new AppError('Firm not found', 404);
     return runWithFirm({ firmId: id }, () => {
@@ -266,12 +270,37 @@ export const firmService = {
       throw err;
     }
     audit(actor, req, 'create', id, { ...profile, firstFinancialYear });
-    return this.get(id, actor);
+    return this.detail(id);
   },
 
   /** Change any part of a firm: its profile, invoice prefix, first year, or switch it on/off. */
   update(id, data = {}, actor, req) {
     requireOwner(actor);
+    return this.applyUpdate(id, data, actor, req);
+  },
+
+  /**
+   * The firm that is open now (Company & Firms → "This firm"). Readable with company view and
+   * editable with company edit, as Company Settings was. Only the owner may also change the
+   * first financial year; switching a firm off stays on the owner's firm list.
+   */
+  current(actor) {
+    requirePermission(actor, 'core.company.view');
+    const id = currentFirmId();
+    if (!id) throw new AppError('Choose a firm first', 409, 'FIRM_NOT_SELECTED');
+    return this.detail(id);
+  },
+
+  updateCurrent(data = {}, actor, req) {
+    requirePermission(actor, 'core.company.edit');
+    const id = currentFirmId();
+    if (!id) throw new AppError('Choose a firm first', 409, 'FIRM_NOT_SELECTED');
+    const { isActive, firstFinancialYear, ...rest } = data;
+    const allowed = actor.user.roleSlug === OWNER && firstFinancialYear !== undefined ? { ...rest, firstFinancialYear } : rest;
+    return this.applyUpdate(id, allowed, actor, req);
+  },
+
+  applyUpdate(id, data, actor, req) {
     const firm = firmRepo.findById(id);
     if (!firm) throw new AppError('Firm not found', 404);
     if (data.firstFinancialYear !== undefined
@@ -286,7 +315,7 @@ export const firmService = {
     firmRepo.update(id, { name: profile.businessName, isActive: data.isActive, firstFinancialYear: data.firstFinancialYear });
     if (data.isActive === false) firmRepo.clearSessionsForFirm(id);
     audit(actor, req, 'update', id, { ...profile, ...numbering, isActive: data.isActive, firstFinancialYear: data.firstFinancialYear });
-    return this.get(id, actor);
+    return this.detail(id);
   },
 
   /** Keep the registry name in step when a firm edits its own company profile. */
