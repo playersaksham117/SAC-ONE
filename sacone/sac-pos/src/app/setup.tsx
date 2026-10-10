@@ -43,8 +43,12 @@ export default function Setup() {
       <Card>
         <Banner
           tone="info"
-          messages={['In SACONE ERP open Operations → POS Devices & Sync → Register device. Copy the server URL and the one-time device key.']}
+          messages={['In SACONE ERP open Operations → POS Devices & Sync → Register device, then scan the QR code it shows.']}
         />
+        <Button title="Scan QR from ERP" icon="qr-code" size="lg" onPress={() => router.push('/pair-scan')} testID="setup-scan" />
+        <Text style={{ color: colors.textMuted, fontSize: font.xs, textAlign: 'center', marginVertical: space.sm }}>
+          or type the server URL and the device key
+        </Text>
         <Field
           label="Server URL"
           value={url}

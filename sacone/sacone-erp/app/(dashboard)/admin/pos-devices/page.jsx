@@ -65,33 +65,78 @@ function ServerUrlCard() {
   );
 }
 
+/**
+ * QR for SAC-POS: sacpos://connect?k=<key>&u=<url>,<url>&n=<device>&f=<firm>. The phone's camera
+ * opens SAC-POS with it, and the app's "Scan QR from ERP" reads it. Drawn here in the browser,
+ * so the key is not sent anywhere again. Same format as sac-pos/src/domain/pairing.ts.
+ */
+function pairingLink({ key, urls, deviceName, firm }) {
+  const q = [`k=${encodeURIComponent(key)}`, `u=${urls.map(encodeURIComponent).join(',')}`];
+  if (deviceName) q.push(`n=${encodeURIComponent(deviceName)}`);
+  if (firm) q.push(`f=${encodeURIComponent(firm)}`);
+  return `sacpos://connect?${q.join('&')}`;
+}
+
+const isLoopback = (url) => /^https?:\/\/(localhost|127\.|\[::1\])/i.test(url);
+
+function PairingQr({ link }) {
+  const [src, setSrc] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(link, { margin: 1, width: 280, errorCorrectionLevel: 'M' }))
+      .then((url) => { if (alive) setSrc(url); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [link]);
+  if (failed) return <p className="text-xs text-rose-700">Could not draw the QR code. Type the server URL and key instead.</p>;
+  if (!src) return <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="SAC-POS connection QR code" width={220} height={220} className="rounded-xl bg-white p-2 ring-1 ring-amber-200" />;
+}
+
 function SyncKeyBanner({ secret, onClose }) {
   const urls = useServerUrls();
+  const { session } = useAuth();
   if (!secret) return null;
-  const apiUrl = urls?.[0]?.url || getApiBase();
+  // Addresses a phone can reach: LAN / Tailscale first; this browser's API address only if it is not localhost.
+  const candidates = [...new Set([...(urls || []).map((u) => u.url), getApiBase()])].filter((u) => u && !isLoopback(u));
+  const apiUrl = candidates[0] || urls?.[0]?.url || getApiBase();
+  const link = candidates.length
+    ? pairingLink({ key: secret.syncKey, urls: candidates, deviceName: secret.device?.name, firm: session?.firm?.name })
+    : null;
   return (
     <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
-        <div className="font-semibold text-amber-900">Sync key for {secret.device.name} — copy it now, it is shown only once</div>
-        <button type="button" className="text-amber-700" onClick={onClose}>✕</button>
+        <div className="font-semibold text-amber-900">Connect {secret.device.name}: shown only once</div>
+        <button type="button" className="text-amber-700" onClick={onClose} aria-label="Close">✕</button>
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div>
-          <div className="text-xs text-amber-800">Server URL (enter in SAC-POS → Connect to SACONE)</div>
-          <code className="mt-1 block break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{apiUrl}</code>
+      <div className="mt-3 flex flex-col gap-4 md:flex-row">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          {urls === null ? <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" /> : link ? <PairingQr link={link} /> : (
+            <p className="max-w-[220px] text-xs text-amber-900">No network address found for phones, so no QR. Connect this PC to the shop Wi-Fi.</p>
+          )}
+          {link && <span className="max-w-[220px] text-center text-xs text-amber-800">In SAC-POS tap <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
         </div>
-        <div>
-          <div className="text-xs text-amber-800">Device sync key</div>
-          <code className="mt-1 block break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{secret.syncKey}</code>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="text-xs text-amber-800">Server URL{candidates.length > 1 ? 's (the phone tries each)' : ''}</div>
+            <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [apiUrl]).join('\n')}</code>
+          </div>
+          <div>
+            <div className="text-xs text-amber-800">Device sync key (to type it instead)</div>
+            <code className="mt-1 block break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{secret.syncKey}</code>
+          </div>
+          <button type="button" className="btn-secondary text-xs" onClick={() => navigator.clipboard?.writeText(secret.syncKey)}>
+            Copy key
+          </button>
+          <p className="text-xs text-amber-800">
+            The QR holds this terminal&apos;s key. It works for the first phone that connects; after that the key is bound to that phone.
+            Close this box once the phone is connected. If a QR was seen by someone else, use <b>Rotate key</b> to replace it.
+          </p>
         </div>
       </div>
-      <button
-        type="button"
-        className="btn-secondary mt-3 text-xs"
-        onClick={() => navigator.clipboard?.writeText(secret.syncKey)}
-      >
-        Copy key
-      </button>
     </div>
   );
 }
