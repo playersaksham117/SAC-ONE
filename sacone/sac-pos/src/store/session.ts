@@ -33,6 +33,8 @@ interface SessionState {
   applyStaffStatus: (staff: StaffStatus[]) => void;
   lock: () => void;
   forget: (userId: string) => void;
+  /** Drop every saved staff sign-in (the phone became another firm's terminal). */
+  forgetAll: () => void;
   /** Check another user's PIN for an approval; returns their profile if they may approve. */
   verifyApprover: (userId: string, pin: string, capability: Capability) => Promise<Profile>;
 }
@@ -57,6 +59,15 @@ export const useSession = create<SessionState>()(
         const res = await auth.login(baseUrl, email, password);
         if (!can(res.permissions, 'useTerminal')) {
           throw new ApiError('Your ERP role does not allow POS access (needs "POS Terminal – view").', 403, 'FORBIDDEN');
+        }
+        // The terminal belongs to one firm: the ERP must let this person open that firm.
+        const cfg = deviceConfig();
+        if (cfg) {
+          const { staff } = await sync.staff(cfg, [res.user.id]);
+          if (!staff[0]?.isActive) {
+            const firm = useDevice.getState().info?.company?.businessName;
+            throw new ApiError(`You do not have access to ${firm || 'this firm'} in SACONE. Ask the owner to add it in Users → Edit.`, 403, 'FIRM_FORBIDDEN');
+          }
         }
         const prev = get().profiles[res.user.id];
         const profile: Profile = {
@@ -139,6 +150,10 @@ export const useSession = create<SessionState>()(
           }
           return { profiles, currentUserId };
         });
+      },
+
+      forgetAll() {
+        set({ profiles: {}, currentUserId: null });
       },
 
       lock() {

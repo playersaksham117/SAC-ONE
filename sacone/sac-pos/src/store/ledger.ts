@@ -23,6 +23,8 @@ interface LedgerState {
   applyPushResults: (kind: DocKind, refToId: Record<string, string>, res: PushResult) => void;
   retry: (kind: DocKind, id: string) => void;
   prune: (keepDays: number) => void;
+  /** Forget every local bill (only after all of them reached the ERP): the phone becomes another terminal. */
+  clearForNewTerminal: () => void;
 }
 
 function outcome(r: PushResult['results'][number]): Partial<SyncMeta> {
@@ -105,6 +107,10 @@ export const useLedger = create<LedgerState>()(
       },
 
       /** Drop synced documents older than `keepDays` to keep the phone light. */
+      clearForNewTerminal() {
+        set({ sales: [], returns: [], payments: [], held: [] });
+      },
+
       prune(keepDays) {
         const cutoff = Date.now() - keepDays * 86400000;
         const keep = <T extends SyncMeta & { createdAt: string }>(d: T) => d.sync !== 'synced' || new Date(d.createdAt).getTime() >= cutoff;

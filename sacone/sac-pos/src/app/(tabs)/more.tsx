@@ -190,7 +190,10 @@ export default function More() {
           )}
           <KeyValue label="Negative stock" value={info?.settings.allowNegativeStock ? 'Allowed' : 'Blocked'} muted />
           {can(user?.permissions, 'manageDevice') ? (
-            <Button title="Disconnect device" variant="danger" icon="unlink-outline" onPress={disconnect} style={{ marginTop: space.sm }} />
+            <>
+              <Button title="Connect to another terminal (scan QR)" variant="secondary" icon="qr-code-outline" onPress={() => router.push('/pair-scan')} style={{ marginTop: space.sm }} />
+              <Button title="Disconnect device" variant="danger" icon="unlink-outline" onPress={disconnect} style={{ marginTop: space.sm }} />
+            </>
           ) : (
             <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Only users with "POS Devices – edit" can re-pair this phone.</Text>
           )}

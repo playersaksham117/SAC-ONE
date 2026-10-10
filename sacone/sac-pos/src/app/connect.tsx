@@ -3,7 +3,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { pairingFromParams, type Pairing } from '../domain/pairing';
-import { connectWithPairing } from '../lib/pairing';
+import { can } from '../domain/permissions';
+import { useCurrentUser } from '../store/session';
+import { connectWithPairing, switchTerminal, unsyncedOnPhone } from '../lib/pairing';
+import { confirm } from '../ui/dialogs';
 import { useDevice } from '../store/device';
 import { syncNow } from '../sync/engine';
 import { Banner, Button, Card, Header, KeyValue, Screen, colors, font, space } from '../ui/components';
@@ -17,7 +20,10 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 export default function Connect() {
   const params = useLocalSearchParams<{ k?: string; u?: string; n?: string; f?: string }>();
   const paired = useDevice((s) => Boolean(s.baseUrl && s.deviceKey));
-  const currentServer = useDevice((s) => s.baseUrl);
+  const currentInfo = useDevice((s) => s.info);
+  const user = useCurrentUser();
+  // Same rule as More → Disconnect device: re-pairing needs "POS Devices – edit".
+  const mayRepair = can(user?.permissions, 'manageDevice');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +53,32 @@ export default function Connect() {
     }
   };
 
+  const switchTo = async () => {
+    if (!pairing) return;
+    const current = `${currentInfo?.device.name ?? 'this terminal'}${currentInfo?.company?.businessName ? ` (${currentInfo.company.businessName})` : ''}`;
+    const next = `${pairing.deviceName ?? 'the new terminal'}${pairing.firm ? ` (${pairing.firm})` : ''}`;
+    const ok = await confirm(
+      'Switch this phone?',
+      `It stops being ${current} and becomes ${next}. Everything is synced first; bills, catalogue and staff sign-ins of ${current} are then removed from this phone (they stay in SACONE).`,
+      'Switch',
+      true,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await switchTerminal(pairing);
+      syncNow().catch(() => undefined);
+      router.replace('/login');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const left = paired ? unsyncedOnPhone() : null;
 
   return (
     <Screen scroll>
@@ -63,18 +94,37 @@ export default function Connect() {
           <Banner tone="danger" messages={[invalid]} />
           <Button title="Scan again" icon="scan" onPress={() => router.replace('/pair-scan')} />
         </Card>
-      ) : paired ? (
-        // Never swap servers silently: bills not yet synced belong to the current connection.
+      ) : paired && pairing ? (
+        // Already a terminal: switching is explicit, and only once everything has synced.
         <Card>
           <Banner
             tone="warning"
-            title="This phone is already connected"
+            title="This phone is already a terminal"
             messages={[
-              `It syncs with ${currentServer}.`,
-              'To move it to another terminal, open More → Disconnect device first (after its bills have synced), then scan again.',
+              `Now: ${currentInfo?.device.name ?? 'connected'}${currentInfo?.company?.businessName ? ` · ${currentInfo.company.businessName}` : ''}`,
+              `QR: ${pairing.deviceName ?? 'new terminal'}${pairing.firm ? ` · ${pairing.firm}` : ''}`,
+              ...(left?.total ? [`${left.total} record(s) on this phone are not synced yet; they will be synced first, and the switch waits until nothing is left.`] : []),
             ]}
           />
-          <Button title="Back" variant="secondary" onPress={() => router.replace('/')} />
+          {error ? <Banner tone="danger" messages={[error]} /> : null}
+          {mayRepair ? (
+            <Button
+              title={`Switch to ${pairing.deviceName ?? 'this terminal'}`}
+              icon="swap-horizontal"
+              size="lg"
+              onPress={switchTo}
+              loading={busy}
+              testID="pair-switch"
+            />
+          ) : (
+            <Banner
+              tone="info"
+              messages={[user
+                ? 'Only staff with "POS Devices – edit" can move this phone to another terminal. Ask a manager to sign in on this phone and scan again.'
+                : 'Sign in on this phone as a manager (with "POS Devices – edit"), then use More → Connect to another terminal.']}
+            />
+          )}
+          <Button title="Keep current terminal" variant="secondary" onPress={() => router.replace('/')} style={{ marginTop: space.sm }} />
         </Card>
       ) : pairing ? (
         <Card>

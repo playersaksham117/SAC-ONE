@@ -19,6 +19,8 @@ import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { generateApiKeySecret, hashApiKey } from '../repositories/sqlite/webstore.js';
 import { authService } from './index.js';
+import { firmService } from './firms.js';
+import { currentFirmId } from '../database/context.js';
 import { posService, invoicePrintSettings } from './pos.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
@@ -761,14 +763,18 @@ export class PosSyncService {
       staff: ids.map((id) => {
         const user = userRepo.findById(id);
         if (!user) return { id, exists: false, isActive: false, permissions: [] };
+        // Staff may use this terminal only if they may open the firm it belongs to.
+        const firmId = currentFirmId();
+        const allowed = user.isActive && (!firmId || firmService.canOpen({ id: user.id, roleSlug: user.roleSlug }, firmId));
         return {
           id,
           exists: true,
-          isActive: user.isActive,
+          isActive: allowed,
+          firmAccess: allowed || !user.isActive ? undefined : false,
           fullName: user.fullName,
           email: user.email,
           roleName: user.roleName,
-          permissions: user.isActive ? repos.roles.getPermissions(user.roleId).map((p) => p.permission_key) : [],
+          permissions: allowed ? repos.roles.getPermissions(user.roleId).map((p) => p.permission_key) : [],
         };
       }),
       server_time: nowIso(),
