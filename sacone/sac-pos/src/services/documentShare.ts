@@ -59,11 +59,22 @@ export function sweepSharedDocuments(all = false): number {
 /** Render HTML to a PDF named `fileName` inside app-private cache. Returns its file:// URI. */
 export async function createPdf(html: string, page: PdfPage, fileName: string): Promise<string> {
   sweepSharedDocuments();
-  const { uri } = await Print.printToFileAsync({ html, ...page });
+  // Take the PDF bytes from expo-print and write them into our own folder. Moving the printed
+  // file instead fails in Expo Go: it lands outside the app's scoped folders ("Missing READ
+  // permission"). Writing needs access to our cache folder only, in Expo Go and in the APK.
+  const { uri, base64 } = await Print.printToFileAsync({ html, ...page, base64: true });
+  if (!base64) throw new Error('Could not create the PDF. Try again.');
   const dir = shareDir();
   dir.create({ idempotent: true, intermediates: true });
-  const pdf = new File(uri);
-  pdf.moveSync(new File(dir, fileName), { overwrite: true });
+  const pdf = new File(dir, fileName);
+  if (pdf.exists) pdf.delete();
+  pdf.create();
+  pdf.write(base64, { encoding: 'base64' });
+  try {
+    new File(uri).delete();
+  } catch {
+    // Outside our folders in Expo Go; the OS clears its print cache.
+  }
   return pdf.uri;
 }
 
