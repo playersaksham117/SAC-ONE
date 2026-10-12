@@ -16,7 +16,7 @@ export default function Stock() {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
-  const rows = useMemo(() => searchProducts(products, q, 500).map((p) => ({ p, avail: p.available - (pending[p.id] || 0) })), [products, q, pending]);
+  const rows = useMemo(() => searchProducts(products, q, 500).filter((p) => p.itemType !== 'service').map((p) => ({ p, avail: p.available - (pending[p.id] || 0) })), [products, q, pending]);
   const filtered = rows.filter((r) => (filter === 'out' ? r.avail <= 0 : filter === 'low' ? r.avail > 0 && r.avail <= 5 : true));
   const stats = useMemo(() => ({
     skus: rows.length,

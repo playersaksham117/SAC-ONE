@@ -71,7 +71,8 @@ export class OpeningBalanceService {
                          AND m.movement_type = 'opening_stock' AND m.status = 'completed'), 0) AS opening_qty
       FROM products p
       LEFT JOIN stock_levels s ON s.product_id = p.id AND s.warehouse_id = @wh
-      WHERE p.is_active = 1 AND (@search = '%%' OR p.name LIKE @search OR p.sku LIKE @search OR p.barcode LIKE @search)
+      WHERE p.is_active = 1 AND p.item_type != 'service'  -- services have no stock
+        AND (@search = '%%' OR p.name LIKE @search OR p.sku LIKE @search OR p.barcode LIKE @search)
       ORDER BY p.name COLLATE NOCASE
       LIMIT 1000
     `).all({ wh: warehouse.id, search: q });
@@ -105,6 +106,7 @@ export class OpeningBalanceService {
         || (line.barcode && repos.products.findByBarcode(String(line.barcode).trim()));
       if (!product) { errors.push(`Line ${i + 1}: product ${line.sku || line.barcode || line.productId || '?'} not found`); return; }
       if (!product.isActive) { errors.push(`Line ${i + 1}: ${product.name} is inactive`); return; }
+      if (product.itemType === 'service') { errors.push(`Line ${i + 1}: ${product.name} is a service and has no stock`); return; }
       const cost = line.unitCost === '' || line.unitCost == null ? null : Number(line.unitCost);
       if (cost !== null && !(cost >= 0)) { errors.push(`Line ${i + 1}: cost must be 0 or more`); return; }
       resolved.push({ product, qty, cost });

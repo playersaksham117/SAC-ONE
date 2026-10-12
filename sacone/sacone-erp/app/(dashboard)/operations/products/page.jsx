@@ -22,6 +22,7 @@ const EMPTY_PRODUCT = {
   purchasePrice: 0,
   reorderLevel: 0,
   minimumStock: 0,
+  itemType: 'goods',
   imageUrl: '',
   description: '',
   isActive: true,
@@ -219,6 +220,7 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [barcode, setBarcode] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_PRODUCT);
@@ -285,6 +287,7 @@ export default function ProductsPage() {
       if (search) query.set('search', search);
       if (barcode) query.set('barcode', barcode);
       if (statusFilter !== '') query.set('isActive', statusFilter);
+      if (typeFilter) query.set('itemType', typeFilter);
       query.set('limit', '200');
       const data = await apiRequest(`/api/products?${query.toString()}`);
       setProducts(data.items);
@@ -305,7 +308,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (tab === 'products') loadProducts();
-  }, [tab]);
+  }, [tab, typeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLiveRefresh(() => {
     loadLookups().catch(() => {});
@@ -389,6 +392,7 @@ export default function ProductsPage() {
         purchasePrice: full.purchasePrice || 0,
         reorderLevel: full.reorderLevel || 0,
         minimumStock: full.minimumStock || 0,
+        itemType: full.itemType || 'goods',
         imageUrl: full.imageUrl || '',
         description: full.description || '',
         isActive: full.isActive,
@@ -655,8 +659,8 @@ export default function ProductsPage() {
   return (
     <RequirePermission permission="products.products.view">
       <PageHeader
-        title="Product Master"
-        description="Central product catalog used by POS, Inventory, Warehouse, Dashboard, and Web Store."
+        title="Products & Services"
+        description="Goods are stock-tracked; services (installation, repair, labour…) are sold and billed with GST but never have stock. Used by SAC-POS, Inventory, Warehouse, Dashboard and Web Store."
         actions={(
           <>
             {canCreate && tab === 'products' && (
@@ -729,6 +733,19 @@ export default function ProductsPage() {
               </select>
               <button type="button" className="btn-primary shrink-0" onClick={loadProducts}>Search</button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {[['', 'All'], ['goods', 'Products'], ['service', 'Services']].map(([value, label]) => (
+              <button
+                key={value || 'all'}
+                type="button"
+                onClick={() => setTypeFilter(value)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium ring-1 transition ${typeFilter === value ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'}`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {loading ? (
@@ -810,7 +827,12 @@ export default function ProductsPage() {
                               setViewOpen(true);
                             }}
                           >
-                            <div className="font-medium text-slate-900 hover:text-brand-700">{product.name}</div>
+                            <div className="font-medium text-slate-900 hover:text-brand-700">
+                              {product.name}
+                              {product.itemType === 'service' && (
+                                <span className="ml-2 inline-flex rounded-full bg-violet-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-violet-700">Service</span>
+                              )}
+                            </div>
                             <div className="text-xs text-slate-400">
                               {product.modelVariant ? `${product.modelVariant} · ` : ''}
                               {product.barcode || 'No barcode'}
@@ -897,6 +919,24 @@ export default function ProductsPage() {
         )}
       >
         <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="label">Type</label>
+            <div className="inline-flex rounded-lg bg-slate-100 p-1">
+              {[['goods', 'Product (goods)'], ['service', 'Service']].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setForm({ ...form, itemType: value })}
+                  className={`rounded-md px-4 py-1.5 text-sm font-medium ${form.itemType === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {form.itemType === 'service' && (
+              <p className="mt-1 text-xs text-slate-500">Services have no stock: they can always be sold, and never appear in stock levels, opening stock or stock counts.</p>
+            )}
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
               <label className="label">Product Name *</label>
@@ -988,8 +1028,13 @@ export default function ProductsPage() {
               </select>
             </div>
             <div>
-              <label className="label">HSN Code</label>
-              <input className="input-field" value={form.hsnCode} onChange={(e) => setForm({ ...form, hsnCode: e.target.value })} />
+              <label className="label">HSN / SAC</label>
+              <input
+                className="input-field"
+                value={form.hsnCode}
+                placeholder={form.itemType === 'service' ? 'SAC, e.g. 998719' : 'HSN, e.g. 8539'}
+                onChange={(e) => setForm({ ...form, hsnCode: e.target.value })}
+              />
             </div>
             <div>
               <label className="label">GST %</label>
@@ -1021,14 +1066,18 @@ export default function ProductsPage() {
                     <input type="number" step="0.01" className="input-field" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
                   </div>
                 </div>
-                <div>
-                  <label className="label">Reorder Level</label>
-                  <input type="number" step="0.01" className="input-field" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Minimum Stock</label>
-                  <input type="number" step="0.01" className="input-field" value={form.minimumStock} onChange={(e) => setForm({ ...form, minimumStock: e.target.value })} />
-                </div>
+                {form.itemType !== 'service' && (
+                  <>
+                    <div>
+                      <label className="label">Reorder Level</label>
+                      <input type="number" step="0.01" className="input-field" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Minimum Stock</label>
+                      <input type="number" step="0.01" className="input-field" value={form.minimumStock} onChange={(e) => setForm({ ...form, minimumStock: e.target.value })} />
+                    </div>
+                  </>
+                )}
                 <div className="md:col-span-2">
                   <label className="label">Product Image URL</label>
                   <input className="input-field" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." />

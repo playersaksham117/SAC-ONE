@@ -44,6 +44,8 @@ function mapProduct(row) {
     modelVariant: row.model_variant || null,
     attributes: parseAttributes(row.attributes),
     hsnCode: row.hsn_code,
+    /** 'goods' (stock-tracked) or 'service' (no stock: never negative, only counted when sold) */
+    itemType: row.item_type === 'service' ? 'service' : 'goods',
     gstPercentage: Number(row.gst_percentage || 0),
     mrp: Number(row.mrp || 0),
     sellingPrice: Number(row.selling_price || 0),
@@ -235,6 +237,7 @@ export class ProductRepository {
       brandId = '',
       isActive = null,
       webStorePublished = null,
+      itemType = '',
       limit = 100,
       offset = 0,
     } = filters;
@@ -254,6 +257,10 @@ export class ProductRepository {
     if (barcode) {
       conditions.push('LOWER(p.barcode) = LOWER(?)');
       params.push(barcode);
+    }
+    if (itemType === 'goods' || itemType === 'service') {
+      conditions.push('p.item_type = ?');
+      params.push(itemType);
     }
     if (sku) {
       conditions.push('LOWER(p.sku) = LOWER(?)');
@@ -339,8 +346,8 @@ export class ProductRepository {
       INSERT INTO products (
         id, name, sku, barcode, category_id, brand_id, unit_id, model_variant, attributes, hsn_code, gst_percentage,
         mrp, selling_price, purchase_price, reorder_level, minimum_stock, image_url, description,
-        is_active, web_store_published, created_at, updated_at, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_active, web_store_published, created_at, updated_at, created_by, item_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.name,
@@ -364,7 +371,8 @@ export class ProductRepository {
       data.webStorePublished ? 1 : 0,
       now,
       now,
-      data.createdBy || null
+      data.createdBy || null,
+      data.itemType === 'service' ? 'service' : 'goods'
     );
 
     return this.findById(id);
@@ -385,7 +393,7 @@ export class ProductRepository {
         name = ?, sku = ?, barcode = ?, category_id = ?, brand_id = ?, unit_id = ?,
         model_variant = ?, attributes = ?, hsn_code = ?, gst_percentage = ?, mrp = ?, selling_price = ?, purchase_price = ?,
         reorder_level = ?, minimum_stock = ?, image_url = ?, description = ?,
-        is_active = ?, web_store_published = ?, updated_at = ?
+        is_active = ?, web_store_published = ?, item_type = ?, updated_at = ?
       WHERE id = ?
     `).run(
       data.name ?? existing.name,
@@ -407,11 +415,19 @@ export class ProductRepository {
       data.description !== undefined ? data.description : existing.description,
       data.isActive !== undefined ? (data.isActive ? 1 : 0) : (existing.isActive ? 1 : 0),
       data.webStorePublished !== undefined ? (data.webStorePublished ? 1 : 0) : (existing.webStorePublished ? 1 : 0),
+      data.itemType === 'service' || data.itemType === 'goods' ? data.itemType : existing.itemType,
       now,
       id
     );
 
     return this.findById(id);
+  }
+
+  /** Units on hand across all warehouses (non-zero means it is being stocked as goods). */
+  stockOnHand(id) {
+    return Number(getDatabase().prepare(
+      'SELECT COALESCE(SUM(quantity_on_hand), 0) AS q FROM stock_levels WHERE product_id = ?',
+    ).get(id).q || 0);
   }
 
   findSimilarByBrandAndName(brandId, name, { excludeId = null, limit = 5 } = {}) {

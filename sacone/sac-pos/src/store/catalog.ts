@@ -46,6 +46,7 @@ export function mapServerProduct(p: ServerProduct): Product {
     gstRate: Number(p.gst_rate || 0),
     mrp: Number(p.mrp || 0),
     price: Number(p.selling_price || 0),
+    itemType: p.item_type === 'service' ? 'service' : 'goods',
     onHand: Number(p.current_stock || 0),
     available: Number(p.available_stock ?? p.current_stock ?? 0),
     isActive: p.is_active !== false && p.approval_status !== 'rejected',

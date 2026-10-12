@@ -165,6 +165,13 @@ describe('checkout validation', () => {
     expect(validateCheckout(ctx).errors.some((e) => /only 1/.test(e.message))).toBe(true);
     expect(validateCheckout({ ...ctx, allowNegativeStock: true }).warnings.length).toBe(1);
   });
+  it('services are never blocked by stock', () => {
+    const ctx = base();
+    ctx.pendingQty = { p1: 9 } as Record<string, number>;
+    ctx.products = { p1: product({ itemType: 'service', available: 0, onHand: 0 }) };
+    expect(validateCheckout(ctx).errors).toEqual([]);
+    expect(validateCheckout(ctx).warnings).toEqual([]);
+  });
   it('credit needs a customer and respects credit limit', () => {
     const ctx = base();
     ctx.payments = [{ method: 'credit', amount: ctx.totals.grandTotal }];

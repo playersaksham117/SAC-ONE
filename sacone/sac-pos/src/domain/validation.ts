@@ -146,6 +146,7 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
     const p = ctx.products[productId];
     if (!p) { r.errors.push({ message: 'A product in the cart is no longer in the catalogue' }); continue; }
     if (!p.isActive) r.errors.push({ message: `${p.name} is inactive in the ERP` });
+    if (p.itemType === 'service') continue; // services have no stock to check
     const available = round2(p.available - (ctx.pendingQty[productId] || 0));
     if (qty > available + 0.000001) {
       const msg = `${p.name}: only ${Math.max(available, 0)} ${p.unit} in stock`;

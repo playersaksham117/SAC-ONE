@@ -600,7 +600,7 @@ export class CeoDashboardRepository {
         SELECT p.id
         FROM products p
         LEFT JOIN stock_levels s ON s.product_id = p.id ${filters.warehouseId ? 'AND s.warehouse_id = ?' : ''}
-        WHERE p.is_active = 1
+        WHERE p.is_active = 1 AND p.item_type = 'goods'
         GROUP BY p.id
         HAVING COALESCE(SUM(s.quantity_available), 0) <= CASE
           WHEN p.reorder_level > 0 THEN p.reorder_level
@@ -614,7 +614,7 @@ export class CeoDashboardRepository {
         SELECT p.id
         FROM products p
         LEFT JOIN stock_levels s ON s.product_id = p.id ${filters.warehouseId ? 'AND s.warehouse_id = ?' : ''}
-        WHERE p.is_active = 1
+        WHERE p.is_active = 1 AND p.item_type = 'goods'
         GROUP BY p.id
         HAVING COALESCE(SUM(s.quantity_available), 0) <= 0
       )
@@ -1130,7 +1130,7 @@ export class CeoDashboardRepository {
         COALESCE(SUM(s.quantity_available), 0) as quantity_available
       FROM products p
       LEFT JOIN stock_levels s ON s.product_id = p.id ${whJoin}
-      WHERE p.is_active = 1
+      WHERE p.is_active = 1 AND p.item_type = 'goods'
         ${filters.categoryId ? 'AND p.category_id = ?' : ''}
         ${filters.brandId ? 'AND p.brand_id = ?' : ''}
       GROUP BY p.id
@@ -1483,7 +1483,7 @@ export class CeoDashboardRepository {
         SELECT p.id
         FROM products p
         LEFT JOIN stock_levels s ON s.product_id = p.id
-        WHERE p.is_active = 1
+        WHERE p.is_active = 1 AND p.item_type = 'goods'
         GROUP BY p.id
         HAVING COALESCE(SUM(s.quantity_available), 0) <= CASE
           WHEN p.reorder_level > 0 THEN p.reorder_level

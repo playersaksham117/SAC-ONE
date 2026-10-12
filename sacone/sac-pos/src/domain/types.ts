@@ -16,6 +16,7 @@ export interface Product {
   gstRate: number;
   mrp: number;
   price: number;         // selling price, GST-exclusive
+  itemType?: 'goods' | 'service'; // services have no stock (never blocked, not on the stock screen)
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;

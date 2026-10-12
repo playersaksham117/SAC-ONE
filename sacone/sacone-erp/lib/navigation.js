@@ -69,8 +69,8 @@ export const ERP_MODULES = [
   {
     id: 'products',
     section: 'operations',
-    label: 'Products',
-    description: 'Central product master',
+    label: 'Products & Services',
+    description: 'Goods (stock-tracked) and services (no stock)',
     href: '/operations/products',
     permission: 'products.products.view',
     icon: '🏷️',

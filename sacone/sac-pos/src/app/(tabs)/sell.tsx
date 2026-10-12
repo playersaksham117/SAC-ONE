@@ -81,7 +81,9 @@ export default function Sell() {
             {item.sku}{item.brand ? ` · ${item.brand}` : ''} · GST {item.gstRate}%
           </Text>
           <View style={{ marginTop: 6 }}>
-            <Badge tone={stockTone(available)} label={available <= 0 ? 'Out of stock' : `${formatQty(available)} ${item.unit} in stock`} />
+            {item.itemType === 'service'
+              ? <Badge tone="info" label="Service" />
+              : <Badge tone={stockTone(available)} label={available <= 0 ? 'Out of stock' : `${formatQty(available)} ${item.unit} in stock`} />}
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>

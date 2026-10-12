@@ -270,6 +270,7 @@ export class PosService {
         discountAmount: item.discountAmount || 0,
         discountPercent: item.discountPercent || 0,
         gstPercentage: item.gstPercentage != null ? item.gstPercentage : product.gstPercentage,
+        itemType: product.itemType,
       };
     });
   }
@@ -405,7 +406,9 @@ export class PosService {
 
     const allowNegative = offlineSync || this.#allowNegativeStock();
     // Pre-validate stock before creating invoice
+    const serviceIds = new Set(enriched.filter((i) => i.itemType === 'service').map((i) => i.productId));
     for (const item of totals.items) {
+      if (serviceIds.has(item.productId)) continue; // services have no stock to check
       const stock = stockRepo.ensureRow(item.productId, warehouseId);
       if (offlineSync && stock.quantityAvailable + 0.000001 < item.quantity) {
         warnings.push({
@@ -492,7 +495,7 @@ export class PosService {
         reason: `POS ${sale.invoiceNumber}`,
         notes: item.sku || null,
       }, actor, req, { skipPermissionCheck: true });
-      saleRepo.updateItemMovement(item.id, result.movement.id);
+      if (result.movement) saleRepo.updateItemMovement(item.id, result.movement.id);
     }
 
     if (amountCredit > 0) {
@@ -837,7 +840,7 @@ export class PosService {
         referenceId: ret.id,
         reason: `Return ${ret.returnNumber} for ${sale.invoiceNumber}`,
       }, actor, req, { skipPermissionCheck: true });
-      returnRepo.updateItemMovement(item.id, result.movement.id);
+      if (result.movement) returnRepo.updateItemMovement(item.id, result.movement.id);
       saleRepo.addReturnedQuantity(item.saleItemId, item.quantity);
     }
 

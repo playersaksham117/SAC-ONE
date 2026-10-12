@@ -11,6 +11,11 @@ import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
 import { nowIso } from '../core/utils.js';
 
+/** Document movements that a service passes through without touching stock. */
+const SERVICE_DOCUMENT_MOVEMENTS = new Set([
+  MOVEMENT_TYPES.POS_SALE, MOVEMENT_TYPES.SALES_RETURN, MOVEMENT_TYPES.PURCHASE, MOVEMENT_TYPES.PURCHASE_RETURN,
+]);
+
 const productRepo = repos.products;
 const warehouseRepo = repos.warehouses;
 const locationRepo = repos.warehouseLocations;
@@ -197,6 +202,12 @@ export class InventoryMovementService {
     const product = productRepo.findById(input.productId);
     if (!product || !product.isActive) {
       throw new AppError('Product not found or inactive', 400);
+    }
+    // Services have no stock: selling, returning or buying one moves nothing (so it can never go
+    // negative); stock entries, adjustments, transfers and counts make no sense for them.
+    if (product.itemType === 'service') {
+      if (SERVICE_DOCUMENT_MOVEMENTS.has(input.movementType)) return { movement: null, stock: null, skipped: 'service' };
+      throw new AppError(`${product.name} is a service: it has no stock to enter, adjust, move or count.`, 400, 'SERVICE_NO_STOCK');
     }
 
     let warehouseId = input.warehouseId;

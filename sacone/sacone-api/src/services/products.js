@@ -279,7 +279,17 @@ function normalizeProductInput(data, { preserveSku = null } = {}) {
     description: data.description || null,
     isActive: data.isActive !== false && data.isActive !== 0 && data.isActive !== '0',
     webStorePublished: Boolean(data.webStorePublished === true || data.webStorePublished === 1 || data.webStorePublished === '1'),
+    itemType: itemTypeOf(data.itemType),
   };
+}
+
+/** 'goods' | 'service' | undefined (not given: keep what it was / default goods). */
+function itemTypeOf(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const v = String(value).toLowerCase();
+  if (v === 'service' || v === 'services') return 'service';
+  if (v === 'goods' || v === 'product' || v === 'products') return 'goods';
+  throw new AppError('Type must be goods or service', 400);
 }
 
 function validateProductRefs(input) {
@@ -513,6 +523,12 @@ export class ProductService {
 
     if (!input.name) throw new AppError('Product name is required', 400);
     if (!input.sku) throw new AppError('SKU is required', 400);
+    if (input.itemType === 'service' && existing.itemType !== 'service') {
+      const onHand = productRepo.stockOnHand(id);
+      if (Math.abs(onHand) > 0.000001) {
+        throw new AppError(`${existing.name} still has ${onHand} in stock. Bring its stock to zero (adjust or return it) before making it a service.`, 400, 'HAS_STOCK');
+      }
+    }
     if (skuLocked && data.sku && data.sku.trim() !== existing.sku) {
       throw new AppError('SKU cannot be changed — product is used in transactions or stock', 400);
     }
