@@ -48,6 +48,8 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           paymentMethod: paid ? paid.method : 'credit',
           amountReceived: s.amountPaid,
           notes: s.notes || '',
+          customerPoNumber: s.customerPoNumber || '',
+          customerPoDate: s.customerPoDate || '',
         });
       } catch (e) {
         setError(e.message);
@@ -100,6 +102,8 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           paymentMethod: form.paymentMethod,
           amountReceived: form.paymentMethod === 'credit' ? 0 : Number(form.amountReceived || 0),
           notes: form.notes,
+          customerPoNumber: form.customerPoNumber.trim(),
+          customerPoDate: form.customerPoNumber.trim() ? form.customerPoDate : '',
         }),
       });
       onSaved(saved);
@@ -181,6 +185,14 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
                 <input type="number" min="0" step="0.01" className="input-field" value={form.amountReceived} onChange={(e) => setForm({ ...form, amountReceived: e.target.value })} />
               </label>
             )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm"><span className="label">Customer PO no.</span>
+              <input className="input-field" maxLength={60} placeholder="Buyer's purchase order number" value={form.customerPoNumber} onChange={(e) => setForm({ ...form, customerPoNumber: e.target.value })} />
+            </label>
+            <label className="block text-sm"><span className="label">Customer PO date</span>
+              <input className="input-field" type="date" disabled={!form.customerPoNumber.trim()} value={form.customerPoDate} onChange={(e) => setForm({ ...form, customerPoDate: e.target.value })} />
+            </label>
           </div>
           <label className="block text-sm"><span className="label">Notes</span>
             <input className="input-field" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />

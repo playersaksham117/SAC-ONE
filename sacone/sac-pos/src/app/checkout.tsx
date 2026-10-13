@@ -3,11 +3,12 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { DENOMINATIONS, notesTotal, suggestChange, type NoteCounts } from '../domain/cash';
 import { formatMoney, round2 } from '../domain/money';
+import { readCustomerPo, todayPoText } from '../domain/po';
 import type { Payment, PaymentMethod } from '../domain/types';
 import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
 import { useCart } from '../store/cart';
-import { Banner, Button, Card, Chip, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
+import { Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
 
 const METHODS: { method: PaymentMethod; label: string; icon: 'cash-outline' | 'qr-code-outline' | 'card-outline' | 'time-outline' }[] = [
   { method: 'cash', label: 'Cash', icon: 'cash-outline' },
@@ -68,6 +69,10 @@ export default function Checkout() {
   const [received, setReceived] = useState<NoteCounts>({});
   const [changeCounts, setChangeCounts] = useState<NoteCounts | null>(null); // null = suggested
   const [busy, setBusy] = useState(false);
+  const [poOn, setPoOn] = useState(false);
+  const [poNumber, setPoNumber] = useState('');
+  const [poDate, setPoDate] = useState('');
+  const poCheck = poOn ? readCustomerPo(poNumber, poDate) : { po: null, error: null };
   const [submitError, setSubmitError] = useState<string[]>([]);
 
   const payments: Payment[] = useMemo(
@@ -94,7 +99,7 @@ export default function Checkout() {
     if (receivedTotal < cashPart - 0.001) drawerErrors.push(`Notes received (${formatMoney(receivedTotal)}) are less than the cash due (${formatMoney(cashPart)})`);
     else if (changeNotes !== changeNeeded) drawerErrors.push(`Change notes add up to ${formatMoney(changeNotes)}; give ${formatMoney(changeNeeded)}`);
   }
-  const blocked = check.errors.length > 0 || drawerErrors.length > 0;
+  const blocked = check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error);
 
   const choose = (method: PaymentMethod) => {
     setSplit(false);
@@ -112,6 +117,7 @@ export default function Checkout() {
       const sale = completeSale(payments, {
         tendered: effectiveTendered || undefined,
         cashDrawer: drawerOn && cashPart > 0 ? { received, change: change > 0 ? changeShown : {} } : null,
+        customerPo: poCheck.po,
       });
       if (router.canDismiss()) router.dismissAll();
       router.push({ pathname: '/sale/[id]', params: { id: sale.id, done: '1' } });
@@ -276,6 +282,23 @@ export default function Checkout() {
             </Row>
           </Card>
         )}
+
+        <View style={{ marginTop: space.md }}>
+          <SectionTitle right={<Chip label={poOn ? 'Customer PO on' : 'Add customer PO'} icon="document-text-outline" active={poOn} onPress={() => setPoOn(!poOn)} />}>
+            Customer PO
+          </SectionTitle>
+          {poOn ? (
+            <Card>
+              <Field label="PO number" value={poNumber} onChangeText={setPoNumber} placeholder="Buyer's purchase order no." autoCapitalize="characters" maxLength={60} testID="po-number" />
+              <Row style={{ alignItems: 'flex-end' }}>
+                <Field label="PO date" value={poDate} onChangeText={setPoDate} placeholder="DD/MM/YYYY" keyboardType="numbers-and-punctuation" style={{ flex: 1, marginBottom: 0 }} testID="po-date" />
+                <Button title="Today" variant="ghost" size="sm" onPress={() => setPoDate(todayPoText())} />
+              </Row>
+              {poCheck.error ? <Text style={{ color: colors.danger, marginTop: space.xs }}>{poCheck.error}</Text> : null}
+              <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.xs }}>Printed on the bill as P.O. No. and searchable in SACONE ERP.</Text>
+            </Card>
+          ) : null}
+        </View>
 
         <View style={{ marginTop: space.md }}>
           {check.errors.length ? <Banner tone="danger" title="Cannot complete yet" messages={check.errors.map((e) => e.message)} /> : null}

@@ -86,7 +86,7 @@ export function checkCheckout(payments: Payment[]): CheckResult {
 
 export function completeSale(
   customerPayments: Payment[],
-  { tendered, cashDrawer }: { tendered?: number; cashDrawer?: CashDrawer | null } = {},
+  { tendered, cashDrawer, customerPo }: { tendered?: number; cashDrawer?: CashDrawer | null; customerPo?: Sale['customerPo'] } = {},
 ): Sale {
   const user = requireUser('sell');
   const cart = useCart.getState();
@@ -116,6 +116,7 @@ export function completeSale(
     cashDrawer: cashDrawer ? { received: compactNotes(cashDrawer.received), change: compactNotes(cashDrawer.change) } : undefined,
     exchange: cart.exchange ? { returnId: cart.exchange.returnId, returnNumber: cart.exchange.returnNumber, credit: exchangeCreditFor(totals.grandTotal) } : null,
     notes: cart.notes || null,
+    customerPo: customerPo?.number ? customerPo : null,
     returned: {},
     sync: 'pending',
   };

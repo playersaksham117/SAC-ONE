@@ -117,6 +117,8 @@ export interface Sale extends SyncMeta {
   /** Set when this bill is the new half of an exchange: the return that paid for part of it. */
   exchange?: { returnId: string; returnNumber: string; credit: number } | null;
   notes?: string | null;
+  /** The customer's purchase order (B2B), printed on the bill and synced to SACONE. */
+  customerPo?: { number: string; date: string | null } | null;
   returned: Record<string, number>;   // productId → qty returned
 }
 

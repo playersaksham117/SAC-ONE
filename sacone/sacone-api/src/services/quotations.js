@@ -1,4 +1,5 @@
 import { withFinancialYear } from '../database/context.js';
+import { customerPoFrom } from '../core/customer-po.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { getFinancialYear } from '../core/financial-year.js';
@@ -148,7 +149,8 @@ export class QuotationService {
     const allocated = numberingRepo.allocateNumber(firm.id, 'quotation', quotationDate);
     const snapshot = buildCustomerSnapshot(customer, data.customerSnapshot || {});
 
-    const quote = quoteRepo.create({
+    const customerPo = customerPoFrom(data);
+    const created = quoteRepo.create({
       header: {
         quotationNumber: allocated.documentNumber,
         firmId: firm.id,
@@ -167,6 +169,7 @@ export class QuotationService {
       },
       items: totals.items.map((item) => ({ ...item, id: generateId() })),
     });
+    const quote = quoteRepo.setCustomerPo(created.id, customerPo);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -200,7 +203,8 @@ export class QuotationService {
       ...(data.customerSnapshot || {}),
     });
 
-    const quote = quoteRepo.update(id, {
+    const customerPo = customerPoFrom(data, existing);
+    const updatedQuote = quoteRepo.update(id, {
       header: {
         warehouseId: data.warehouseId,
         customerId: data.customerId ?? existing.customerId,
@@ -215,6 +219,7 @@ export class QuotationService {
       },
       items: totals.items.map((item) => ({ ...item, id: generateId() })),
     });
+    const quote = quoteRepo.setCustomerPo(updatedQuote.id, customerPo);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -409,6 +414,7 @@ export class QuotationService {
       invoiceDiscount: quote.invoiceDiscount,
       notes: data.notes || quote.notes,
       quotationId: quote.id,
+      ...(() => { const po = customerPoFrom(data, quote); return { customerPoNumber: po.number || '', customerPoDate: po.date || '' }; })(),
       items: quote.items.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,

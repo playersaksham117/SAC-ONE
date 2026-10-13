@@ -25,6 +25,8 @@ function mapQuotation(row) {
     grandTotal: Number(row.grand_total || 0),
     notes: row.notes,
     termsConditions: row.terms_conditions,
+    customerPoNumber: row.customer_po_number || null,
+    customerPoDate: row.customer_po_date || null,
     customerSnapshot: {
       name: row.snap_customer_name,
       businessName: row.snap_business_name,
@@ -110,9 +112,9 @@ export class QuotationRepository {
     const where = [];
     const params = [];
     if (search) {
-      where.push('(q.quotation_number LIKE ? OR q.snap_customer_name LIKE ? OR q.snap_phone LIKE ?)');
+      where.push('(q.quotation_number LIKE ? OR q.snap_customer_name LIKE ? OR q.snap_phone LIKE ? OR q.customer_po_number LIKE ?)');
       const q = `%${search}%`;
-      params.push(q, q, q);
+      params.push(q, q, q, q);
     }
     if (status) {
       where.push('q.status = ?');
@@ -325,6 +327,12 @@ export class QuotationRepository {
     });
 
     tx();
+    return this.findById(id);
+  }
+
+  setCustomerPo(id, { number, date }) {
+    getDatabase().prepare('UPDATE pos_quotations SET customer_po_number = ?, customer_po_date = ? WHERE id = ?')
+      .run(number || null, date || null, id);
     return this.findById(id);
   }
 

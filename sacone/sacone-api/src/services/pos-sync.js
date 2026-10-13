@@ -534,6 +534,10 @@ export class PosSyncService {
       invoiceDiscount,
       payments,
       invoiceNumber,
+      // Customer's PO from the phone; a malformed date is dropped rather than failing the sale.
+      customerPoNumber: str(sale.customer_po_number).slice(0, 60) || undefined,
+      customerPoDate: str(sale.customer_po_number) && /^\d{4}-\d{2}-\d{2}$/.test(str(sale.customer_po_date))
+        ? str(sale.customer_po_date) : undefined,
       notes: [
         sale.notes,
         cashDrawerNote(sale.cash_drawer),

@@ -264,7 +264,8 @@ export class CustomerRepository {
     const db = getDatabase();
     const items = db.prepare(`
       SELECT s.id, s.invoice_number, s.status, s.payment_status, s.grand_total,
-             s.amount_paid, s.amount_credit, s.gst_amount, s.due_date, s.created_at, s.completed_at
+             s.amount_paid, s.amount_credit, s.gst_amount, s.due_date, s.created_at, s.completed_at,
+             s.customer_po_number, s.customer_po_date
       FROM pos_sales s
       WHERE s.customer_id = ?
       ORDER BY s.created_at DESC
@@ -282,6 +283,8 @@ export class CustomerRepository {
       return {
         id: row.id,
         invoiceNumber: row.invoice_number,
+        customerPoNumber: row.customer_po_number || null,
+        customerPoDate: row.customer_po_date || null,
         status: row.status,
         paymentStatus: row.payment_status,
         displayStatus,

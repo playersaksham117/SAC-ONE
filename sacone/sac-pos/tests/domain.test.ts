@@ -8,6 +8,7 @@ import {
 } from '../src/domain/validation';
 import { docNumber } from '../src/domain/numbering';
 import { salePayload } from '../src/domain/payloads';
+import { formatPoDate, parsePoDate, poLabel, readCustomerPo } from '../src/domain/po';
 import type { CartLine, Customer, Payment, Product, Sale } from '../src/domain/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -220,6 +221,28 @@ describe('payloads & numbering', () => {
     expect(p.customer_phone).toBe('9876543210');
     expect(p.items[0].product_uuid).toBe('p1');
     expect(p.erp_user_id).toBe('u1');
+    expect(p.customer_po_number).toBeNull();
+    expect(salePayload({ ...sale, customerPo: { number: 'PO/77', date: '2026-10-01' } }, 'u1')).toMatchObject({ customer_po_number: 'PO/77', customer_po_date: '2026-10-01' });
+  });
+});
+
+describe('customer PO', () => {
+  it('reads Indian and ISO dates, rejects impossible ones', () => {
+    expect(parsePoDate('05/10/2026')).toBe('2026-10-05');
+    expect(parsePoDate('5-1-26')).toBe('2026-01-05');
+    expect(parsePoDate('2026-10-05')).toBe('2026-10-05');
+    expect(parsePoDate('31/02/2026')).toBeNull();
+    expect(parsePoDate('next week')).toBeNull();
+    expect(formatPoDate('2026-10-05')).toBe('05/10/2026');
+  });
+  it('validates what was typed at checkout', () => {
+    expect(readCustomerPo('', '')).toEqual({ po: null, error: null });
+    expect(readCustomerPo('  PO / 77 ', '')).toEqual({ po: { number: 'PO / 77', date: null }, error: null });
+    expect(readCustomerPo('PO/77', '01/10/2026').po).toEqual({ number: 'PO/77', date: '2026-10-01' });
+    expect(readCustomerPo('', '01/10/2026').error).toMatch(/PO number/);
+    expect(readCustomerPo('PO/77', '13/13/2026').error).toMatch(/05\/10\/2026/);
+    expect(readCustomerPo('X'.repeat(61), '').error).toMatch(/too long/);
+    expect(poLabel({ number: 'PO/77', date: '2026-10-01' })).toBe('PO/77 dt 01/10/2026');
   });
 });
 

@@ -3,6 +3,7 @@ import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 import { financialYearOf } from '../core/financial-year.js';
+import { customerPoFrom } from '../core/customer-po.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
@@ -443,6 +444,7 @@ export class PosService {
       firmId = allocated.firmId;
     }
 
+    const customerPo = customerPoFrom(data);
     const itemIds = totals.items.map(() => generateId());
     const sale = saleRepo.create({
       header: {
@@ -482,6 +484,7 @@ export class PosService {
       items: totals.items.map((item, i) => ({ ...item, id: itemIds[i] })),
       payments: normalizedPayments,
     });
+    if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
 
     // Inventory movements (POS sale) — never direct stock write
     for (let i = 0; i < sale.items.length; i++) {
@@ -660,6 +663,8 @@ export class PosService {
         invoiceNumber: old.invoiceNumber,
         salesAgentId: data.salesAgentId !== undefined ? data.salesAgentId : old.salesAgentId,
         notes: data.notes !== undefined ? data.notes : old.notes,
+        // The customer's PO stays with the invoice unless the edit changes it.
+        ...(() => { const po = customerPoFrom(data, old); return { customerPoNumber: po.number || '', customerPoDate: po.date || '' }; })(),
       }, actor, req, { completedAt: old.completedAt || old.createdAt });
       saleRepo.restoreOrigin(created.id, { createdAt: old.createdAt, createdBy: old.createdBy });
       return created;

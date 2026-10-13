@@ -73,6 +73,8 @@ function mapSale(row) {
     dueDate: row.due_date || null,
     dueAmount: Number(row.amount_credit || 0),
     notes: row.notes,
+    customerPoNumber: row.customer_po_number || null,
+    customerPoDate: row.customer_po_date || null,
     heldBillId: row.held_bill_id,
     quotationId: row.quotation_id || null,
     firmId: row.firm_id || null,
@@ -283,9 +285,9 @@ export class PosSaleRepository {
     const where = [];
     const params = [];
     if (search) {
-      where.push('(s.invoice_number LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)');
+      where.push('(s.invoice_number LIKE ? OR c.name LIKE ? OR c.phone LIKE ? OR s.customer_po_number LIKE ?)');
       const q = `%${search}%`;
-      params.push(q, q, q);
+      params.push(q, q, q, q);
     }
     if (customerId) {
       where.push('s.customer_id = ?');
@@ -418,6 +420,11 @@ export class PosSaleRepository {
 
     tx();
     return this.findById(id);
+  }
+
+  setCustomerPo(id, { number, date }) {
+    getDatabase().prepare('UPDATE pos_sales SET customer_po_number = ?, customer_po_date = ? WHERE id = ?')
+      .run(number || null, date || null, id);
   }
 
   updateItemMovement(itemId, movementId) {

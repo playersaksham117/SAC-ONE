@@ -115,6 +115,7 @@ export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION' })
         <div><strong>No:</strong> ${esc(quotation.quotationNumber)}</div>
         <div><strong>Date:</strong> ${esc(new Date(quotation.quotationDate).toLocaleDateString('en-IN'))}</div>
         ${quotation.validUntil ? `<div><strong>Valid Until:</strong> ${esc(new Date(quotation.validUntil).toLocaleDateString('en-IN'))}</div>` : ''}
+        ${quotation.customerPoNumber ? `<div><strong>Your PO:</strong> ${esc(quotation.customerPoNumber)}${quotation.customerPoDate ? ` dt ${esc(new Date(quotation.customerPoDate).toLocaleDateString('en-IN'))}` : ''}</div>` : ''}
         <div><strong>FY:</strong> ${esc(quotation.financialYear)}</div>
       </div>
     </div>

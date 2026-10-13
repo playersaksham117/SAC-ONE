@@ -125,6 +125,9 @@ function classicParty(label, name, contact, phone) {
 
 /* ───────────── mappers ───────────── */
 
+/** "INV/0012/26-27 dt 05/10/2026" — another document this one refers to. */
+const againstRef = (number, date) => (number ? `${number}${date ? ` dt ${ddmmyyyy(date)}` : ''}` : '');
+
 /** Sales invoice (GET /api/pos/sales/:id) + optional customer record. */
 export function saleDocument(sale, customer) {
   const discount = Number(sale.itemDiscountTotal || 0) + Number(sale.invoiceDiscount || 0);
@@ -134,7 +137,11 @@ export function saleDocument(sale, customer) {
     title: 'TAX INVOICE',
     number: sale.invoiceNumber,
     date: when(sale.createdAt),
-    meta: [['Invoice', sale.invoiceNumber], ['Date', when(sale.createdAt)], ...(sale.createdByName ? [['Cashier', sale.createdByName]] : [])],
+    meta: [
+      ['Invoice', sale.invoiceNumber], ['Date', when(sale.createdAt)],
+      ...(sale.customerPoNumber ? [['Your PO', againstRef(sale.customerPoNumber, sale.customerPoDate)]] : []),
+      ...(sale.createdByName ? [['Cashier', sale.createdByName]] : []),
+    ],
     partyLabel: 'Bill to',
     party: sale.customerIsWalkIn ? null : partyFrom(sale.customerName, { ...customer, phone: sale.customerPhone || customer?.phone }),
     partyFallback: 'Walk-in customer',
@@ -181,6 +188,8 @@ function saleClassic(sale, customer) {
     shipTo,
     placeOfSupplyCode: billTo.stateCode,
     agent: sale.salesAgentName || '',
+    poNumber: sale.customerPoNumber || '',
+    poDate: ddmmyyyy(sale.customerPoDate),
     note: sale.notes || '',
     lines,
     totals: classicTotals(lines, sale.grandTotal),
@@ -188,7 +197,6 @@ function saleClassic(sale, customer) {
 }
 
 /** "INV/0012/26-27 dt 05/10/2026" — the original document a note refers to. */
-const againstRef = (number, date) => (number ? `${number}${date ? ` dt ${ddmmyyyy(date)}` : ''}` : '');
 
 /** GST credit note (GET /api/notes/credit/:id) + optional customer record. */
 export function creditNoteDocument(note, customer) {
@@ -554,7 +562,7 @@ function classicHtml(model, company, size, invoice = {}) {
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000">
         <div class="vr" style="width:65%;padding:${a5 ? '1px 3px' : '2px 5px'}">
-          <div class="kv"><span>Order No. :</span><span>Dated :</span><span>Transport :</span><span>Pvt.Mark :</span>
+          <div class="kv"><span>P.O. No. : ${esc(c.poNumber || '')}</span><span>Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span><span>Transport :</span><span>Pvt.Mark :</span>
           <span>GR/RR No. :</span><span>Dated :</span><span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span>
           <span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span></div>
         </div><div style="width:35%"></div>

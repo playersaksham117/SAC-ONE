@@ -59,6 +59,8 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('Prices valid until validity date. Goods once sold will not be taken back.');
   const [validUntil, setValidUntil] = useState('');
+  const [poNumber, setPoNumber] = useState('');
+  const [poDate, setPoDate] = useState('');
   const [snapOverrides, setSnapOverrides] = useState({});
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
@@ -144,6 +146,8 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
     setCart([]);
     setInvoiceDiscount(0);
     setNotes('');
+    setPoNumber('');
+    setPoDate('');
     setSnapOverrides({});
     setCustomer(bootstrap?.walkInCustomer || null);
     setActiveQuote(null);
@@ -161,6 +165,8 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
         notes,
         termsConditions: terms,
         validUntil,
+        customerPoNumber: poNumber.trim(),
+        customerPoDate: poNumber.trim() ? poDate : '',
         status: asSent ? 'sent' : 'draft',
         customerSnapshot: buildSnapshot(customer, snapOverrides),
         items: cart.map((c) => ({
@@ -199,6 +205,8 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
     setNotes(q.notes || '');
     setTerms(q.termsConditions || '');
     setValidUntil(q.validUntil || '');
+    setPoNumber(q.customerPoNumber || '');
+    setPoDate(q.customerPoDate || '');
     setCustomer(q.customerId ? { id: q.customerId, name: q.customerSnapshot?.name } : bootstrap?.walkInCustomer);
     setSnapOverrides(q.customerSnapshot || {});
     setMode('edit');
@@ -379,6 +387,9 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
           <div className="mb-2 flex justify-between"><span>Grand Total</span><strong>{money(activeQuote.grandTotal)}</strong></div>
           <div className="text-xs text-slate-500">Valid until: {activeQuote.validUntil || '—'}</div>
+          {activeQuote.customerPoNumber && (
+            <div className="text-xs text-slate-500">Customer PO: {activeQuote.customerPoNumber}{activeQuote.customerPoDate ? ` · ${activeQuote.customerPoDate}` : ''}</div>
+          )}
           {activeQuote.convertedInvoiceNumber && (
             <div className="mt-2 text-emerald-700">Converted to invoice: {activeQuote.convertedInvoiceNumber}</div>
           )}
@@ -488,6 +499,14 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
         <label className="block text-sm">Valid until
           <input className="input-field mt-1" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
         </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-sm">Customer PO no.
+            <input className="input-field mt-1" maxLength={60} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
+          </label>
+          <label className="block text-sm">PO date
+            <input className="input-field mt-1" type="date" disabled={!poNumber.trim()} value={poDate} onChange={(e) => setPoDate(e.target.value)} />
+          </label>
+        </div>
         <textarea className="input-field" rows={2} placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         <textarea className="input-field" rows={3} placeholder="Terms & conditions" value={terms} onChange={(e) => setTerms(e.target.value)} />
         {canCreate && (

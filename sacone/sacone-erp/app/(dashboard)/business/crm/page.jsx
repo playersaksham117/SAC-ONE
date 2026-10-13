@@ -541,7 +541,7 @@ export default function PartiesPage() {
                     <thead className="bg-slate-50 text-left uppercase text-slate-500">
                       <tr>
                         {tab === 'customers' && detailTab !== 'payments' && detailTab !== 'returns' && (
-                          <><th className="px-2 py-1">Invoice</th><th className="px-2 py-1">Total</th><th className="px-2 py-1">Paid</th><th className="px-2 py-1">Due</th><th className="px-2 py-1">Status</th><th className="px-2 py-1">Date</th></>
+                          <><th className="px-2 py-1">Invoice</th><th className="px-2 py-1">Customer PO</th><th className="px-2 py-1">Total</th><th className="px-2 py-1">Paid</th><th className="px-2 py-1">Due</th><th className="px-2 py-1">Status</th><th className="px-2 py-1">Date</th></>
                         )}
                         {tab === 'customers' && detailTab === 'payments' && (
                           <><th className="px-2 py-1">Invoice</th><th className="px-2 py-1">Method</th><th className="px-2 py-1">Amount</th><th className="px-2 py-1">Date</th></>
@@ -560,6 +560,7 @@ export default function PartiesPage() {
                           {tab === 'customers' && detailTab !== 'payments' && detailTab !== 'returns' && (
                             <>
                               <td className="px-2 py-1 font-mono">{row.invoiceNumber}</td>
+                              <td className="px-2 py-1">{row.customerPoNumber ? `${row.customerPoNumber}${row.customerPoDate ? ` · ${new Date(row.customerPoDate).toLocaleDateString('en-IN')}` : ''}` : '—'}</td>
                               <td className="px-2 py-1">{money(row.grandTotal)}</td>
                               <td className="px-2 py-1">{money(row.amountPaid)}</td>
                               <td className="px-2 py-1">{money(row.dueAmount ?? row.amountCredit)}</td>
@@ -569,7 +570,7 @@ export default function PartiesPage() {
                           )}
                           {tab === 'customers' && detailTab === 'returns' && (
                             <>
-                              <td className="px-2 py-1 font-mono" colSpan={2}>{row.invoiceNumber || row.returnNumber || row.id}</td>
+                              <td className="px-2 py-1 font-mono" colSpan={3}>{row.invoiceNumber || row.returnNumber || row.id}</td>
                               <td className="px-2 py-1">{money(row.grandTotal || row.amount)}</td>
                               <td className="px-2 py-1" colSpan={3}>{row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '—'}</td>
                             </>

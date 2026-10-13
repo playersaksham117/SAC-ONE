@@ -1,4 +1,5 @@
 import * as Print from 'expo-print';
+import { formatPoDate, poLabel } from '../domain/po';
 import { Platform } from 'react-native';
 import type { CompanyInfo } from '../api/sacone';
 import { formatNotes } from '../domain/cash';
@@ -91,6 +92,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <table><tr><td>Bill</td><td class="r">${esc(billNumber(sale, deviceCode))}</td></tr>
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
+  ${sale.customerPo?.number ? `<tr><td>Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
   ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
   </table><hr>
   <table>${rows}</table><hr>
@@ -157,7 +159,8 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       <h2>TAX INVOICE</h2>
       <table class="meta"><tr><td class="muted">Invoice</td><td class="b r">${esc(billNumber(sale, deviceCode))}</td></tr>
       <tr><td class="muted">Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
-      <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr></table>
+      <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
+      ${sale.customerPo?.number ? `<tr><td class="muted">Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}</table>
     </div>
   </div>
   <div class="party">
@@ -350,7 +353,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div style="display:flex">
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000"><div class="vr" style="width:65%;padding:${pad}"><div class="kv">
-        <span>Order No. :</span><span>Dated :</span><span>Transport :</span><span>Pvt.Mark :</span><span>GR/RR No. :</span><span>Dated :</span>
+        <span>P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span>Dated : ${esc(formatPoDate(sale.customerPo?.date))}</span><span>Transport :</span><span>Pvt.Mark :</span><span>GR/RR No. :</span><span>Dated :</span>
         <span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span><span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span>
       </div></div><div style="width:35%"></div></div>
       <div style="border-bottom:1px solid #000;padding:${pad}"><span class="b">Amount In Words :</span> <span class="b">${esc(amountInWords(t.grandTotal))}</span></div>

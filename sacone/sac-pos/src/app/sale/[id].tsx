@@ -12,6 +12,7 @@ import { useCan, useSession } from '../../store/session';
 import { notify } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Banner, Button, Card, Chip, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, Segmented, colors, font, space } from '../../ui/components';
+import { poLabel } from '../../domain/po';
 
 const METHOD: Record<string, string> = { cash: 'Cash', upi: 'UPI', bank: 'Card / Bank', credit: 'Credit (due)' };
 
@@ -117,6 +118,7 @@ export default function SaleDetail() {
           <KeyValue label="Date" value={new Date(sale.createdAt).toLocaleString('en-IN')} muted />
           <KeyValue label="Cashier" value={sale.userName} muted />
           {sale.customer ? <KeyValue label="Customer" value={sale.customer.name} muted /> : null}
+          {sale.customerPo?.number ? <KeyValue label="Customer PO" value={poLabel(sale.customerPo)} muted /> : null}
           <Divider />
           {t.lines.map((l) => (
             <View key={l.productId} style={{ paddingVertical: 6 }}>

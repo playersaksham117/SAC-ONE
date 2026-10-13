@@ -22,6 +22,8 @@ export function salePayload(sale: Sale, userId: string) {
     due_amount: sale.amountDue,
     payments: sale.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference ?? null })),
     notes: sale.notes ?? null,
+    customer_po_number: sale.customerPo?.number ?? null,
+    customer_po_date: sale.customerPo?.date ?? null,
     cash_drawer: sale.cashDrawer ?? null,
     exchange_return_number: sale.exchange?.returnNumber ?? null,
     items: sale.totals.lines.map((l) => ({

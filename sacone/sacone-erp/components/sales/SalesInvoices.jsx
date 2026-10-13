@@ -20,6 +20,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const INVOICE_COLUMNS = [
   { label: 'Invoice', value: (s) => s.invoiceNumber },
   { label: 'Date', value: (s) => s.createdAt },
+  { label: 'Customer PO no.', value: (s) => s.customerPoNumber },
+  { label: 'Customer PO date', value: (s) => s.customerPoDate },
   { label: 'Customer', value: (s) => s.customerName || 'Walk-in' },
   { label: 'Phone', value: (s) => s.customerPhone },
   { label: 'Warehouse', value: (s) => s.warehouseName },
@@ -122,7 +124,7 @@ Reason (optional):`);
       <Toolbar>
         <input
           className="input-field w-full sm:w-64"
-          placeholder="Invoice, customer or phone"
+          placeholder="Invoice, customer, phone or PO no."
           value={filters.search}
           onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
           onKeyDown={(e) => { if (e.key === 'Enter') setApplied(filters); }}
@@ -165,7 +167,14 @@ Reason (optional):`);
             <tbody className="divide-y divide-slate-100">
               {rows.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs font-semibold">{s.invoiceNumber}</td>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold">
+                    {s.invoiceNumber}
+                    {s.customerPoNumber && (
+                      <div className="font-sans text-[11px] font-normal text-slate-500">
+                        PO {s.customerPoNumber}{s.customerPoDate ? ` · ${new Date(s.customerPoDate).toLocaleDateString('en-IN')}` : ''}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-500">{day(s.createdAt)}</td>
                   <td className="px-4 py-3">{s.customerIsWalkIn ? 'Walk-in' : s.customerName}</td>
                   <td className="px-4 py-3 capitalize text-slate-600">{(s.paymentStatus || '').replace(/_/g, ' ')}{s.status !== 'completed' ? ` · ${s.status.replace(/_/g, ' ')}` : ''}</td>
@@ -236,6 +245,7 @@ async function loadInvoice(saleId) {
       ['Invoice', sale.invoiceNumber],
       ['Date', new Date(sale.createdAt).toLocaleString('en-IN')],
       ['Customer', sale.customerIsWalkIn ? 'Walk-in' : sale.customerName],
+      ...(sale.customerPoNumber ? [['Customer PO', `${sale.customerPoNumber}${sale.customerPoDate ? ` · ${new Date(sale.customerPoDate).toLocaleDateString('en-IN')}` : ''}`]] : []),
       ['Total', money(sale.grandTotal)],
       ...(sale.notes ? [['Notes', sale.notes]] : []),
     ],
