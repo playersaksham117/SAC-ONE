@@ -91,7 +91,7 @@ export default function Login() {
               </Row>
             </Card>
           ))}
-          <Button title="Sign in with ERP account" variant="secondary" icon="person-add-outline" onPress={() => { setError(null); setMode('password'); }} style={{ marginTop: space.md }} />
+          <Button title="Sign in with ERP account" variant="secondary" icon="log-in-outline" onPress={() => { setError(null); setMode('password'); }} style={{ marginTop: space.md }} />
         </>
       )}
 
@@ -118,6 +118,9 @@ export default function Login() {
           <Button title="Sign in" icon="log-in-outline" onPress={doPassword} loading={busy} size="lg" testID="login-submit" />
           <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.md }}>
             Your ERP role decides what you can do here. After the first sign-in you can unlock with a PIN, even offline.
+          </Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.xs }}>
+            No account? Staff logins are issued only by your admin in SACONE ERP (Administration → Users). This app cannot create accounts.
           </Text>
           {list.length ? <Button title="Back to staff list" variant="ghost" onPress={() => setMode('pick')} style={{ marginTop: space.sm }} /> : null}
         </Card>

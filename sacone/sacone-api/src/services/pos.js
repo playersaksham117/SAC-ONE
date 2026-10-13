@@ -2,12 +2,14 @@ import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
+import { financialYearOf } from '../core/financial-year.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerService } from './parties.js';
 import { commissionService } from './commissions.js';
+import { numberOldCreditNotes } from './notes.js';
 
 export { customerService };
 
@@ -812,6 +814,23 @@ export class PosService {
     const gstAmount = round2(returnItems.reduce((s, i) => s + i.gstAmount, 0));
     const grandTotal = round2(returnItems.reduce((s, i) => s + i.lineTotal, 0));
 
+    // GST credit note: same tax split as the invoice (IGST when it was inter-state).
+    const interState = Number(sale.igstAmount || 0) > 0;
+    const cgstAmount = interState ? 0 : round2(gstAmount / 2);
+    const sgstAmount = interState ? 0 : round2(gstAmount - cgstAmount);
+    const igstAmount = interState ? gstAmount : 0;
+
+    // Settlement: the note first clears what is still unpaid on the invoice. A 'credit_note'
+    // return keeps any remainder as customer credit; cash / UPI / bank pays the remainder back.
+    const againstInvoice = round2(Math.min(grandTotal, Math.max(0, Number(sale.amountCredit || 0))));
+    const adjustedAmount = refundMethod === 'credit_note' ? grandTotal : againstInvoice;
+    const refundAmount = round2(grandTotal - adjustedAmount);
+
+    const firm = repos.documentNumbering.getFirm();
+    if (!firm) throw new AppError('Company not configured', 400);
+    numberOldCreditNotes();
+    const note = repos.documentNumbering.allocateNumber(firm.id, 'credit_note', new Date());
+
     const ret = returnRepo.create({
       header: {
         saleId: sale.id,
@@ -819,7 +838,14 @@ export class PosService {
         customerId: sale.customerId,
         subtotal,
         gstAmount,
+        cgstAmount,
+        sgstAmount,
+        igstAmount,
         grandTotal,
+        adjustedAmount,
+        refundAmount,
+        noteNumber: note.documentNumber,
+        financialYear: financialYearOf(new Date()),
         refundMethod,
         reason: data.reason,
         notes: data.notes,
@@ -838,22 +864,15 @@ export class PosService {
         allowNegative,
         referenceType: 'pos_sales_return',
         referenceId: ret.id,
-        reason: `Return ${ret.returnNumber} for ${sale.invoiceNumber}`,
+        reason: `Credit note ${ret.noteNumber} for ${sale.invoiceNumber}`,
       }, actor, req, { skipPermissionCheck: true });
       if (result.movement) returnRepo.updateItemMovement(item.id, result.movement.id);
       saleRepo.addReturnedQuantity(item.saleItemId, item.quantity);
     }
 
-    // Outstanding: credit_note reduces customer balance; credit portion of original sale
-    if (refundMethod === 'credit_note') {
-      customerRepo.adjustOutstanding(sale.customerId, -grandTotal);
-    } else if (sale.amountCredit > 0) {
-      // Reduce outstanding proportionally for credit sales when refunding cash/upi/bank
-      const creditShare = round2(grandTotal * (sale.amountCredit / sale.grandTotal));
-      if (creditShare > 0) {
-        customerRepo.adjustOutstanding(sale.customerId, -Math.min(creditShare, sale.amountCredit));
-      }
-    }
+    // Balances: the customer owes less by whatever was not paid back in money.
+    if (againstInvoice > 0) returnRepo.reduceSaleDue(sale.id, againstInvoice);
+    if (adjustedAmount > 0) customerRepo.adjustOutstanding(sale.customerId, -adjustedAmount);
 
     const refreshed = saleRepo.findById(sale.id);
     const allReturned = refreshed.items.every((i) => i.quantityReturned + 0.000001 >= i.quantity);
@@ -876,6 +895,7 @@ export class PosService {
       recordId: completed.id,
       newValue: {
         returnNumber: completed.returnNumber,
+        noteNumber: completed.noteNumber,
         saleId: sale.id,
         grandTotal: completed.grandTotal,
         refundMethod,
@@ -888,10 +908,14 @@ export class PosService {
 
   listReturns(filters, actor) {
     authService.checkPermission(actor.permissions, 'pos.returns.view');
+    numberOldCreditNotes();
     // Returns of one sale are shown whatever year they fall in.
     if (!filters.saleId) filters = withFinancialYear(filters);
     return returnRepo.findAll({
       saleId: filters.saleId || '',
+      customerId: filters.customerId || '',
+      financialYear: filters.financialYear || '',
+      search: filters.search || '',
       dateFrom: filters.dateFrom || '',
       dateTo: filters.dateTo || '',
       limit: filters.limit ? parseInt(filters.limit, 10) : 50,

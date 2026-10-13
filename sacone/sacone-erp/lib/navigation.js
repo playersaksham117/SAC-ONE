@@ -67,6 +67,17 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
+    id: 'notes',
+    section: 'operations',
+    label: 'Credit & Debit Notes',
+    description: 'GST credit notes (customer returns) and debit notes (supplier returns)',
+    href: '/operations/notes',
+    permission: 'pos.returns.view',
+    permissions: ['pos.returns.view', 'purchases.returns.view'],
+    icon: '🧾',
+    placeholder: false,
+  },
+  {
     id: 'products',
     section: 'operations',
     label: 'Products & Services',

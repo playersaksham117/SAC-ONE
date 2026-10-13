@@ -1,4 +1,5 @@
 import { withFinancialYear } from '../database/context.js';
+import { financialYearOf } from '../core/financial-year.js';
 import { AppError } from '../core/http.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 import { repos } from '../repositories/index.js';
@@ -7,6 +8,7 @@ import { calculateCartTotals } from './pos.js';
 import { inventoryMovementService } from './inventory.js';
 import { supplierService } from './parties.js';
 import { partyStatementService } from './party-statements.js';
+import { numberOldDebitNotes } from './notes.js';
 
 const purchaseRepo = repos.purchases;
 const productRepo = repos.products;
@@ -419,6 +421,9 @@ export class PurchaseService {
     authService.checkPermission(actor.permissions, 'purchases.bills.view');
     const bill = purchaseRepo.findBillById(id);
     if (!bill) throw new AppError('Purchase bill not found', 404);
+    // How much of each line is already on debit notes (for the return form).
+    const returned = purchaseRepo.returnedQtyByBillItem(bill.id);
+    bill.items = bill.items.map((item) => ({ ...item, returnedQuantity: round2(returned.get(item.id) || 0) }));
     return bill;
   }
 
@@ -526,6 +531,7 @@ export class PurchaseService {
 
   getReturn(id, actor) {
     authService.checkPermission(actor.permissions, 'purchases.returns.view');
+    numberOldDebitNotes();
     const purchaseReturn = purchaseRepo.findReturnById(id);
     if (!purchaseReturn) throw new AppError('Purchase return not found', 404);
     return purchaseReturn;
@@ -533,54 +539,102 @@ export class PurchaseService {
 
   listReturns(filters, actor) {
     authService.checkPermission(actor.permissions, 'purchases.returns.view');
+    numberOldDebitNotes();
     return purchaseRepo.listReturns(withFinancialYear(filters));
   }
 
+  /**
+   * Return to a supplier = GST debit note. Against a bill, lines must be on that bill (no more
+   * than billed less already returned) and take the bill's rate, discount and GST; the note
+   * comes off the bill's payable. The supplier's balance always drops by the full note.
+   */
   createReturn(data, actor, req) {
     authService.checkPermission(actor.permissions, 'purchases.returns.create');
     if (!data.supplierId) throw new AppError('Supplier is required', 400);
-    const enriched = enrichLines(data.items || []);
-    if (!enriched.length) throw new AppError('At least one line item is required', 400);
+    let lines = enrichLines((data.items || []).filter((l) => l.productId));
+    if (!lines.length) throw new AppError('At least one line item is required', 400);
+    for (const line of lines) {
+      if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+        throw new AppError(`Return quantity for ${line.productName} must be more than zero`, 400);
+      }
+    }
 
-    let subtotal = 0;
-    let gstAmount = 0;
-    const items = enriched.map((line) => {
-      const taxable = round2(line.unitPrice * line.quantity);
-      const gst = round2(taxable * (line.gstPercentage / 100));
-      const lineTotal = round2(taxable + gst);
-      subtotal += taxable;
-      gstAmount += gst;
-      return {
-        ...line,
-        lineTotal,
-      };
-    });
+    let bill = null;
+    if (data.billId) {
+      bill = purchaseRepo.findBillById(data.billId);
+      if (!bill) throw new AppError('Purchase bill not found', 404);
+      if (bill.supplierId !== data.supplierId) throw new AppError(`Bill ${bill.billNumber} is from a different supplier`, 400);
+      if (bill.status === 'cancelled') throw new AppError(`Bill ${bill.billNumber} is cancelled`, 400);
+      const returned = purchaseRepo.returnedQtyByBillItem(bill.id);
+      lines = lines.map((line, idx) => {
+        const wanted = data.items.filter((l) => l.productId)[idx];
+        const remainingOf = (bi) => bi.quantity - (returned.get(bi.id) || 0);
+        const billItem = wanted.billItemId
+          ? bill.items.find((bi) => bi.id === wanted.billItemId)
+          : bill.items.find((bi) => bi.productId === line.productId && remainingOf(bi) > 0.000001)
+            || bill.items.find((bi) => bi.productId === line.productId);
+        if (!billItem || billItem.productId !== line.productId) {
+          throw new AppError(`${line.productName} is not on bill ${bill.billNumber}`, 400);
+        }
+        const remaining = remainingOf(billItem);
+        if (line.quantity > remaining + 0.000001) {
+          throw new AppError(`Cannot return more than billed for ${line.productName}. Remaining on ${bill.billNumber}: ${round2(remaining)}`, 400);
+        }
+        returned.set(billItem.id, (returned.get(billItem.id) || 0) + line.quantity);
+        return {
+          ...line,
+          billItemId: billItem.id,
+          unitPrice: billItem.unitPrice,
+          discountPercent: billItem.discountPercent,
+          gstPercentage: billItem.gstPercentage,
+        };
+      });
+    }
 
-    const doc = purchaseRepo.nextReturnNumber();
+    const warehouseId = data.warehouseId || bill?.warehouseId
+      || warehouseRepo.findAll({ includeInactive: false }).find((w) => w.isDefault)?.id || null;
+    if (!warehouseId) throw new AppError('Choose the warehouse the goods leave from', 400);
+
+    const { totals, items } = buildPurchaseTotals(lines, data.supplierId);
+    items.forEach((item, idx) => { item.billItemId = lines[idx].billItemId || null; });
+    const grandTotal = round2(totals.grandTotal);
+    const adjustedAmount = bill ? round2(Math.min(grandTotal, Math.max(0, bill.amountPayable))) : 0;
+    const returnDate = data.returnDate || new Date().toISOString().slice(0, 10);
+    numberOldDebitNotes();
+    const note = allocateDocNumber('debit_note');
+
     const ret = purchaseRepo.createReturn({
-      returnNumber: doc,
+      returnNumber: purchaseRepo.nextReturnNumber(),
+      noteNumber: note.documentNumber,
+      financialYear: financialYearOf(returnDate),
       supplierId: data.supplierId,
-      billId: data.billId || null,
-      returnDate: data.returnDate || new Date().toISOString().slice(0, 10),
-      warehouseId: data.warehouseId || null,
-      subtotal: round2(subtotal),
-      gstAmount: round2(gstAmount),
-      grandTotal: round2(subtotal + gstAmount),
+      billId: bill?.id || null,
+      returnDate,
+      warehouseId,
+      subtotal: round2(totals.subtotal),
+      gstAmount: round2(totals.gstAmount),
+      cgstAmount: round2(totals.cgstAmount),
+      sgstAmount: round2(totals.sgstAmount),
+      igstAmount: round2(totals.igstAmount),
+      grandTotal,
+      adjustedAmount,
+      reason: data.reason || null,
       notes: data.notes || null,
       createdBy: actor.user.id,
     }, items);
 
     supplierRepo.adjustPayable(data.supplierId, -ret.grandTotal);
+    if (adjustedAmount > 0) purchaseRepo.applyBillReturn(bill.id, adjustedAmount);
 
     for (const line of items) {
       inventoryMovementService.createMovement({
         movementType: MOVEMENT_TYPES.PURCHASE_RETURN,
         productId: line.productId,
-        warehouseId: data.warehouseId,
+        warehouseId,
         quantity: line.quantity,
         referenceType: 'purchase_return',
         referenceId: ret.id,
-        reason: `Purchase return ${ret.returnNumber}`,
+        reason: `Debit note ${ret.noteNumber}${bill ? ` against ${bill.billNumber}` : ''}`,
       }, actor, req, { skipPermissionCheck: true });
     }
 

@@ -51,7 +51,8 @@ export class PartyStatementService {
     `).all(...saleParams);
 
     const returns = db.prepare(`
-      SELECT r.id, r.return_number, r.grand_total, r.created_at as txn_date, s.invoice_number
+      SELECT r.id, r.return_number, r.note_number, r.grand_total, r.refund_amount, r.refund_method,
+             r.created_at as txn_date, s.invoice_number
       FROM pos_sales_returns r
       LEFT JOIN pos_sales s ON s.id = r.sale_id
       WHERE r.customer_id = ? AND r.status = 'completed'
@@ -115,15 +116,28 @@ export class PartyStatementService {
     }
 
     for (const r of returns) {
+      const number = r.note_number || r.return_number;
       lines.push({
         date: String(r.txn_date).slice(0, 10),
-        particulars: `Sales Return ${r.return_number}${r.invoice_number ? ` (vs ${r.invoice_number})` : ''}`,
+        particulars: `Credit Note ${number}${r.invoice_number ? ` (vs ${r.invoice_number})` : ''}`,
         documentType: 'sales_return',
-        documentNumber: r.return_number,
+        documentNumber: number,
         documentId: r.id,
         debit: 0,
         credit: round2(r.grand_total),
       });
+      // Money paid back on the note: the customer's balance goes back up by that much.
+      if (Number(r.refund_amount) > 0.001) {
+        lines.push({
+          date: String(r.txn_date).slice(0, 10),
+          particulars: `Refund paid on ${number} (${r.refund_method})`,
+          documentType: 'refund',
+          documentNumber: number,
+          documentId: r.id,
+          debit: round2(r.refund_amount),
+          credit: 0,
+        });
+      }
     }
 
     for (const r of receipts) {
@@ -264,17 +278,17 @@ export class PartyStatementService {
 
     try {
       const returns = db.prepare(`
-        SELECT id, return_number, grand_total, return_date as txn_date
-        FROM purchase_returns
-        WHERE supplier_id = ? AND status != 'cancelled'
-        ORDER BY return_date ASC
+        SELECT pr.id, pr.return_number, pr.note_number, pr.grand_total, pr.return_date as txn_date, b.bill_number
+        FROM purchase_returns pr LEFT JOIN supplier_bills b ON b.id = pr.bill_id
+        WHERE pr.supplier_id = ? AND pr.status != 'cancelled'
+        ORDER BY pr.return_date ASC
       `).all(supplierId);
       for (const r of returns) {
         lines.push({
           date: String(r.txn_date).slice(0, 10),
-          particulars: `Purchase Return ${r.return_number}`,
+          particulars: `Debit Note ${r.note_number || r.return_number}${r.bill_number ? ` (vs ${r.bill_number})` : ''}`,
           documentType: 'purchase_return',
-          documentNumber: r.return_number,
+          documentNumber: r.note_number || r.return_number,
           documentId: r.id,
           debit: round2(r.grand_total),
           credit: 0,

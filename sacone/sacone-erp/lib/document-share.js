@@ -86,9 +86,9 @@ export function shareFileName(documentNumber, prefix = 'Invoice') {
 }
 
 /** Caption with number, amount and thanks only — no customer data. `link` is a short-lived share link. */
-export function invoiceShareMessage(documentNumber, amount, link) {
+export function invoiceShareMessage(documentNumber, amount, link, label = 'Invoice') {
   const total = `₹${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const text = `Invoice ${cleanText(documentNumber, 40)} | Amount ${total} | Thank you for your business.`;
+  const text = `${label} ${cleanText(documentNumber, 40)} | Amount ${total} | Thank you for your business.`;
   return link ? `${text}\n${link}` : text;
 }
 

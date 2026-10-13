@@ -9,6 +9,8 @@ import { downloadCsv, toCsv } from '../../lib/csv';
 import PageHeader, { Alert, LoadingState } from '../ui';
 import DocumentDialog from '../documents/DocumentDialog';
 import EditInvoiceDialog from './EditInvoiceDialog';
+import CreditNoteDialog from '../notes/CreditNoteDialog';
+import { loadCreditNote } from '../../lib/note-documents';
 import { EmptyPanel, StatCard, Toolbar } from '../module-ui';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -52,8 +54,11 @@ export default function SalesInvoices() {
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState(null);
   const [editId, setEditId] = useState(null);
+  const [returnId, setReturnId] = useState(null);
+  const [noteId, setNoteId] = useState(null);
   const [message, setMessage] = useState('');
-  const { session } = useAuth();
+  const { session, checkPermission } = useAuth();
+  const canReturn = checkPermission('pos.returns.create');
   // Only the owner may change or delete a bill.
   const isOwner = session?.user?.roleSlug === 'owner_admin';
 
@@ -169,6 +174,9 @@ Reason (optional):`);
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / Share</button>
+                      {canReturn && ['completed', 'partially_returned'].includes(s.status) && (
+                        <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setReturnId(s.id); }}>Return</button>
+                      )}
                       {isOwner && s.status === 'completed' && (
                         <>
                           <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(s.id); }}>Edit</button>
@@ -195,6 +203,19 @@ Reason (optional):`);
         />
       )}
       {openId && <DocumentDialog title="Invoice" load={() => loadInvoice(openId)} onClose={() => setOpenId(null)} />}
+      {returnId && (
+        <CreditNoteDialog
+          saleId={returnId}
+          onClose={() => setReturnId(null)}
+          onCreated={(note) => {
+            setReturnId(null);
+            setMessage(`Credit note ${note.noteNumber} issued for ${money(note.grandTotal)}.`);
+            load(true);
+            setNoteId(note.id);
+          }}
+        />
+      )}
+      {noteId && <DocumentDialog title="Credit Note" documentLabel="credit note" load={() => loadCreditNote(noteId)} onClose={() => setNoteId(null)} />}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import authRouter, { companyRouter, userRouter, roleRouter, auditRouter, firmRou
 import { categoryRouter, brandRouter, unitRouter, productRouter } from './products.js';
 import { inventoryRouter } from './inventory.js';
 import { warehouseRouter } from './warehouse.js';
+import { noteRouter } from './notes.js';
 import { posRouter, customerRouter, settingsRouter, supplierRouter } from './pos.js';
 import { ceoDashboardRouter } from './ceo-dashboard.js';
 import { webstorePublicRouter, webstoreAdminRouter } from './webstore.js';
@@ -57,6 +58,7 @@ export const ROUTES = [
   ['/api/customers', customerRouter],
   ['/api/suppliers', supplierRouter],
   ['/api/purchases', purchaseRouter],
+  ['/api/notes', noteRouter],
   ['/api/customer-receipts', customerReceiptRouter],
   ['/api/supplier-payment-vouchers', supplierPaymentVoucherRouter],
 

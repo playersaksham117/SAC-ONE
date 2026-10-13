@@ -9,6 +9,8 @@ export const DOCUMENT_TYPES = {
   tax_invoice: { docPrefix: 'INV', label: 'Tax Invoice' },
   cash_invoice: { docPrefix: 'CASH', label: 'Cash Invoice' },
   sales_return: { docPrefix: 'SR', label: 'Sales Return' },
+  credit_note: { docPrefix: 'CN', label: 'Credit Note' },
+  debit_note: { docPrefix: 'DN', label: 'Debit Note' },
   purchase_order: { docPrefix: 'PO', label: 'Purchase Order' },
   purchase_bill: { docPrefix: 'PB', label: 'Purchase Bill' },
   customer_receipt: { docPrefix: 'RV', label: 'Customer Receipt' },

@@ -4,7 +4,7 @@
  *   A5 / A4      document sheets (print and PDF)
  * PDFs come from the browser's print dialog ("Save as PDF") at the exact page size.
  *
- * Every document (sales invoice, purchase order, purchase bill, purchase return) is first
+ * Every document (sales invoice, credit note, purchase order, purchase bill, debit note) is first
  * mapped to one model, then rendered by the same two layouts:
  *   { title, number, date, meta: [[label, value]], partyLabel, party, partyFallback,
  *     sideBox: { label, rows: [[label, amount]] }, items: [{ name, hsn, qty, rate, discount,
@@ -187,33 +187,95 @@ function saleClassic(sale, customer) {
   };
 }
 
+/** "INV/0012/26-27 dt 05/10/2026" — the original document a note refers to. */
+const againstRef = (number, date) => (number ? `${number}${date ? ` dt ${ddmmyyyy(date)}` : ''}` : '');
+
+/** GST credit note (GET /api/notes/credit/:id) + optional customer record. */
+export function creditNoteDocument(note, customer) {
+  const number = note.noteNumber || note.returnNumber;
+  const against = againstRef(note.invoiceNumber, note.invoiceDate);
+  const refundLabel = `Refunded (${METHOD[note.refundMethod] || note.refundMethod})`;
+  const settlement = [
+    ...(note.adjustedAmount > 0 ? [[note.refundMethod === 'credit_note' ? 'Credited to account' : 'Set against invoice due', note.adjustedAmount]] : []),
+    ...(note.refundAmount > 0 ? [[refundLabel, note.refundAmount]] : []),
+  ];
+  const settlementText = settlement.map(([k, v]) => `${k} ${money(v)}`).join(' · ');
+  const walkIn = note.customerIsWalkIn || !note.customerName;
+  const interState = Number(note.igstAmount || 0) > 0;
+  const lines = classicLines(note.items || [], interState);
+  const billTo = walkIn
+    ? classicParty('Detail of Receiver (Billed To)', 'CASH', null, '')
+    : classicParty('Detail of Receiver (Billed To)', note.customerName, customer);
+  return {
+    title: 'CREDIT NOTE',
+    number,
+    date: dateOnly(note.createdAt),
+    meta: [['Credit Note', number], ['Date', dateOnly(note.createdAt)], ...(against ? [['Against invoice', against]] : [])],
+    partyLabel: 'Issued to',
+    party: walkIn ? null : partyFrom(note.customerName, customer),
+    partyFallback: 'Walk-in customer',
+    sideBox: { label: 'Settlement', rows: settlement },
+    items: (note.items || []).map((l) => ({
+      name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice, discount: null,
+      taxable: l.taxableAmount, gstRate: l.gstPercentage, amount: l.lineTotal,
+    })),
+    totals: [['Taxable value', note.subtotal], ...gstRows(note), ['Credit note value', note.grandTotal, true]],
+    footer: `Issued for goods returned${note.reason ? ` (${note.reason})` : ''}${note.invoiceNumber ? ` against invoice ${note.invoiceNumber}` : ''}. Output GST on that invoice is reduced by the tax shown.`,
+    thanks: '',
+    classic: {
+      kind: 'note',
+      title: 'Credit Note',
+      memo: '',
+      numberLabel: 'Credit Note No.',
+      number,
+      date: ddmmyyyy(note.createdAt),
+      extraRef: against ? ['Against Invoice', against] : null,
+      billTo,
+      shipTo: { ...billTo, label: 'Detail of Consignee (Shipped To)' },
+      placeOfSupplyCode: billTo.stateCode,
+      agent: '',
+      note: [note.reason ? `Reason: ${note.reason}` : '', settlementText].filter(Boolean).join(' · '),
+      lines,
+      totals: classicTotals(lines, note.grandTotal),
+    },
+  };
+}
+
 const PURCHASE = {
   order: { title: 'PURCHASE ORDER', numberKey: 'poNumber', dateKey: 'orderDate', footer: 'Please supply the items above at the rates shown. Quote the PO number on your invoice.' },
   bill: { title: 'PURCHASE BILL', numberKey: 'billNumber', dateKey: 'billDate', footer: 'Goods received against the supplier invoice shown above.' },
-  return: { title: 'PURCHASE RETURN · DEBIT NOTE', numberKey: 'returnNumber', dateKey: 'returnDate', footer: 'Goods returned to the supplier; amount to be adjusted against the bill shown.' },
+  return: { title: 'DEBIT NOTE', numberKey: 'noteNumber', dateKey: 'returnDate', footer: 'Goods returned to the supplier. Input GST on the bill shown is reduced by the tax above; please issue your matching credit note.' },
 };
+const docNumber = (kind, doc) => doc[PURCHASE[kind].numberKey] || (kind === 'return' ? doc.returnNumber : '');
+const billRef = (doc) => [againstRef(doc.billNumber, doc.billDate), doc.supplierInvoiceNumber ? `(Supplier inv. ${doc.supplierInvoiceNumber})` : ''].filter(Boolean).join(' ');
 
 /** Purchase order / bill / return (GET /api/purchases/{orders|bills|returns}/:id) + supplier record. */
 export function purchaseDocument(kind, doc, supplier) {
   const spec = PURCHASE[kind];
-  const meta = [[kind === 'order' ? 'PO' : kind === 'bill' ? 'Bill' : 'Return', doc[spec.numberKey]], ['Date', dateOnly(doc[spec.dateKey])]];
+  const meta = [[kind === 'order' ? 'PO' : kind === 'bill' ? 'Bill' : 'Debit Note', docNumber(kind, doc)], ['Date', dateOnly(doc[spec.dateKey])]];
   if (kind === 'order' && doc.expectedDate) meta.push(['Expected', dateOnly(doc.expectedDate)]);
   if (kind === 'bill' && doc.supplierInvoiceNumber) meta.push(['Supplier inv.', doc.supplierInvoiceNumber]);
   if (kind === 'bill' && doc.poNumber) meta.push(['PO', doc.poNumber]);
-  if (kind === 'return' && doc.billNumber) meta.push(['Against bill', doc.billNumber]);
+  if (kind === 'return' && doc.billNumber) meta.push(['Against bill', billRef(doc)]);
   if (doc.warehouseName) meta.push(['Warehouse', doc.warehouseName]);
 
+  const debitSettlement = [
+    ...(doc.adjustedAmount > 0 ? [['Set against bill payable', doc.adjustedAmount]] : []),
+    ...(Number(doc.grandTotal) - Number(doc.adjustedAmount || 0) > 0.009 ? [['Adjusted in supplier balance', Number(doc.grandTotal) - Number(doc.adjustedAmount || 0)]] : []),
+  ];
   const side = kind === 'bill'
     ? { label: 'Payment', rows: [['Paid', doc.amountPaid], ['Payable', doc.amountPayable], ...(doc.dueDate ? [[`Due ${dateOnly(doc.dueDate)}`, null]] : [])] }
-    : { label: 'Status', rows: [[String(doc.status || '').replace(/_/g, ' '), null]] };
+    : kind === 'return'
+      ? { label: 'Settlement', rows: debitSettlement }
+      : { label: 'Status', rows: [[String(doc.status || '').replace(/_/g, ' '), null]] };
 
   const taxable = (doc.items || []).reduce((s, l) => s + Number(l.taxableAmount ?? 0), 0);
   return {
     title: spec.title,
-    number: doc[spec.numberKey],
+    number: docNumber(kind, doc),
     date: dateOnly(doc[spec.dateKey]),
     meta,
-    partyLabel: 'Supplier',
+    partyLabel: kind === 'return' ? 'Issued to (supplier)' : 'Supplier',
     party: partyFrom(doc.supplierName, supplier),
     partyFallback: '—',
     sideBox: side,
@@ -225,9 +287,9 @@ export function purchaseDocument(kind, doc, supplier) {
     totals: [
       ...(taxable > 0 ? [['Taxable value', taxable]] : [['Subtotal', doc.subtotal]]),
       ...gstRows(doc),
-      ['Total', doc.grandTotal, true],
+      [kind === 'return' ? 'Debit note value' : 'Total', doc.grandTotal, true],
     ],
-    footer: spec.footer,
+    footer: kind === 'return' && doc.reason ? `Reason: ${doc.reason}. ${spec.footer}` : spec.footer,
     thanks: '',
     classic: purchaseClassic(kind, spec, doc, supplier),
   };
@@ -236,23 +298,24 @@ export function purchaseDocument(kind, doc, supplier) {
 function purchaseClassic(kind, spec, doc, supplier) {
   const interState = Number(doc.igstAmount || 0) > 0;
   const lines = classicLines(doc.items || [], interState);
-  const titles = { order: 'Purchase Order', bill: 'Purchase Bill', return: 'Purchase Return' };
+  const titles = { order: 'Purchase Order', bill: 'Purchase Bill', return: 'Debit Note' };
   return {
     kind: 'purchase',
     title: titles[kind],
-    memo: kind === 'return' ? 'DEBIT NOTE' : '',
-    numberLabel: kind === 'order' ? 'PO No.' : kind === 'bill' ? 'Bill No.' : 'Return No.',
-    number: doc[spec.numberKey],
+    memo: '',
+    numberLabel: kind === 'order' ? 'PO No.' : kind === 'bill' ? 'Bill No.' : 'Debit Note No.',
+    number: docNumber(kind, doc),
     date: ddmmyyyy(doc[spec.dateKey]),
     extraRef: kind === 'bill' && doc.supplierInvoiceNumber ? ['Supplier Inv. No.', doc.supplierInvoiceNumber]
-      : kind === 'return' && doc.billNumber ? ['Against Bill', doc.billNumber]
+      : kind === 'return' && doc.billNumber ? ['Against Bill', billRef(doc)]
         : kind === 'order' && doc.expectedDate ? ['Expected', dateOnly(doc.expectedDate)] : null,
-    billTo: classicParty(kind === 'order' ? 'Supplier (Order To)' : 'Supplier (Billed From)', doc.supplierName, supplier),
+    billTo: classicParty(kind === 'order' ? 'Supplier (Order To)' : kind === 'return' ? 'Supplier (Issued To)' : 'Supplier (Billed From)', doc.supplierName, supplier),
     shipTo: null, // filled with our own address at render time
+    ownLabel: kind === 'return' ? 'Returned From' : 'Deliver To',
     deliverToWarehouse: doc.warehouseName || '',
     placeOfSupplyCode: '',
     agent: '',
-    note: doc.notes || '',
+    note: [kind === 'return' && doc.reason ? `Reason: ${doc.reason}` : '', doc.notes || ''].filter(Boolean).join(' · '),
     lines,
     totals: classicTotals(lines, doc.grandTotal),
   };
@@ -387,7 +450,7 @@ function classicHtml(model, company, size, invoice = {}) {
   const t = c.totals;
   const companyCode = stateCodeOf(company);
   const ownParty = {
-    label: 'Deliver To', name: company?.businessName || '',
+    label: c.ownLabel || 'Deliver To', name: company?.businessName || '',
     lines: [company?.addressLine1, company?.addressLine2, [company?.city, company?.postalCode].filter(Boolean).join(' '), c.deliverToWarehouse ? `Warehouse: ${c.deliverToWarehouse}` : ''].filter(Boolean),
     phone: company?.phone || '', gstin: company?.gstNumber || '', state: company?.state || GST_STATES[companyCode] || '', stateCode: companyCode,
   };
@@ -469,10 +532,10 @@ function classicHtml(model, company, size, invoice = {}) {
   </div>
   <div class="row">
     <div class="vr" style="width:50%">${party(c.billTo)}
-      ${c.kind === 'sale' ? `<div class="c b" style="margin-top:${a5 ? 2 : 6}px">P.O.S. ${esc(posCode)}${GST_STATES[posCode] ? `-${esc(GST_STATES[posCode])}` : ''}</div>` : ''}
+      ${c.kind === 'sale' || c.kind === 'note' ? `<div class="c b" style="margin-top:${a5 ? 2 : 6}px">P.O.S. ${esc(posCode)}${GST_STATES[posCode] ? `-${esc(GST_STATES[posCode])}` : ''}</div>` : ''}
     </div>
     <div style="width:50%">${party(shipTo)}
-      ${c.kind === 'sale' ? `<div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div>` : ''}
+      ${c.kind === 'sale' || c.kind === 'note' ? `<div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div>` : ''}
     </div>
   </div>
   <table class="items">${cols}<thead><tr>
@@ -510,7 +573,7 @@ function classicHtml(model, company, size, invoice = {}) {
         <div class="vr terms" style="width:60%;padding:${a5 ? '1px 3px' : '2px 5px'}">
           <div class="u">Terms &amp; Conditions:-</div>${terms.map((x, i) => `<div>${i + 1}. ${esc(x)}</div>`).join('')}
         </div>
-        <div class="b" style="width:40%;display:flex;align-items:flex-end;padding:${a5 ? '1px 3px' : '2px 5px'}">Customer's Signature</div>
+        <div class="b" style="width:40%;display:flex;align-items:flex-end;padding:${a5 ? '1px 3px' : '2px 5px'}">${c.kind === 'purchase' ? 'Supplier' : 'Customer'}'s Signature</div>
       </div>
     </div>
     <div style="width:30%;display:flex;flex-direction:column">

@@ -72,6 +72,7 @@ function mapBill(row) {
     grandTotal: Number(row.grand_total || 0),
     amountPaid: Number(row.amount_paid || 0),
     amountPayable: Number(row.amount_payable || 0),
+    returnedAmount: Number(row.returned_amount || 0),
     status: row.status,
     referenceType: row.reference_type,
     referenceId: row.reference_id,
@@ -601,7 +602,7 @@ export class SupplierBillRepository {
     const bill = this.findById(billId);
     if (!bill) return null;
     const amountPaid = Math.round((bill.amountPaid + amount + Number.EPSILON) * 100) / 100;
-    const amountPayable = Math.max(0, Math.round((bill.grandTotal - amountPaid + Number.EPSILON) * 100) / 100);
+    const amountPayable = Math.max(0, Math.round((bill.grandTotal - amountPaid - (bill.returnedAmount || 0) + Number.EPSILON) * 100) / 100);
     let status = 'open';
     if (amountPayable <= 0.001) status = 'paid';
     else if (amountPaid > 0) status = 'partial';

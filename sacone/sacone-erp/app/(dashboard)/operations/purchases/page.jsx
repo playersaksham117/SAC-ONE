@@ -10,6 +10,8 @@ import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
 import DocumentDialog from '../../../../components/documents/DocumentDialog';
 import { documentHtml, purchaseDocument } from '../../../../lib/bill-document';
+import { loadDebitNote } from '../../../../lib/note-documents';
+import DebitNoteDialog from '../../../../components/notes/DebitNoteDialog';
 import { downloadCsv, toCsv } from '../../../../lib/csv';
 
 function money(n) {
@@ -43,18 +45,22 @@ const PURCHASE_DOCS = {
     ],
   },
   return: {
-    path: 'returns', label: 'Purchase return', numberKey: 'returnNumber', dateKey: 'returnDate',
+    path: 'returns', label: 'Debit note', numberKey: 'noteNumber', dateKey: 'returnDate',
     columns: [
-      { label: 'Return #', value: (r) => r.returnNumber }, { label: 'Supplier', value: (r) => r.supplierName },
-      { label: 'Return date', value: (r) => r.returnDate }, { label: 'Against bill', value: (r) => r.billNumber },
-      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'GST', value: (r) => r.gstAmount },
-      { label: 'Total', value: (r) => r.grandTotal }, { label: 'Status', value: (r) => r.status },
+      { label: 'Debit note', value: (r) => r.noteNumber }, { label: 'Supplier', value: (r) => r.supplierName },
+      { label: 'Date', value: (r) => r.returnDate }, { label: 'Against bill', value: (r) => r.billNumber },
+      { label: 'Supplier invoice', value: (r) => r.supplierInvoiceNumber },
+      { label: 'Taxable', value: (r) => r.subtotal }, { label: 'CGST', value: (r) => r.cgstAmount },
+      { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
+      { label: 'Total', value: (r) => r.grandTotal }, { label: 'Set against bill', value: (r) => r.adjustedAmount },
+      { label: 'Reason', value: (r) => r.reason }, { label: 'Return ref', value: (r) => r.returnNumber },
     ],
   },
 };
 const TAB_DOC = { orders: 'order', bills: 'bill', log: 'bill', returns: 'return' };
 
 async function loadPurchaseDocument(kind, id) {
+  if (kind === 'return') return loadDebitNote(id);
   const spec = PURCHASE_DOCS[kind];
   const [doc, company, invoice] = await Promise.all([
     apiRequest(`/api/purchases/${spec.path}/${id}`),
@@ -177,8 +183,6 @@ export default function PurchasesPage() {
   const [priceForm, setPriceForm] = useState({ supplierId: '', name: '', csv: '' });
   const [pricePreview, setPricePreview] = useState(null);
 
-  const [returnForm, setReturnForm] = useState({ supplierId: '', warehouseId: '', billId: '', returnDate: '', notes: '' });
-  const [returnLines, setReturnLines] = useState([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0 }]);
 
   const loadBootstrap = useCallback(async () => {
     const data = await apiRequest('/api/purchases/bootstrap');
@@ -402,32 +406,6 @@ export default function PurchasesPage() {
     setBillModal(true);
   };
 
-  const saveReturn = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await apiRequest('/api/purchases/returns', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...returnForm,
-          returnDate: returnForm.returnDate || new Date().toISOString().slice(0, 10),
-          items: returnLines.filter((l) => l.productId).map((l) => ({
-            productId: l.productId,
-            quantity: Number(l.quantity),
-            unitPrice: Number(l.unitPrice),
-          })),
-        }),
-      });
-      setMessage('Purchase return recorded — stock reduced.');
-      setReturnModal(false);
-      await loadTab();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const suppliers = bootstrap?.suppliers || [];
   const warehouses = bootstrap?.warehouses || [];
 
@@ -448,7 +426,7 @@ export default function PurchasesPage() {
               <button type="button" className="btn-primary" onClick={() => { setBillForm({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: '', purchaseOrderId: '', notes: '' }); setBillLines([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0 }]); setBillModal(true); }}>+ Purchase Bill</button>
             )}
             {checkPermission('purchases.returns.create') && tab === 'returns' && (
-              <button type="button" className="btn-secondary" onClick={() => setReturnModal(true)}>+ Return</button>
+              <button type="button" className="btn-secondary" onClick={() => { setMessage(''); setReturnModal(true); }}>+ Debit Note</button>
             )}
             {TAB_DOC[tab] && (
               <button type="button" className="btn-secondary" onClick={exportCsv} disabled={exporting}>{exporting ? 'Exporting…' : '⬇ Export CSV'}</button>
@@ -601,18 +579,20 @@ export default function PurchasesPage() {
             <div className="card overflow-hidden p-0">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50"><tr>
-                  <th className="px-4 py-3 text-left">Return #</th>
+                  <th className="px-4 py-3 text-left">Debit note</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Against bill</th>
                   <th className="px-4 py-3 text-right">Total</th>
                   <th className="px-4 py-3" />
                 </tr></thead>
                 <tbody>
                   {returns.map((r) => (
                     <tr key={r.id} className="border-t border-slate-100">
-                      <td className="px-4 py-3 font-mono text-xs">{r.returnNumber}</td>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold">{r.noteNumber || r.returnNumber}</td>
                       <td className="px-4 py-3">{r.supplierName}</td>
                       <td className="px-4 py-3">{r.returnDate}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{r.billNumber || <span className="font-sans text-slate-400">direct</span>}</td>
                       <td className="px-4 py-3 text-right">{money(r.grandTotal)}</td>
                       <td className="px-4 py-3 text-right"><button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'return', id: r.id })}>Print / PDF</button></td>
                     </tr>
@@ -754,16 +734,17 @@ export default function PurchasesPage() {
         </form>
       </Modal>
 
-      <Modal open={returnModal} title="Purchase Return" onClose={() => setReturnModal(false)} size="lg"
-        footer={<><button type="button" className="btn-secondary" onClick={() => setReturnModal(false)}>Cancel</button><button type="submit" form="return-form" className="btn-primary" disabled={saving}>Post Return</button></>}>
-        <form id="return-form" onSubmit={saveReturn} className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div><label className="label">Supplier *</label><select className="input-field" required value={returnForm.supplierId} onChange={(e) => setReturnForm({ ...returnForm, supplierId: e.target.value })}><option value="">Select</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-            <div><label className="label">Warehouse</label><select className="input-field" value={returnForm.warehouseId} onChange={(e) => setReturnForm({ ...returnForm, warehouseId: e.target.value })}><option value="">Default</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-          </div>
-          <LineEditor lines={returnLines} setLines={setReturnLines} products={products} />
-        </form>
-      </Modal>
+      {returnModal && (
+        <DebitNoteDialog
+          onClose={() => setReturnModal(false)}
+          onCreated={(note) => {
+            setReturnModal(false);
+            setMessage(`Debit note ${note.noteNumber} issued for ${money(note.grandTotal)}; stock reduced.`);
+            loadTab();
+            setDocOpen({ kind: 'return', id: note.id });
+          }}
+        />
+      )}
 
       {docOpen && (
         <DocumentDialog

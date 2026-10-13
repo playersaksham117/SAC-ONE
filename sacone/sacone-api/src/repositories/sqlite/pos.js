@@ -148,15 +148,25 @@ function mapReturn(row) {
   return {
     id: row.id,
     returnNumber: row.return_number,
+    noteNumber: row.note_number || null,
+    financialYear: row.financial_year || null,
     saleId: row.sale_id,
     invoiceNumber: row.invoice_number || null,
+    invoiceDate: row.invoice_date || null,
     warehouseId: row.warehouse_id,
+    warehouseName: row.warehouse_name || null,
     customerId: row.customer_id,
     customerName: row.customer_name || null,
+    customerIsWalkIn: Boolean(row.customer_is_walk_in),
     status: row.status,
     subtotal: Number(row.subtotal || 0),
     gstAmount: Number(row.gst_amount || 0),
+    cgstAmount: Number(row.cgst_amount || 0),
+    sgstAmount: Number(row.sgst_amount || 0),
+    igstAmount: Number(row.igst_amount || 0),
     grandTotal: Number(row.grand_total || 0),
+    adjustedAmount: Number(row.adjusted_amount || 0),
+    refundAmount: Number(row.refund_amount || 0),
     refundMethod: row.refund_method,
     reason: row.reason,
     notes: row.notes,
@@ -164,6 +174,15 @@ function mapReturn(row) {
     createdAt: row.created_at,
   };
 }
+
+const RETURN_SELECT = `
+  SELECT r.*, s.invoice_number, s.created_at as invoice_date, c.name as customer_name,
+         c.is_walk_in as customer_is_walk_in, w.name as warehouse_name
+  FROM pos_sales_returns r
+  LEFT JOIN pos_sales s ON s.id = r.sale_id
+  LEFT JOIN customers c ON c.id = r.customer_id
+  LEFT JOIN warehouses w ON w.id = r.warehouse_id
+`;
 
 const SALE_SELECT = `
   SELECT s.*,
@@ -497,22 +516,26 @@ export class PosReturnRepository {
   }
 
   findById(id) {
-    const row = getDatabase().prepare(`
-      SELECT r.*, s.invoice_number, c.name as customer_name
-      FROM pos_sales_returns r
-      LEFT JOIN pos_sales s ON s.id = r.sale_id
-      LEFT JOIN customers c ON c.id = r.customer_id
-      WHERE r.id = ?
-    `).get(id);
+    const row = getDatabase().prepare(`${RETURN_SELECT} WHERE r.id = ?`).get(id);
     if (!row) return null;
     const ret = mapReturn(row);
     ret.items = getDatabase().prepare(`
-      SELECT * FROM pos_sales_return_items WHERE return_id = ?
+      SELECT ri.*, COALESCE(si.product_name, p.name) as product_name, COALESCE(si.sku, p.sku) as sku,
+             COALESCE(si.hsn_code, p.hsn_code) as hsn_code, u.abbreviation as unit_abbreviation
+      FROM pos_sales_return_items ri
+      LEFT JOIN pos_sale_items si ON si.id = ri.sale_item_id
+      LEFT JOIN products p ON p.id = ri.product_id
+      LEFT JOIN units u ON u.id = p.unit_id
+      WHERE ri.return_id = ?
     `).all(id).map((item) => ({
       id: item.id,
       returnId: item.return_id,
       saleItemId: item.sale_item_id,
       productId: item.product_id,
+      productName: item.product_name,
+      sku: item.sku,
+      hsnCode: item.hsn_code,
+      unit: item.unit_abbreviation || null,
       quantity: Number(item.quantity),
       unitPrice: Number(item.unit_price),
       gstPercentage: Number(item.gst_percentage),
@@ -524,26 +547,61 @@ export class PosReturnRepository {
     return ret;
   }
 
-  findAll({ saleId = '', dateFrom = '', dateTo = '', limit = 50, offset = 0 } = {}) {
+  findAll({
+    saleId = '', customerId = '', financialYear = '', search = '', dateFrom = '', dateTo = '', limit = 50, offset = 0,
+  } = {}) {
     const params = [];
     const conditions = [];
     if (saleId) {
       conditions.push('r.sale_id = ?');
       params.push(saleId);
     }
+    if (customerId) { conditions.push('r.customer_id = ?'); params.push(customerId); }
+    if (financialYear) { conditions.push('r.financial_year = ?'); params.push(financialYear); }
+    if (search) {
+      conditions.push('(r.note_number LIKE ? OR r.return_number LIKE ? OR s.invoice_number LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)');
+      const like = `%${search}%`;
+      params.push(like, like, like, like, like);
+    }
     if (dateFrom) { conditions.push('substr(r.created_at, 1, 10) >= ?'); params.push(dateFrom); }
     if (dateTo) { conditions.push('substr(r.created_at, 1, 10) <= ?'); params.push(dateTo); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const items = getDatabase().prepare(`
-      SELECT r.*, s.invoice_number, c.name as customer_name
-      FROM pos_sales_returns r
-      LEFT JOIN pos_sales s ON s.id = r.sale_id
-      LEFT JOIN customers c ON c.id = r.customer_id
+    const db = getDatabase();
+    const items = db.prepare(`
+      ${RETURN_SELECT}
       ${where}
       ORDER BY r.created_at DESC
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset).map(mapReturn);
-    return { items, total: items.length, limit, offset };
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM pos_sales_returns r
+      LEFT JOIN pos_sales s ON s.id = r.sale_id
+      LEFT JOIN customers c ON c.id = r.customer_id
+      ${where}
+    `).get(...params).count;
+    return { items, total, limit, offset };
+  }
+
+  /** Returns still without a credit-note number (made before notes existed), oldest first. */
+  findWithoutNoteNumber() {
+    return getDatabase().prepare(`
+      SELECT id, created_at FROM pos_sales_returns WHERE note_number IS NULL ORDER BY created_at ASC
+    `).all();
+  }
+
+  setNoteNumber(id, noteNumber, financialYear) {
+    getDatabase().prepare('UPDATE pos_sales_returns SET note_number = ?, financial_year = ? WHERE id = ?')
+      .run(noteNumber, financialYear, id);
+  }
+
+  /** Takes a credit note off the invoice's unpaid balance (amount_credit). */
+  reduceSaleDue(saleId, amount) {
+    const db = getDatabase();
+    const sale = db.prepare('SELECT amount_paid, amount_credit FROM pos_sales WHERE id = ?').get(saleId);
+    if (!sale) return;
+    const credit = Math.max(0, Math.round((Number(sale.amount_credit) - amount + Number.EPSILON) * 100) / 100);
+    const status = credit <= 0.001 ? 'paid' : (Number(sale.amount_paid) > 0.001 ? 'partial' : 'credit');
+    db.prepare('UPDATE pos_sales SET amount_credit = ?, payment_status = ? WHERE id = ?').run(credit, status, saleId);
   }
 
   create({ header, items }) {
@@ -556,8 +614,9 @@ export class PosReturnRepository {
       db.prepare(`
         INSERT INTO pos_sales_returns (
           id, return_number, sale_id, warehouse_id, customer_id, status,
-          subtotal, gst_amount, grand_total, refund_method, reason, notes, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?)
+          subtotal, gst_amount, grand_total, refund_method, reason, notes, created_by, created_at,
+          note_number, financial_year, cgst_amount, sgst_amount, igst_amount, adjusted_amount, refund_amount
+        ) VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         returnNumber,
@@ -571,7 +630,14 @@ export class PosReturnRepository {
         header.reason || null,
         header.notes || null,
         header.createdBy || null,
-        now
+        now,
+        header.noteNumber || null,
+        header.financialYear || null,
+        header.cgstAmount || 0,
+        header.sgstAmount || 0,
+        header.igstAmount || 0,
+        header.adjustedAmount || 0,
+        header.refundAmount || 0
       );
 
       const insert = db.prepare(`

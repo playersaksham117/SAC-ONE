@@ -158,16 +158,26 @@ function mapReturn(row, items = []) {
   return {
     id: row.id,
     returnNumber: row.return_number,
+    noteNumber: row.note_number || null,
+    financialYear: row.financial_year || null,
     supplierId: row.supplier_id,
     supplierName: row.supplier_name || null,
     billId: row.bill_id,
     billNumber: row.bill_number || null,
+    billDate: row.bill_date || null,
+    supplierInvoiceNumber: row.supplier_invoice_number || null,
     returnDate: row.return_date,
     warehouseId: row.warehouse_id,
+    warehouseName: row.warehouse_name || null,
     subtotal: Number(row.subtotal || 0),
     gstAmount: Number(row.gst_amount || 0),
+    cgstAmount: Number(row.cgst_amount || 0),
+    sgstAmount: Number(row.sgst_amount || 0),
+    igstAmount: Number(row.igst_amount || 0),
     grandTotal: Number(row.grand_total || 0),
+    adjustedAmount: Number(row.adjusted_amount || 0),
     status: row.status,
+    reason: row.reason || null,
     notes: row.notes,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -175,6 +185,14 @@ function mapReturn(row, items = []) {
     items,
   };
 }
+
+const PURCHASE_RETURN_SELECT = `
+  SELECT pr.*, s.name as supplier_name, b.bill_number, b.bill_date, b.supplier_invoice_number, w.name as warehouse_name
+  FROM purchase_returns pr
+  LEFT JOIN suppliers s ON s.id = pr.supplier_id
+  LEFT JOIN supplier_bills b ON b.id = pr.bill_id
+  LEFT JOIN warehouses w ON w.id = pr.warehouse_id
+`;
 
 const PO_SELECT = `
   SELECT po.*, s.name as supplier_name, w.name as warehouse_name
@@ -319,7 +337,7 @@ export class PurchaseRepository {
   listBills(filters = {}) {
     const db = getDatabase();
     const { supplierId = '', status = '', search = '', limit = 100, offset = 0 } = filters;
-    const conditions = ["b.reference_type IN ('purchase', 'purchase_bill', 'manual') OR b.reference_type IS NULL"];
+    const conditions = ["(b.reference_type IN ('purchase', 'purchase_bill', 'manual') OR b.reference_type IS NULL)"];
     const params = [];
     if (supplierId) { conditions.push('b.supplier_id = ?'); params.push(supplierId); }
     if (status) { conditions.push('b.status = ?'); params.push(status); }
@@ -487,49 +505,95 @@ export class PurchaseRepository {
     const conditions = [];
     const params = [];
     if (supplierId) { conditions.push('pr.supplier_id = ?'); params.push(supplierId); }
+    if (filters.financialYear) { conditions.push('pr.financial_year = ?'); params.push(filters.financialYear); }
+    if (filters.search) {
+      conditions.push('(pr.note_number LIKE ? OR pr.return_number LIKE ? OR b.bill_number LIKE ? OR b.supplier_invoice_number LIKE ? OR s.name LIKE ?)');
+      const like = `%${filters.search}%`;
+      params.push(like, like, like, like, like);
+    }
     if (filters.dateFrom) { conditions.push('substr(pr.return_date, 1, 10) >= ?'); params.push(filters.dateFrom); }
     if (filters.dateTo) { conditions.push('substr(pr.return_date, 1, 10) <= ?'); params.push(filters.dateTo); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countParams = [...params];
     params.push(limit, offset);
     const items = db.prepare(`
-      SELECT pr.*, s.name as supplier_name, b.bill_number
-      FROM purchase_returns pr
-      LEFT JOIN suppliers s ON s.id = pr.supplier_id
-      LEFT JOIN supplier_bills b ON b.id = pr.bill_id
+      ${PURCHASE_RETURN_SELECT}
       ${where}
-      ORDER BY pr.return_date DESC
+      ORDER BY pr.return_date DESC, pr.created_at DESC
       LIMIT ? OFFSET ?
     `).all(...params).map((row) => mapReturn(row));
     const total = db.prepare(`
-      SELECT COUNT(*) as count FROM purchase_returns pr ${where}
+      SELECT COUNT(*) as count FROM purchase_returns pr
+      LEFT JOIN suppliers s ON s.id = pr.supplier_id
+      LEFT JOIN supplier_bills b ON b.id = pr.bill_id
+      ${where}
     `).get(...countParams).count;
     return { items, total, limit, offset };
   }
 
   findReturnById(id) {
     const db = getDatabase();
-    const row = db.prepare(`
-      SELECT pr.*, s.name as supplier_name, b.bill_number
-      FROM purchase_returns pr
-      LEFT JOIN suppliers s ON s.id = pr.supplier_id
-      LEFT JOIN supplier_bills b ON b.id = pr.bill_id
-      WHERE pr.id = ?
-    `).get(id);
+    const row = db.prepare(`${PURCHASE_RETURN_SELECT} WHERE pr.id = ?`).get(id);
     if (!row) return null;
     const items = db.prepare(`
-      SELECT * FROM purchase_return_items WHERE return_id = ?
+      SELECT i.*, COALESCE(i.hsn_code, p.hsn_code) as hsn, u.abbreviation as unit_abbreviation
+      FROM purchase_return_items i
+      LEFT JOIN products p ON p.id = i.product_id
+      LEFT JOIN units u ON u.id = p.unit_id
+      WHERE i.return_id = ?
     `).all(id).map((r) => ({
       id: r.id,
+      billItemId: r.bill_item_id || null,
       productId: r.product_id,
       productName: r.product_name,
       sku: r.sku,
+      hsnCode: r.hsn || null,
+      unit: r.unit_abbreviation || null,
       quantity: Number(r.quantity),
       unitPrice: Number(r.unit_price),
+      discountPercent: Number(r.discount_percent || 0),
       gstPercentage: Number(r.gst_percentage),
+      taxableAmount: r.taxable_amount != null ? Number(r.taxable_amount) : null,
+      gstAmount: r.gst_amount != null ? Number(r.gst_amount) : null,
       lineTotal: Number(r.line_total),
     }));
     return mapReturn(row, items);
+  }
+
+  /** bill_item_id → quantity already returned on debit notes. */
+  returnedQtyByBillItem(billId) {
+    const rows = getDatabase().prepare(`
+      SELECT i.bill_item_id, SUM(i.quantity) as qty
+      FROM purchase_return_items i
+      JOIN purchase_returns pr ON pr.id = i.return_id
+      WHERE pr.bill_id = ? AND pr.status != 'cancelled' AND i.bill_item_id IS NOT NULL
+      GROUP BY i.bill_item_id
+    `).all(billId);
+    return new Map(rows.map((r) => [r.bill_item_id, Number(r.qty)]));
+  }
+
+  /** A debit note settles part of a bill: payable = total − paid − returned. */
+  applyBillReturn(billId, amount) {
+    const db = getDatabase();
+    const bill = db.prepare('SELECT grand_total, amount_paid, returned_amount FROM supplier_bills WHERE id = ?').get(billId);
+    if (!bill) return;
+    const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const returnedAmount = r2(Number(bill.returned_amount || 0) + amount);
+    const payable = Math.max(0, r2(Number(bill.grand_total) - Number(bill.amount_paid) - returnedAmount));
+    const status = payable <= 0.001 ? 'paid' : (Number(bill.amount_paid) > 0.001 || returnedAmount > 0.001 ? 'partial' : 'open');
+    db.prepare('UPDATE supplier_bills SET returned_amount = ?, amount_payable = ?, status = ?, updated_at = ? WHERE id = ?')
+      .run(returnedAmount, payable, status, nowIso(), billId);
+  }
+
+  findReturnsWithoutNoteNumber() {
+    return getDatabase().prepare(`
+      SELECT id, return_date, created_at FROM purchase_returns WHERE note_number IS NULL ORDER BY return_date ASC, created_at ASC
+    `).all();
+  }
+
+  setReturnNoteNumber(id, noteNumber, financialYear) {
+    getDatabase().prepare('UPDATE purchase_returns SET note_number = ?, financial_year = ? WHERE id = ?')
+      .run(noteNumber, financialYear, id);
   }
 
   nextReturnNumber() {
@@ -545,22 +609,28 @@ export class PurchaseRepository {
       db.prepare(`
         INSERT INTO purchase_returns (
           id, return_number, supplier_id, bill_id, return_date, warehouse_id,
-          subtotal, gst_amount, grand_total, status, notes, created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?)
+          subtotal, gst_amount, grand_total, status, notes, created_by, created_at, updated_at,
+          note_number, financial_year, cgst_amount, sgst_amount, igst_amount, adjusted_amount, reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, data.returnNumber, data.supplierId, data.billId || null, data.returnDate,
         data.warehouseId || null, data.subtotal, data.gstAmount, data.grandTotal,
-        data.notes || null, data.createdBy || null, now, now
+        data.notes || null, data.createdBy || null, now, now,
+        data.noteNumber || null, data.financialYear || null, data.cgstAmount || 0, data.sgstAmount || 0,
+        data.igstAmount || 0, data.adjustedAmount || 0, data.reason || null
       );
       const insert = db.prepare(`
         INSERT INTO purchase_return_items (
-          id, return_id, product_id, product_name, sku, quantity, unit_price, gst_percentage, line_total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, return_id, product_id, product_name, sku, quantity, unit_price, gst_percentage, line_total,
+          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item) => {
         insert.run(
           generateId(), id, item.productId, item.productName, item.sku || null,
-          item.quantity, item.unitPrice, item.gstPercentage || 0, item.lineTotal
+          item.quantity, item.unitPrice, item.gstPercentage || 0, item.lineTotal,
+          item.billItemId || null, item.hsnCode || null, item.discountPercent || 0,
+          item.taxableAmount ?? null, item.gstAmount ?? null
         );
       });
     });
