@@ -36,8 +36,6 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [firms, setFirms] = useState([]);
-  const [firmIds, setFirmIds] = useState([]);
 
   const canCreate = checkPermission('core.users.create');
   const canEdit = checkPermission('core.users.edit');
@@ -51,7 +49,6 @@ export default function UsersPage() {
       ]);
       setUsers(usersData);
       setRoles(rolesData.filter((r) => r.isActive));
-      setFirms(await apiRequest('/api/auth/firms').catch(() => []));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -69,7 +66,6 @@ export default function UsersPage() {
     setDetail(null);
     setShowPassword(false);
     setForm(EMPTY_USER);
-    setFirmIds(session?.firm?.id ? [session.firm.id] : []);
     setModalOpen(true);
   };
 
@@ -85,31 +81,16 @@ export default function UsersPage() {
       roleId: user.roleId,
       isActive: user.isActive,
     });
-    setFirmIds([]);
     setModalOpen(true);
     try {
-      const [userDetail, access] = await Promise.all([
-        apiRequest(`/api/users/${user.id}`),
-        apiRequest(`/api/users/${user.id}/firms`).catch(() => null),
-      ]);
-      setDetail(userDetail);
-      if (access) setFirmIds(access.firmIds);
+      setDetail(await apiRequest(`/api/users/${user.id}`));
     } catch {
       /* the list row is enough to edit with */
     }
   };
 
-  const selectedRole = roles.find((r) => r.id === form.roleId);
-  const isOwnerRole = selectedRole?.slug === 'owner_admin';
-  // Only worth asking with more than one firm; the owner opens every firm anyway.
-  const showFirmAccess = firms.length > 1 && !isOwnerRole;
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (showFirmAccess && !firmIds.length) {
-      setError('Tick at least one firm this user can open.');
-      return;
-    }
     setSaving(true);
     setError('');
     try {
@@ -126,18 +107,12 @@ export default function UsersPage() {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
-        if (showFirmAccess) {
-          await apiRequest(`/api/users/${editing.id}/firms`, { method: 'PUT', body: JSON.stringify({ firmIds }) });
-        }
       } else {
         const { isActive, ...createPayload } = form;
-        const created = await apiRequest('/api/users', {
+        await apiRequest('/api/users', {
           method: 'POST',
           body: JSON.stringify(createPayload),
         });
-        if (showFirmAccess && created?.id) {
-          await apiRequest(`/api/users/${created.id}/firms`, { method: 'PUT', body: JSON.stringify({ firmIds }) });
-        }
       }
       setModalOpen(false);
       await loadData();
@@ -167,7 +142,7 @@ export default function UsersPage() {
     <RequirePermission permission="core.users.view">
       <PageHeader
         title="User Management"
-        description="Create users, assign roles, and manage access."
+        description={`Users of ${session?.firm?.name || 'this firm'}. Each firm has its own users and roles; staff sign in to their own firm only.`}
         actions={canCreate && <button type="button" className="btn-primary" onClick={openCreate}>+ Add User</button>}
       />
 
@@ -279,27 +254,9 @@ export default function UsersPage() {
               </div>
             )}
           </div>
-          {firms.length > 1 && (
-            <div>
-              <span className="label">Firms this user can open</span>
-              {isOwnerRole ? (
-                <p className="text-xs text-slate-500">Owner / Admin opens every firm.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {firms.map((f) => (
-                    <label key={f.id} className={`flex min-h-[40px] items-center gap-2 rounded-lg border px-3 text-sm ${firmIds.includes(f.id) ? 'border-brand-500 bg-brand-50' : 'border-slate-300'}`}>
-                      <input
-                        type="checkbox"
-                        checked={firmIds.includes(f.id)}
-                        onChange={(e) => setFirmIds((ids) => (e.target.checked ? [...ids, f.id] : ids.filter((id) => id !== f.id)))}
-                      />
-                      {f.name}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <p className="text-xs text-slate-500">
+            {editing ? 'Belongs to' : 'Will belong to'} <b>{session?.firm?.name || 'this firm'}</b> and can sign in to this firm only.
+          </p>
           <div>
             <label className="label" htmlFor="password">{editing ? 'New Password (optional)' : 'Password *'}</label>
             <div className="flex gap-2">

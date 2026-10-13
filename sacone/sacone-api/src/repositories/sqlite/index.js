@@ -11,6 +11,8 @@ function mapUser(row) {
     roleId: row.role_id,
     roleName: row.role_name,
     roleSlug: row.role_slug,
+    firmId: row.firm_id || null,
+    isGroupOwner: row.role_slug === 'owner_admin' && !row.firm_id,
     isActive: Boolean(row.is_active),
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
@@ -24,16 +26,21 @@ function mapUser(row) {
 }
 
 export class UserRepository {
-  findAll({ includeInactive = false } = {}) {
+  /** Users of one firm (`firmId`), or every user when no firm is given. */
+  findAll({ includeInactive = false, firmId } = {}) {
     const db = getCoreDatabase();
+    const where = [];
+    const params = [];
+    if (!includeInactive) where.push('u.is_active = 1');
+    if (firmId !== undefined) { where.push('u.firm_id = ?'); params.push(firmId); }
     const sql = `
       SELECT u.*, r.name as role_name, r.slug as role_slug
       FROM users u
       JOIN roles r ON r.id = u.role_id
-      ${includeInactive ? '' : 'WHERE u.is_active = 1'}
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY u.full_name ASC
     `;
-    return db.prepare(sql).all().map(mapUser);
+    return db.prepare(sql).all(...params).map(mapUser);
   }
 
   findById(id) {
@@ -71,14 +78,14 @@ export class UserRepository {
     `).get(email);
   }
 
-  create({ email, passwordHash, fullName, phone, roleId, createdBy }) {
+  create({ email, passwordHash, fullName, phone, roleId, firmId = null, createdBy }) {
     const db = getCoreDatabase();
     const id = generateId();
     const now = nowIso();
     db.prepare(`
-      INSERT INTO users (id, email, password_hash, full_name, phone, role_id, is_active, created_at, updated_at, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(id, email, passwordHash, fullName, phone || null, roleId, now, now, createdBy || null);
+      INSERT INTO users (id, email, password_hash, full_name, phone, role_id, firm_id, is_active, created_at, updated_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(id, email, passwordHash, fullName, phone || null, roleId, firmId, now, now, createdBy || null);
     return this.findById(id);
   }
 
@@ -139,7 +146,7 @@ export class SessionRepository {
   findByToken(token) {
     const db = getCoreDatabase();
     return db.prepare(`
-      SELECT s.*, u.email, u.full_name, u.is_active, u.role_id,
+      SELECT s.*, u.email, u.full_name, u.is_active, u.role_id, u.firm_id as user_firm_id,
              r.name as role_name, r.slug as role_slug
       FROM sessions s
       JOIN users u ON u.id = s.user_id
@@ -277,14 +284,19 @@ export class CompanyRepository {
 }
 
 export class RoleRepository {
-  findAll({ includeInactive = false } = {}) {
+  /** Roles of one firm (`firmId`), or every role when no firm is given. */
+  findAll({ includeInactive = false, firmId } = {}) {
     const db = getCoreDatabase();
+    const where = [];
+    const params = [];
+    if (!includeInactive) where.push('is_active = 1');
+    if (firmId !== undefined) { where.push('firm_id = ?'); params.push(firmId); }
     const sql = `
       SELECT * FROM roles
-      ${includeInactive ? '' : 'WHERE is_active = 1'}
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY is_system DESC, name ASC
     `;
-    return db.prepare(sql).all().map(this._mapRole);
+    return db.prepare(sql).all(...params).map(this._mapRole);
   }
 
   findById(id) {
@@ -292,19 +304,20 @@ export class RoleRepository {
     return this._mapRole(db.prepare('SELECT * FROM roles WHERE id = ?').get(id));
   }
 
-  findBySlug(slug) {
+  /** A firm's role by slug (firmId null = the group-level owner role). */
+  findBySlug(slug, firmId = null) {
     const db = getCoreDatabase();
-    return this._mapRole(db.prepare('SELECT * FROM roles WHERE slug = ?').get(slug));
+    return this._mapRole(db.prepare("SELECT * FROM roles WHERE slug = ? AND COALESCE(firm_id, '') = COALESCE(?, '')").get(slug, firmId));
   }
 
-  create({ name, slug, description, isSystem = false, createdBy }) {
+  create({ name, slug, description, isSystem = false, firmId = null, createdBy }) {
     const db = getCoreDatabase();
     const id = generateId();
     const now = nowIso();
     db.prepare(`
-      INSERT INTO roles (id, name, slug, description, is_system, is_active, created_at, updated_at, created_by)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(id, name, slug, description || null, isSystem ? 1 : 0, now, now, createdBy || null);
+      INSERT INTO roles (id, firm_id, name, slug, description, is_system, is_active, created_at, updated_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(id, firmId, name, slug, description || null, isSystem ? 1 : 0, now, now, createdBy || null);
     return this.findById(id);
   }
 
@@ -387,11 +400,11 @@ export class RoleRepository {
     tx();
   }
 
-  slugExists(slug, excludeId = null) {
+  slugExists(slug, excludeId = null, firmId = null) {
     const db = getCoreDatabase();
-    const row = excludeId
-      ? db.prepare('SELECT id FROM roles WHERE slug = ? AND id != ?').get(slug, excludeId)
-      : db.prepare('SELECT id FROM roles WHERE slug = ?').get(slug);
+    const row = db.prepare(`
+      SELECT id FROM roles WHERE slug = ? AND COALESCE(firm_id, '') = COALESCE(?, '') AND id != ?
+    `).get(slug, firmId, excludeId || '');
     return Boolean(row);
   }
 
@@ -441,6 +454,7 @@ export class RoleRepository {
       id: row.id,
       name: row.name,
       slug: row.slug,
+      firmId: row.firm_id || null,
       description: row.description,
       isSystem: Boolean(row.is_system),
       isActive: Boolean(row.is_active),

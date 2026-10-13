@@ -7,12 +7,18 @@ import { repos } from '../repositories/index.js';
 import { getCoreDatabase } from '../database/connection.js';
 import { currentFirmId, runWithFirm } from '../database/context.js';
 import { firmService } from './firms.js';
+import { ensureFirmRoles, FIRM_ADMIN, GROUP_OWNER } from '../database/firm-identity.js';
 
 const userRepo = repos.users;
 const sessionRepo = repos.sessions;
 const companyRepo = repos.company;
 const roleRepo = repos.roles;
 const auditRepo = repos.auditLogs;
+
+/** The group owner: above every firm. */
+export const isGroupOwner = (user) => user?.roleSlug === GROUP_OWNER;
+/** Full admin of the firm that is open: its Firm Admin, or the group owner. */
+export const isFirmAdmin = (user) => user?.roleSlug === FIRM_ADMIN || isGroupOwner(user);
 
 function slugify(text) {
   return text
@@ -70,7 +76,7 @@ export class AuthService {
     });
 
     const permissions = roleRepo.getPermissions(userRow.role_id).map((p) => p.permission_key);
-    const sessionUser = { id: userRow.id, roleSlug: userRow.role_slug };
+    const sessionUser = { id: userRow.id, roleSlug: userRow.role_slug, firmId: userRow.firm_id || null };
     const firms = firmService.choices(sessionUser);
     if (!firms.length) {
       sessionRepo.deleteByToken(token);
@@ -96,11 +102,29 @@ export class AuthService {
         roleId: userRow.role_id,
         roleName: userRow.role_name,
         roleSlug: userRow.role_slug,
+        firmId: userRow.firm_id || null,
+        isGroupOwner: isGroupOwner({ roleSlug: userRow.role_slug }),
         isActive: Boolean(userRow.is_active),
       },
       permissions,
       company,
     };
+  }
+
+  /** Any signed-in user changes their own password (the group owner is not in any Users list). */
+  changePassword(actor, { currentPassword, newPassword } = {}, req) {
+    const row = userRepo.findByEmailWithPassword(actor.user.email);
+    if (!row || !bcrypt.compareSync(String(currentPassword || ''), row.password_hash)) {
+      throw new AppError('Current password is wrong', 400, 'BAD_PASSWORD');
+    }
+    if (String(newPassword || '').length < 8) throw new AppError('New password must be at least 8 characters', 400);
+    if (newPassword === currentPassword) throw new AppError('Choose a password different from the current one', 400);
+    userRepo.update(row.id, { passwordHash: bcrypt.hashSync(newPassword, 10) });
+    auditRepo.create({
+      userId: row.id, userName: row.full_name, action: 'change_password', module: 'core',
+      recordType: 'user', recordId: row.id, ...getRequestMeta(req),
+    });
+    return { success: true };
   }
 
   logout(token, req) {
@@ -140,6 +164,8 @@ export class AuthService {
         roleId: session.role_id,
         roleName: session.role_name,
         roleSlug: session.role_slug,
+        firmId: session.user_firm_id || null,
+        isGroupOwner: isGroupOwner({ roleSlug: session.role_slug }),
         isActive: Boolean(session.is_active),
       },
       permissions,
@@ -199,33 +225,68 @@ export class CompanyService {
 }
 
 export class UserService {
+  /** The firm whose users are being managed: the one open in this session. */
+  #firm() {
+    const firmId = currentFirmId();
+    if (!firmId) throw new AppError('Choose a firm first', 409, 'FIRM_NOT_SELECTED');
+    return firmId;
+  }
+
+  /** A user of the open firm; other firms' users and the group owner are not visible here. */
+  #inFirm(id) {
+    const user = userRepo.findById(id);
+    if (!user || user.firmId !== this.#firm()) throw new AppError('User not found', 404);
+    return user;
+  }
+
+  /** A role of the open firm that this actor may give out. */
+  #assignableRole(roleId, actor) {
+    const role = roleId ? roleRepo.findById(roleId) : null;
+    if (!role || !role.isActive || role.firmId !== this.#firm()) throw new AppError('Invalid role', 400);
+    if (role.slug === FIRM_ADMIN && !isFirmAdmin(actor.user)) {
+      throw new AppError('Only the group owner or a firm admin can make someone a Firm Admin', 403, 'ADMIN_ONLY');
+    }
+    return role;
+  }
+
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.users.view');
-    return userRepo.findAll({ includeInactive: true });
+    return userRepo.findAll({ includeInactive: true, firmId: this.#firm() });
   }
 
   getById(id, actor) {
     authService.checkPermission(actor.permissions, 'core.users.view');
-    const user = userRepo.findById(id);
-    if (!user) throw new AppError('User not found', 404);
-    return user;
+    return this.#inFirm(id);
   }
 
   create(data, actor, req) {
     authService.checkPermission(actor.permissions, 'core.users.create');
+    const firmId = this.#firm();
+    const role = this.#assignableRole(data.roleId, actor);
+    return this.#createUser(data, role, firmId, actor, req);
+  }
 
-    const { email, password, fullName, phone, roleId } = data;
-    if (!email || !password || !fullName || !roleId) {
+  /** Group owner: the first admin of a firm (Company & Firms), without opening that firm. */
+  createFirmAdmin(firmId, data, actor, req) {
+    if (!isGroupOwner(actor.user)) throw new AppError('Only the group owner creates firm admins', 403, 'OWNER_ONLY');
+    const firm = firmService.detail(firmId);
+    ensureFirmRoles(getCoreDatabase(), firm.id, actor.user.id);
+    const role = roleRepo.findBySlug(FIRM_ADMIN, firm.id);
+    if (!role?.isActive) throw new AppError('This firm has no active Firm Admin role', 400);
+    return this.#createUser(data, role, firm.id, actor, req);
+  }
+
+  #createUser(data, role, firmId, actor, req) {
+    const email = String(data.email || '').trim().toLowerCase();
+    const fullName = String(data.fullName || '').trim();
+    const { password, phone } = data;
+    if (!email || !password || !fullName) {
       throw new AppError('Email, password, full name, and role are required', 400);
     }
-
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError('Enter a valid email (it is the login ID)', 400);
+    if (String(password).length < 8) throw new AppError('Password must be at least 8 characters', 400);
     if (userRepo.emailExists(email)) {
       throw new AppError('Email already exists', 409);
-    }
-
-    const role = roleRepo.findById(roleId);
-    if (!role || !role.isActive) {
-      throw new AppError('Invalid role', 400);
     }
 
     const passwordHash = bcrypt.hashSync(password, 10);
@@ -234,7 +295,8 @@ export class UserService {
       passwordHash,
       fullName,
       phone,
-      roleId,
+      roleId: role.id,
+      firmId,
       createdBy: actor.user.id,
     });
 
@@ -255,8 +317,10 @@ export class UserService {
   update(id, data, actor, req) {
     authService.checkPermission(actor.permissions, 'core.users.edit');
 
-    const existing = userRepo.findById(id);
-    if (!existing) throw new AppError('User not found', 404);
+    const existing = this.#inFirm(id);
+    if (existing.roleSlug === FIRM_ADMIN && !isFirmAdmin(actor.user)) {
+      throw new AppError('Only the group owner or a firm admin can change a Firm Admin', 403, 'ADMIN_ONLY');
+    }
 
     const email = data.email !== undefined ? String(data.email).trim().toLowerCase() : undefined;
     if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -268,13 +332,11 @@ export class UserService {
     if (data.isActive === false && id === actor.user.id) {
       throw new AppError('You cannot deactivate your own account', 400);
     }
-
-    if (data.roleId) {
-      const role = roleRepo.findById(data.roleId);
-      if (!role || !role.isActive) {
-        throw new AppError('Invalid role', 400);
-      }
+    if (data.password && String(data.password).length < 8) {
+      throw new AppError('Password must be at least 8 characters', 400);
     }
+
+    if (data.roleId && data.roleId !== existing.roleId) this.#assignableRole(data.roleId, actor);
 
     let passwordHash = null;
     if (data.password) {
@@ -315,19 +377,6 @@ export class UserService {
     if (id === actor.user.id) {
       throw new AppError('You cannot deactivate your own account', 400);
     }
-
-    const target = userRepo.findById(id);
-    if (target?.roleSlug === 'owner_admin') {
-      const activeOwners = getCoreDatabase().prepare(`
-        SELECT COUNT(*) as c FROM users u
-        JOIN roles r ON r.id = u.role_id
-        WHERE r.slug = 'owner_admin' AND u.is_active = 1
-      `).get().c;
-      if (activeOwners <= 1) {
-        throw new AppError('Cannot deactivate the last Owner/Admin account', 400);
-      }
-    }
-
     return this.update(id, { isActive: false }, actor, req);
   }
 
@@ -338,9 +387,22 @@ export class UserService {
 }
 
 export class RoleService {
+  #firm() {
+    const firmId = currentFirmId();
+    if (!firmId) throw new AppError('Choose a firm first', 409, 'FIRM_NOT_SELECTED');
+    return firmId;
+  }
+
+  /** A role of the open firm (each firm has its own roles). */
+  #inFirm(id) {
+    const role = roleRepo.findById(id);
+    if (!role || role.firmId !== this.#firm()) throw new AppError('Role not found', 404);
+    return role;
+  }
+
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.roles.view');
-    const roles = roleRepo.findAll({ includeInactive: true });
+    const roles = roleRepo.findAll({ includeInactive: true, firmId: this.#firm() });
     return roles.map((role) => ({
       ...role,
       permissionCount: roleRepo.getPermissions(role.id).length,
@@ -349,8 +411,7 @@ export class RoleService {
 
   getById(id, actor) {
     authService.checkPermission(actor.permissions, 'core.roles.view');
-    const role = roleRepo.findById(id);
-    if (!role) throw new AppError('Role not found', 404);
+    const role = this.#inFirm(id);
 
     return {
       ...role,
@@ -369,9 +430,11 @@ export class RoleService {
     const { name, description, permissionIds = [] } = data;
     if (!name) throw new AppError('Role name is required', 400);
 
+    const firmId = this.#firm();
     const slug = data.slug || slugify(name);
-    if (roleRepo.slugExists(slug)) {
-      throw new AppError('Role slug already exists', 409);
+    if (slug === GROUP_OWNER) throw new AppError('That role name is reserved for the group owner', 400);
+    if (roleRepo.slugExists(slug, null, firmId)) {
+      throw new AppError('A role with this name already exists in this firm', 409);
     }
 
     const role = roleRepo.create({
@@ -379,6 +442,7 @@ export class RoleService {
       slug,
       description,
       isSystem: false,
+      firmId,
       createdBy: actor.user.id,
     });
 
@@ -403,15 +467,17 @@ export class RoleService {
   update(id, data, actor, req) {
     authService.checkPermission(actor.permissions, 'core.roles.edit');
 
-    const existing = roleRepo.findById(id);
-    if (!existing) throw new AppError('Role not found', 404);
+    const existing = this.#inFirm(id);
+    if (existing.slug === FIRM_ADMIN && !isFirmAdmin(actor.user)) {
+      throw new AppError('Only the group owner or a firm admin can change the Firm Admin role', 403, 'ADMIN_ONLY');
+    }
 
-    // No lockout: the role you are signed in with, and Owner/Admin, stay active and keep the
+    // No lockout: the role you are signed in with, and Firm Admin, stay active and keep the
     // permissions needed to manage users and roles (so any mistake can be fixed).
-    const guarded = existing.slug === 'owner_admin' || existing.id === actor.user.roleId;
+    const guarded = existing.slug === FIRM_ADMIN || existing.id === actor.user.roleId;
     if (guarded && data.isActive === false) {
-      throw new AppError(existing.slug === 'owner_admin'
-        ? 'The Owner/Admin role cannot be deactivated'
+      throw new AppError(existing.slug === FIRM_ADMIN
+        ? 'The Firm Admin role cannot be deactivated'
         : 'You cannot deactivate the role you are signed in with', 400);
     }
     if (guarded && Array.isArray(data.permissionIds)) {
@@ -453,8 +519,7 @@ export class RoleService {
   delete(id, actor, req) {
     authService.checkPermission(actor.permissions, 'core.roles.delete');
 
-    const existing = roleRepo.findById(id);
-    if (!existing) throw new AppError('Role not found', 404);
+    const existing = this.#inFirm(id);
 
     try {
       roleRepo.delete(id);

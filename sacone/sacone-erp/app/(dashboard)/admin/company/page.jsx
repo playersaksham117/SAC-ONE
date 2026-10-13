@@ -6,10 +6,11 @@ import { apiRequest } from '../../../../lib/api';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState } from '../../../../components/ui';
 import FirmForm from '../../../../components/firms/FirmForm';
+import FirmAdminDialog from '../../../../components/firms/FirmAdminDialog';
 
 /**
  * Company & Firms: the open firm's company profile (what used to be Company Settings) and,
- * for the owner, every firm with its own books: add, edit, switch off.
+ * for the group owner, every firm with its own books and admins: add, edit, switch off.
  */
 export default function CompanyAndFirmsPage() {
   const { session, refreshSession, checkPermission } = useAuth();
@@ -21,6 +22,7 @@ export default function CompanyAndFirmsPage() {
   // undefined = pop-up closed, null = adding a firm, id = editing that firm
   const [formFor, setFormFor] = useState(undefined);
   const [saving, setSaving] = useState(false);
+  const [adminFor, setAdminFor] = useState(null);
   // Remount the "This firm" form after a pop-up edit of the same firm.
   const [currentKey, setCurrentKey] = useState(0);
 
@@ -103,7 +105,7 @@ export default function CompanyAndFirmsPage() {
         <section>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-lg font-semibold text-slate-900">All firms</h2>
-            <span className="text-xs text-slate-500">Only the owner sees this list.</span>
+            <span className="text-xs text-slate-500">Only the group owner sees this list.</span>
           </div>
           {!firms ? <LoadingState /> : (
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -112,6 +114,7 @@ export default function CompanyAndFirmsPage() {
                   <tr>
                     <th className="px-4 py-3">Firm</th>
                     <th className="px-4 py-3">GSTIN</th>
+                    <th className="px-4 py-3">Admins</th>
                     <th className="px-4 py-3">Financial years</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3" />
@@ -131,6 +134,14 @@ export default function CompanyAndFirmsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{f.gstNumber || '—'}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {(f.admins || []).length
+                          ? f.admins.map((a) => (
+                            <div key={a.id} className={a.isActive ? 'text-slate-700' : 'text-slate-400 line-through'}>{a.fullName} <span className="text-slate-400">· {a.email}</span></div>
+                          ))
+                          : <span className="text-amber-700">No admin yet</span>}
+                        <div className="text-slate-400">{f.userCount || 0} user{f.userCount === 1 ? '' : 's'}</div>
+                      </td>
                       <td className="px-4 py-3 text-xs text-slate-600">{f.financialYears.join(', ')}</td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${f.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -140,6 +151,9 @@ export default function CompanyAndFirmsPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => openForm(f.id)}>Edit</button>
+                          {f.isActive && (
+                            <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setError(''); setMessage(''); setAdminFor(f); }}>+ Admin</button>
+                          )}
                           {!f.isPrimary && (
                             <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" disabled={saving} onClick={() => toggleActive(f)}>
                               {f.isActive ? 'Switch off' : 'Switch on'}
@@ -154,10 +168,23 @@ export default function CompanyAndFirmsPage() {
             </div>
           )}
           <p className="mt-4 text-xs text-slate-500">
-            Who may open which firm is set per user in <Link href="/admin/users" className="text-brand-600 hover:underline">Users → Edit</Link>.
-            The owner can open every firm. Invoice layout, bank details and terms are in System Settings while that firm is open.
+            Each firm has its own users and roles. Its admin adds the rest of its staff in <Link href="/admin/users" className="text-brand-600 hover:underline">Users</Link> while
+            signed in to that firm; staff can open their own firm only. As group owner you open every firm and are not listed among any firm&apos;s users.
+            Invoice layout, bank details and terms are in System Settings while that firm is open.
           </p>
         </section>
+      )}
+
+      {adminFor && (
+        <FirmAdminDialog
+          firm={adminFor}
+          onClose={() => setAdminFor(null)}
+          onCreated={async (admin) => {
+            setAdminFor(null);
+            setMessage(`${admin.fullName} is now admin of "${adminFor.name}". They sign in with ${admin.email} and see only that firm.`);
+            await loadFirms();
+          }}
+        />
       )}
 
       {formFor !== undefined && (

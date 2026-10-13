@@ -140,7 +140,7 @@ export default function RolesPage() {
     });
   };
 
-  const isOwnerAdmin = editing?.slug === 'owner_admin';
+  const isOwnerAdmin = editing?.slug === 'firm_admin';
 
   if (loading) return <LoadingState />;
 
@@ -247,7 +247,7 @@ export default function RolesPage() {
           {editing?.isSystem && (
             <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
               {isOwnerAdmin
-                ? 'Owner/Admin stays active and keeps user and role management (view/edit users and roles), so nobody gets locked out.'
+                ? 'Firm Admin stays active and keeps user and role management (view/edit users and roles), so nobody gets locked out.'
                 : 'Built-in role: your changes are kept. New features only add their own new permissions.'}
             </p>
           )}

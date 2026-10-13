@@ -770,7 +770,7 @@ export class PosSyncService {
         if (!user) return { id, exists: false, isActive: false, permissions: [] };
         // Staff may use this terminal only if they may open the firm it belongs to.
         const firmId = currentFirmId();
-        const allowed = user.isActive && (!firmId || firmService.canOpen({ id: user.id, roleSlug: user.roleSlug }, firmId));
+        const allowed = user.isActive && (!firmId || firmService.canOpen({ id: user.id, roleSlug: user.roleSlug, firmId: user.firmId }, firmId));
         return {
           id,
           exists: true,

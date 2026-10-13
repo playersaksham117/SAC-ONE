@@ -152,9 +152,8 @@ async function main() {
   const custPull = await call('/api/v1/sync/customers?since=1970-01-01T00:00:00Z', { key, deviceId });
   const buyer = custPull.data?.customers?.find((c) => c.name === creditSale.customer_name);
   check('credit customer pulled with outstanding balance', buyer && buyer.outstanding > 0, JSON.stringify(custPull.error));
-  const usersList = await call('/api/users', { token });
-  const staff = (Array.isArray(usersList.data) ? usersList.data : usersList.data?.items || [])
-    .find((x) => x.email === ADMIN.email);
+  // The signed-in account itself (a group owner is not listed under any firm's Users).
+  const staff = (await call('/api/auth/me', { token })).data?.user;
   const attributed = await call('/api/v1/sync/push/sales', {
     method: 'POST', key, deviceId,
     body: { sales: [{ ...cashSale, invoice_no: `INV-${run}-U1`, erp_user_id: staff.id }] },

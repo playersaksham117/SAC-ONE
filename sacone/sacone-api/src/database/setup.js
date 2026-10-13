@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getDatabase, closeDatabase, getFirmDatabase } from './connection.js';
 import { ensurePrimaryFirm } from './firm-provision.js';
+import { roleDefaultsKey, scopeIdentityToFirms } from './firm-identity.js';
 import { config } from '../config/index.js';
 import { generateId, nowIso } from '../core/utils.js';
 import {
@@ -147,7 +148,7 @@ function seedCompanyAndAdmin(db) {
 
   const now = nowIso();
   const companyId = generateId();
-  const adminRole = db.prepare("SELECT id FROM roles WHERE slug = 'owner_admin'").get();
+  const adminRole = db.prepare("SELECT id FROM roles WHERE slug = 'owner_admin' AND firm_id IS NULL").get();
 
   db.prepare(`
     INSERT INTO companies (
@@ -195,16 +196,16 @@ function syncBuiltInRoleDefaults(db, now) {
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `);
 
+  // Each firm has its own copy of every built-in role; keep each copy current separately.
   for (const roleDef of DEFAULT_ROLES) {
-    const role = db.prepare('SELECT id FROM roles WHERE slug = ?').get(roleDef.slug);
-    if (!role) continue;
+   for (const role of db.prepare('SELECT id, firm_id, slug FROM roles WHERE slug = ? AND is_system = 1').all(roleDef.slug)) {
     const defaults = roleDef.allPermissions
       ? allPermissions.map((p) => p.permission_key)
       : roleDef.viewOnly
         ? allPermissions.filter((p) => p.action === 'view').map((p) => p.permission_key)
         : (roleDef.permissionKeys || []).filter((k) => idByKey[k]);
 
-    const snapshotKey = `role_defaults.${roleDef.slug}`;
+    const snapshotKey = roleDefaultsKey(role);
     let previous = null;
     try { previous = JSON.parse(getSnapshot.get(snapshotKey)?.value || 'null'); } catch { previous = null; }
 
@@ -215,6 +216,7 @@ function syncBuiltInRoleDefaults(db, now) {
     for (const key of toRevoke) revoke.run(role.id, idByKey[key]);
 
     saveSnapshot.run(snapshotKey, JSON.stringify(defaults), `Built-in defaults last applied to ${roleDef.name}`, now);
+   }
   }
 }
 
@@ -614,6 +616,11 @@ function main() {
     // Firms: register the first firm (this file's books), then bring every other firm's file up to date.
     const primary = ensurePrimaryFirm(db);
     if (primary.created) console.log(`Registered firm "${primary.name}" (books in the main database file)`);
+    // Users and roles per firm: the group owner above all firms, everyone else in one firm.
+    const scoped = scopeIdentityToFirms(db);
+    if (scoped.movedRoles || scoped.movedUsers || scoped.createdRoles) {
+      console.log(`Users & roles per firm: ${scoped.movedUsers} user(s) and ${scoped.movedRoles} role(s) assigned to the first firm; ${scoped.createdRoles} built-in role(s) created for firms`);
+    }
     for (const firm of db.prepare('SELECT id, name FROM firms WHERE db_file IS NOT NULL ORDER BY created_at').all()) {
       getFirmDatabase(firm.id);
       console.log(`Firm "${firm.name}": database file up to date`);

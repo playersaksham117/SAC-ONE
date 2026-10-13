@@ -6,7 +6,7 @@ import { financialYearOf } from '../core/financial-year.js';
 import { customerPoFrom } from '../core/customer-po.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { authService, isFirmAdmin } from './index.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerService } from './parties.js';
 import { commissionService } from './commissions.js';
@@ -565,11 +565,11 @@ export class PosService {
     });
   }
 
-  /** Edit / delete are owner-only (Owner/Admin role), on top of the sales edit/delete permission. */
+  /** Edit / delete are for the firm admin (or group owner), on top of the sales edit/delete permission. */
   #assertOwner(actor, action) {
     authService.checkPermission(actor.permissions, `pos.sales.${action}`);
-    if (actor.user.roleSlug !== 'owner_admin') {
-      throw new AppError(`Only the owner can ${action} invoices`, 403, 'OWNER_ONLY');
+    if (!isFirmAdmin(actor.user)) {
+      throw new AppError(`Only the firm admin or the group owner can ${action} invoices`, 403, 'OWNER_ONLY');
     }
   }
 

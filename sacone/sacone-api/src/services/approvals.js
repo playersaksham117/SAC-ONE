@@ -21,7 +21,8 @@ function actorRoleSlugs(actor) {
   const slugs = new Set();
   if (actor?.user?.roleSlug) slugs.add(actor.user.roleSlug);
   if (actor?.role?.slug) slugs.add(actor.role.slug);
-  if (slugs.has('owner_admin') || actor?.permissions?.includes('*')) {
+  // The firm admin approves anything in its firm, like the group owner.
+  if (slugs.has('owner_admin') || slugs.has('firm_admin') || actor?.permissions?.includes('*')) {
     slugs.add('owner_admin');
     slugs.add('manager');
     slugs.add('accountant');

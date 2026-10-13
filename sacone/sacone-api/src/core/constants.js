@@ -2,9 +2,18 @@ export const PERMISSION_ACTIONS = ['view', 'create', 'edit', 'delete', 'approve'
 
 export const DEFAULT_ROLES = [
   {
+    // The group owner: above every firm (opens all firms, adds firms and their admins).
     slug: 'owner_admin',
-    name: 'Owner/Admin',
-    description: 'Full system access including user and role management',
+    name: 'Group Owner',
+    description: "Owns the group: opens every firm, adds firms and creates each firm's admin",
+    isSystem: true,
+    allPermissions: true,
+    groupLevel: true,
+  },
+  {
+    slug: 'firm_admin',
+    name: 'Firm Admin',
+    description: 'Full access to this firm, including its users and roles',
     isSystem: true,
     allPermissions: true,
   },

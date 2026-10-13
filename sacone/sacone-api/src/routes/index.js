@@ -30,6 +30,10 @@ router.get('/me', signedIn(), asyncHandler(async (req, res) => {
 }));
 
 // Firm and financial year picker, shown after every sign-in and from the header switcher.
+router.put('/me/password', signedIn(), asyncHandler(async (req, res) => {
+  sendSuccess(res, authService.changePassword(req.actor, req.body || {}, req));
+}));
+
 router.get('/firms', signedIn(), asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.choices(req.actor.user));
 }));
@@ -50,7 +54,7 @@ companyRouter.put('/', asyncHandler(async (req, res) => {
 }));
 
 export const userRouter = Router();
-userRouter.use(signedIn());
+userRouter.use(authenticate());
 userRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.list(req.actor));
 }));
@@ -68,12 +72,6 @@ userRouter.post('/:id/deactivate', asyncHandler(async (req, res) => {
 }));
 userRouter.post('/:id/activate', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.activate(req.params.id, req.actor, req));
-}));
-userRouter.get('/:id/firms', asyncHandler(async (req, res) => {
-  sendSuccess(res, firmService.userFirms(req.params.id, req.actor));
-}));
-userRouter.put('/:id/firms', asyncHandler(async (req, res) => {
-  sendSuccess(res, firmService.setUserFirms(req.params.id, req.body?.firmIds, req.actor, req));
 }));
 
 // Firms (owner): add a firm with its own books, rename, switch off.
@@ -98,9 +96,13 @@ firmRouter.post('/', asyncHandler(async (req, res) => {
 firmRouter.put('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.update(req.params.id, req.body || {}, req.actor, req));
 }));
+// Group owner: create a firm's admin (each firm's users and roles are its own).
+firmRouter.post('/:id/admins', asyncHandler(async (req, res) => {
+  sendSuccess(res, userService.createFirmAdmin(req.params.id, req.body || {}, req.actor, req), 201);
+}));
 
 export const roleRouter = Router();
-roleRouter.use(signedIn());
+roleRouter.use(authenticate());
 roleRouter.get('/permission-tree', asyncHandler(async (req, res) => {
   sendSuccess(res, roleService.getPermissionTree(req.actor));
 }));

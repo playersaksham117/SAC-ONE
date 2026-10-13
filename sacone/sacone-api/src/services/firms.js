@@ -2,7 +2,8 @@ import { AppError } from '../core/http.js';
 import { financialYearOf, financialYearRange, financialYearsSince, isFinancialYear } from '../core/financial-year.js';
 import { generateId } from '../core/utils.js';
 import { generateFirmPrefix } from '../core/firm-prefix.js';
-import { getFirmDatabase } from '../database/connection.js';
+import { getCoreDatabase, getFirmDatabase } from '../database/connection.js';
+import { ensureFirmRoles, FIRM_ADMIN } from '../database/firm-identity.js';
 import { currentFirmId, runWithFirm } from '../database/context.js';
 import { ensurePrimaryFirm } from '../database/firm-provision.js';
 import { repos } from '../repositories/index.js';
@@ -150,14 +151,12 @@ export const firmService = {
     return next(null);
   },
 
-  /** Active firms this user may open. A user never assigned a firm gets the first firm. */
+  /** Active firms this user may open: all of them for the group owner, otherwise the user's own firm. */
   firmsForUser(user) {
     ensurePrimaryFirm();
     const active = firmRepo.findAll();
     if (user?.roleSlug === OWNER) return active;
-    const assigned = new Set(firmRepo.firmIdsForUser(user.id));
-    if (!assigned.size) return active.filter((f) => f.isPrimary);
-    return active.filter((f) => assigned.has(f.id));
+    return active.filter((f) => f.id === user?.firmId);
   },
 
   canOpen(user, firmId) {
@@ -180,7 +179,7 @@ export const firmService = {
   sessionSelection(session) {
     if (!session.firm_id) return null;
     const firm = firmRepo.findById(session.firm_id);
-    const user = { id: session.user_id, roleSlug: session.role_slug };
+    const user = { id: session.user_id, roleSlug: session.role_slug, firmId: session.user_firm_id || null };
     if (!firm?.isActive || !this.canOpen(user, firm.id)) return null;
     const financialYear = financialYearRange(session.financial_year) || financialYearRange(financialYearOf());
     return { firm, financialYear };
@@ -203,10 +202,17 @@ export const firmService = {
 
   list(actor) {
     requireOwner(actor);
+    const core = getCoreDatabase();
+    const counts = Object.fromEntries(core.prepare('SELECT firm_id, COUNT(*) AS c FROM users WHERE firm_id IS NOT NULL GROUP BY firm_id').all().map((r) => [r.firm_id, r.c]));
+    const adminsOf = core.prepare(`
+      SELECT u.id, u.full_name, u.email, u.is_active FROM users u JOIN roles r ON r.id = u.role_id
+      WHERE u.firm_id = ? AND r.slug = ? ORDER BY u.created_at
+    `);
     return firmRepo.findAll({ includeInactive: true }).map((firm) => ({
       ...profileOf(firm),
       financialYears: this.financialYears(firm).map((y) => y.code),
-      userCount: null,
+      userCount: counts[firm.id] || 0,
+      admins: adminsOf.all(firm.id, FIRM_ADMIN).map((a) => ({ id: a.id, fullName: a.full_name, email: a.email, isActive: Boolean(a.is_active) })),
     }));
   },
 
@@ -263,6 +269,7 @@ export const firmService = {
     const id = generateId();
     firmRepo.create({ id, name: profile.businessName, dbFile: `firms/${id}.db`, firstFinancialYear, createdBy: actor.user.id });
     try {
+      ensureFirmRoles(getCoreDatabase(), id, actor.user.id); // its own copy of the built-in roles
       getFirmDatabase(id); // creates and prepares the firm's database file
       applyProfile(id, { country: 'India', ...profile }, numbering, actor);
     } catch (err) {
@@ -321,22 +328,5 @@ export const firmService = {
   /** Keep the registry name in step when a firm edits its own company profile. */
   syncName(firmId, name) {
     if (firmId && name) firmRepo.update(firmId, { name: String(name).trim() });
-  },
-
-  userFirms(userId, actor) {
-    requirePermission(actor, 'core.users.view');
-    const firms = firmRepo.findAll();
-    const assigned = firmRepo.firmIdsForUser(userId);
-    return { firmIds: assigned.length ? assigned : firms.filter((f) => f.isPrimary).map((f) => f.id), explicit: assigned.length > 0 };
-  },
-
-  setUserFirms(userId, firmIds, actor, req) {
-    requirePermission(actor, 'core.users.edit');
-    if (!Array.isArray(firmIds) || !firmIds.length) throw new AppError('Give the user at least one firm', 400);
-    const known = new Set(firmRepo.findAll({ includeInactive: true }).map((f) => f.id));
-    if (firmIds.some((id) => !known.has(id))) throw new AppError('Unknown firm', 400);
-    firmRepo.setUserFirms(userId, firmIds);
-    audit(actor, req, 'assign_firms', userId, { firmIds });
-    return this.userFirms(userId, actor);
   },
 };

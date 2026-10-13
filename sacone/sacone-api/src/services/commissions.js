@@ -1,9 +1,9 @@
-import { withFinancialYear } from '../database/context.js';
+import { currentFirmId, withFinancialYear } from '../database/context.js';
 import crypto from 'crypto';
 import { AppError } from '../core/http.js';
 import { config } from '../config/index.js';
 import { repos } from '../repositories/index.js';
-import { authService, userService } from './index.js';
+import { authService, isFirmAdmin, userService } from './index.js';
 import {
   round2,
   resolveFloor,
@@ -172,7 +172,7 @@ export class CommissionService {
   }
 
   #createLogin(agent, roleId, actor, req) {
-    const role = roleId ? repos.roles.findById(roleId) : repos.roles.findBySlug('sales_staff');
+    const role = roleId ? repos.roles.findById(roleId) : repos.roles.findBySlug('sales_staff', currentFirmId());
     if (!role?.id) throw new AppError('Sales Staff role not found; pick a role for the login', 400);
     const loginId = this.#loginEmailFor(agent);
     const password = generatePassword();
@@ -756,7 +756,7 @@ export class CommissionService {
     if (payment.status !== 'draft') throw new AppError('Only draft payments can be posted', 400);
     if (payment.createdBy === actor.user.id
       && !actor.permissions.includes('*')
-      && actor.user.roleSlug !== 'owner_admin') {
+      && !isFirmAdmin(actor.user)) {
       // self-approval protection for non-owners
       throw new AppError('You cannot approve your own commission payment', 400);
     }

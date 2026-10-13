@@ -62,7 +62,7 @@ export default function SalesInvoices() {
   const { session, checkPermission } = useAuth();
   const canReturn = checkPermission('pos.returns.create');
   // Only the owner may change or delete a bill.
-  const isOwner = session?.user?.roleSlug === 'owner_admin';
+  const isOwner = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
 
   const load = useCallback(async (silent = false) => {
     if (silent !== true) setLoading(true);

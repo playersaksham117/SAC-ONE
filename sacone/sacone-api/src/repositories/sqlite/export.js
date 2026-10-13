@@ -284,11 +284,11 @@ export class ExportDataRepository {
   /** Users without password_hash or other secrets */
   fetchUsers() {
     const roles = rowsToObjects(`
-      SELECT id, name, slug, description, is_system, is_active, created_at, updated_at, created_by
+      SELECT id, firm_id, name, slug, description, is_system, is_active, created_at, updated_at, created_by
       FROM roles ORDER BY name
     `);
     const users = rowsToObjects(`
-      SELECT u.id, u.email, u.full_name, u.phone, u.role_id, r.slug as role_slug, r.name as role_name,
+      SELECT u.id, u.email, u.full_name, u.phone, u.role_id, u.firm_id, r.slug as role_slug, r.name as role_name,
              u.is_active, u.last_login_at, u.created_at, u.updated_at, u.created_by
       FROM users u
       LEFT JOIN roles r ON r.id = u.role_id

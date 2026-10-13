@@ -8,6 +8,7 @@ import { getSidebarNavigation, findModuleByPath, OWNER_PERMISSIONS } from '../li
 import { useOwnerAppUrl } from '../lib/app-urls';
 import { LiveIndicator } from '../lib/live';
 import { recordModuleVisit } from '../lib/recent-modules';
+import ChangePasswordDialog from './ChangePasswordDialog';
 
 /** Financial year containing today (India), e.g. '2026-27'. */
 function currentFinancialYear() {
@@ -50,6 +51,7 @@ function NavLink({ item, active, onNavigate }) {
 }
 
 function Sidebar({ sections, pathname, isHome, session, logout, onNavigate, canOwner }) {
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const ownerUrl = useOwnerAppUrl();
   return (
     <>
@@ -99,10 +101,14 @@ function Sidebar({ sections, pathname, isHome, session, logout, onNavigate, canO
         <div className="mb-3 rounded-lg bg-slate-800 px-3 py-2">
           <div className="truncate text-sm font-medium">{session?.user?.fullName}</div>
           <div className="truncate text-xs text-slate-400">{session?.user?.roleName}</div>
+          <button type="button" onClick={() => setPasswordOpen(true)} className="mt-1 text-xs font-medium text-slate-300 hover:text-white hover:underline">
+            Change password
+          </button>
         </div>
         <button type="button" onClick={logout} className="btn-secondary w-full text-slate-700">
           Sign out
         </button>
+        {passwordOpen && <ChangePasswordDialog onClose={() => setPasswordOpen(false)} />}
       </div>
     </>
   );
