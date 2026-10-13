@@ -52,6 +52,7 @@ export default function WarehousePage() {
 
   const [whModal, setWhModal] = useState(false);
   const [whForm, setWhForm] = useState({ code: '', name: '', city: '', state: '', address: '', isDefault: false });
+  const [whEditId, setWhEditId] = useState('');
   const [locModal, setLocModal] = useState(false);
   const [locForm, setLocForm] = useState({ code: '', name: '', locationType: 'bin', parentId: '', capacity: '' });
   const [transferModal, setTransferModal] = useState(false);
@@ -131,11 +132,40 @@ export default function WarehousePage() {
 
   const selectedWarehouse = warehouses.find((w) => w.id === selectedId);
 
-  const createWarehouse = async (e) => {
+  const openCreateWarehouse = () => {
+    setWhEditId('');
+    setWhForm({ code: '', name: '', city: '', state: '', address: '', isDefault: false });
+    setWhModal(true);
+  };
+
+  const openEditWarehouse = () => {
+    if (!selectedWarehouse) return;
+    setWhEditId(selectedWarehouse.id);
+    setWhForm({
+      code: selectedWarehouse.code || '',
+      name: selectedWarehouse.name || '',
+      city: selectedWarehouse.city || '',
+      state: selectedWarehouse.state || '',
+      address: selectedWarehouse.address || '',
+      isDefault: Boolean(selectedWarehouse.isDefault),
+    });
+    setWhModal(true);
+  };
+
+  const saveWarehouse = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
+      if (whEditId) {
+        const { code, ...changes } = whForm;
+        const updated = await apiRequest(`/api/warehouses/${whEditId}`, { method: 'PUT', body: JSON.stringify(changes) });
+        setWhModal(false);
+        setMessage(`Warehouse ${updated.name} updated.`);
+        await loadWarehouses();
+        await refreshTab();
+        return;
+      }
       const created = await apiRequest('/api/warehouses', { method: 'POST', body: JSON.stringify(whForm) });
       setWhModal(false);
       setMessage(`Warehouse ${created.warehouse.name} created with default Zone/Rack/Bin.`);
@@ -389,7 +419,7 @@ export default function WarehousePage() {
         actions={(
           <>
             {canCreateWh && (
-              <button type="button" className="btn-primary" onClick={() => setWhModal(true)}>+ Warehouse</button>
+              <button type="button" className="btn-primary" onClick={openCreateWarehouse}>+ Warehouse</button>
             )}
             {canCreateTransfer && (
               <button type="button" className="btn-secondary" onClick={openTransferModal}>
@@ -408,6 +438,9 @@ export default function WarehousePage() {
             </option>
           ))}
         </select>
+        {canEditWh && selectedWarehouse && (
+          <button type="button" className="btn-secondary" onClick={openEditWarehouse}>Edit</button>
+        )}
         {canEditWh && selectedWarehouse && (
           <button type="button" className={selectedWarehouse.isActive ? 'btn-danger' : 'btn-secondary'} onClick={toggleWarehouseActive}>
             {selectedWarehouse.isActive ? 'Deactivate' : 'Activate'}
@@ -701,20 +734,24 @@ export default function WarehousePage() {
         </>
       )}
 
-      <Modal open={whModal} title="Create Warehouse" onClose={() => setWhModal(false)} footer={(
+      <Modal open={whModal} title={whEditId ? 'Edit Warehouse' : 'Create Warehouse'} onClose={() => setWhModal(false)} footer={(
         <>
           <button type="button" className="btn-secondary" onClick={() => setWhModal(false)}>Cancel</button>
-          <button type="submit" form="wh-form" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Create'}</button>
+          <button type="submit" form="wh-form" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : whEditId ? 'Save' : 'Create'}</button>
         </>
       )}
       >
-        <form id="wh-form" onSubmit={createWarehouse} className="grid gap-3 md:grid-cols-2">
-          <div><label className="label">Code *</label><input className="input-field" value={whForm.code} onChange={(e) => setWhForm({ ...whForm, code: e.target.value })} required /></div>
+        <form id="wh-form" onSubmit={saveWarehouse} className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="label">Code *</label>
+            <input className="input-field disabled:bg-slate-100 disabled:text-slate-500" value={whForm.code} disabled={Boolean(whEditId)} onChange={(e) => setWhForm({ ...whForm, code: e.target.value })} required />
+            {whEditId && <p className="mt-1 text-xs text-slate-500">Code is fixed: location codes and QR labels are built from it.</p>}
+          </div>
           <div><label className="label">Name *</label><input className="input-field" value={whForm.name} onChange={(e) => setWhForm({ ...whForm, name: e.target.value })} required /></div>
           <div><label className="label">City</label><input className="input-field" value={whForm.city} onChange={(e) => setWhForm({ ...whForm, city: e.target.value })} /></div>
           <div><label className="label">State</label><input className="input-field" value={whForm.state} onChange={(e) => setWhForm({ ...whForm, state: e.target.value })} /></div>
           <div className="md:col-span-2"><label className="label">Address</label><input className="input-field" value={whForm.address} onChange={(e) => setWhForm({ ...whForm, address: e.target.value })} /></div>
-          <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={whForm.isDefault} onChange={(e) => setWhForm({ ...whForm, isDefault: e.target.checked })} /> Default warehouse</label>
+          <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={whForm.isDefault} disabled={Boolean(whEditId) && Boolean(selectedWarehouse?.isDefault)} onChange={(e) => setWhForm({ ...whForm, isDefault: e.target.checked })} /> Default warehouse{whEditId && selectedWarehouse?.isDefault ? ' (make another warehouse default to change)' : ''}</label>
         </form>
       </Modal>
 

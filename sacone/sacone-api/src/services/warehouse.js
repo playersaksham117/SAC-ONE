@@ -130,6 +130,9 @@ export class WarehouseService {
     if (data.code && warehouseRepo.codeExists(data.code.trim(), id)) {
       throw new AppError('Warehouse code already exists', 409);
     }
+    if (existing.isDefault && data.isDefault === false) {
+      throw new AppError('This is the default warehouse. Make another warehouse the default instead.', 400);
+    }
 
     const updated = warehouseRepo.update(id, {
       ...data,
