@@ -4,6 +4,9 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import { DENOMINATIONS, notesTotal, suggestChange, type NoteCounts } from '../domain/cash';
 import { formatMoney, round2 } from '../domain/money';
 import { readCustomerPo, todayPoText } from '../domain/po';
+import { hasUpi } from '../domain/upi';
+import { useDevice } from '../store/device';
+import { UpiQrModal } from '../ui/UpiQrModal';
 import type { Payment, PaymentMethod } from '../domain/types';
 import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
@@ -69,6 +72,10 @@ export default function Checkout() {
   const [received, setReceived] = useState<NoteCounts>({});
   const [changeCounts, setChangeCounts] = useState<NoteCounts | null>(null); // null = suggested
   const [busy, setBusy] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const deviceInfo = useDevice((s) => s.info);
+  const invoiceCfg = deviceInfo?.settings?.invoice;
+  const payBank = invoiceCfg?.bank;
   const [poOn, setPoOn] = useState(false);
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState('');
@@ -85,6 +92,7 @@ export default function Checkout() {
   const paid = round2(payments.reduce((s, p) => s + p.amount, 0));
   const remaining = round2(due - paid);
   const cashPart = round2(payments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0));
+  const upiAmount = round2(payments.filter((p) => p.method === 'upi').reduce((s, p) => s + p.amount, 0));
 
   const receivedTotal = notesTotal(received);
   const effectiveTendered = drawerOn ? receivedTotal : toNum(tendered);
@@ -282,6 +290,21 @@ export default function Checkout() {
             </Row>
           </Card>
         )}
+
+        {upiAmount > 0 && invoiceCfg?.posUpiQr !== false && hasUpi(payBank) ? (
+          <Card style={{ marginTop: space.md }}>
+            <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', color: colors.text }}>UPI {formatMoney(upiAmount)}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{payBank.upiId}</Text>
+              </View>
+              <Button title="Show QR" icon="qr-code-outline" variant="secondary" size="sm" onPress={() => setQrOpen(true)} testID="show-upi-qr" />
+            </Row>
+          </Card>
+        ) : null}
+        {qrOpen && hasUpi(payBank) ? (
+          <UpiQrModal bank={payBank} amount={upiAmount} payee={deviceInfo?.company?.businessName} note={`${deviceInfo?.device.code || 'POS'} sale`} onClose={() => setQrOpen(false)} />
+        ) : null}
 
         <View style={{ marginTop: space.md }}>
           <SectionTitle right={<Chip label={poOn ? 'Customer PO on' : 'Add customer PO'} icon="document-text-outline" active={poOn} onPress={() => setPoOn(!poOn)} />}>

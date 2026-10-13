@@ -157,6 +157,7 @@ function mapCash(row) {
     paymentAccountId: row.payment_account_id,
     paymentAccountName: row.payment_account_name || null,
     accountType: row.account_type || null,
+    bankName: row.bank_name || null,
     direction: row.direction,
     amount: round2(row.amount),
     paymentMode: row.payment_mode,
@@ -168,6 +169,33 @@ function mapCash(row) {
     createdAt: row.created_at,
   };
 }
+
+/**
+ * Everything that moved money through a cash / bank / UPI account: posted vouchers and transfers
+ * (cash_book_entries), plus SAC-POS / ERP sale UPI & bank takings (pos_payments with their bank)
+ * and UPI / bank refunds on credit notes (from the bank the sale was paid into, else the default).
+ */
+const BOOK_SOURCE = `
+  SELECT e.id, e.entry_date, e.firm_id, e.payment_account_id, e.direction, e.amount, e.payment_mode,
+         e.reference, e.source_type, e.source_id, e.status, e.created_by, e.created_at
+  FROM cash_book_entries e
+  UNION ALL
+  SELECT p.id, substr(COALESCE(s.completed_at, p.created_at), 1, 10), s.firm_id, p.payment_account_id, 'in', p.amount, p.method,
+         s.invoice_number, 'pos_sale', s.id, 'posted', p.created_by, p.created_at
+  FROM pos_payments p
+  JOIN pos_sales s ON s.id = p.sale_id
+  WHERE p.payment_account_id IS NOT NULL AND s.status != 'voided'
+  UNION ALL
+  SELECT r.id, substr(r.created_at, 1, 10), NULL,
+         COALESCE(
+           (SELECT p2.payment_account_id FROM pos_payments p2 WHERE p2.sale_id = r.sale_id AND p2.payment_account_id IS NOT NULL ORDER BY p2.created_at LIMIT 1),
+           (SELECT d.id FROM financial_payment_accounts d WHERE d.is_default = 1 LIMIT 1)
+         ),
+         'out', r.refund_amount, r.refund_method, COALESCE(r.note_number, r.return_number), 'pos_refund', r.id, 'posted',
+         r.created_by, r.created_at
+  FROM pos_sales_returns r
+  WHERE r.status = 'completed' AND r.refund_amount > 0 AND r.refund_method IN ('upi', 'bank')
+`;
 
 const RECEIPT_SELECT = `
   SELECT r.*,
@@ -686,8 +714,8 @@ export class CashBookRepository {
     if (firmId) { where.push('e.firm_id = ?'); params.push(firmId); }
     const wh = `WHERE ${where.join(' AND ')}`;
     const items = getDatabase().prepare(`
-      SELECT e.*, a.name as payment_account_name, a.account_type
-      FROM cash_book_entries e
+      SELECT e.*, a.name as payment_account_name, a.account_type, a.bank_name
+      FROM (${BOOK_SOURCE}) e
       LEFT JOIN financial_payment_accounts a ON a.id = e.payment_account_id
       ${wh}
       ORDER BY e.entry_date DESC, e.created_at DESC
@@ -696,14 +724,15 @@ export class CashBookRepository {
     const totals = getDatabase().prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN e.direction = 'in' THEN e.amount ELSE 0 END), 0) as inflow,
-        COALESCE(SUM(CASE WHEN e.direction = 'out' THEN e.amount ELSE 0 END), 0) as outflow
-      FROM cash_book_entries e
+        COALESCE(SUM(CASE WHEN e.direction = 'out' THEN e.amount ELSE 0 END), 0) as outflow,
+        COUNT(*) as count
+      FROM (${BOOK_SOURCE}) e
       LEFT JOIN financial_payment_accounts a ON a.id = e.payment_account_id
       ${wh}
     `).get(...params);
     return {
       items,
-      total: items.length,
+      total: totals?.count ?? items.length,
       limit,
       offset,
       inflow: round2(totals?.inflow),
@@ -721,17 +750,63 @@ export class CashBookRepository {
       SELECT a.account_type,
         COALESCE(SUM(CASE WHEN e.direction = 'in' THEN e.amount ELSE 0 END), 0) as inflow,
         COALESCE(SUM(CASE WHEN e.direction = 'out' THEN e.amount ELSE 0 END), 0) as outflow
-      FROM cash_book_entries e
+      FROM (${BOOK_SOURCE}) e
       JOIN financial_payment_accounts a ON a.id = e.payment_account_id
       WHERE ${where.join(' AND ')}
       GROUP BY a.account_type
     `).all(...params);
     const out = { cash: { in: 0, out: 0 }, bank: { in: 0, out: 0 }, upi: { in: 0, out: 0 }, other: { in: 0, out: 0 } };
+    // (per-account balances: summaryByAccount)
     for (const r of rows) {
       const key = out[r.account_type] ? r.account_type : 'other';
       out[key].in = round2(r.inflow);
       out[key].out = round2(r.outflow);
     }
     return out;
+  }
+
+  /**
+   * One line per cash / bank / UPI account: opening (account opening balance + everything before
+   * the period), money in and out in the period, and closing balance.
+   */
+  summaryByAccount({ dateFrom, dateTo } = {}) {
+    const db = getDatabase();
+    const accounts = db.prepare(`
+      SELECT * FROM financial_payment_accounts ORDER BY is_default DESC, account_type, name
+    `).all();
+    const sums = db.prepare(`
+      SELECT e.payment_account_id AS id,
+        COALESCE(SUM(CASE WHEN ? != '' AND e.entry_date < ? THEN (CASE WHEN e.direction = 'in' THEN e.amount ELSE -e.amount END) ELSE 0 END), 0) AS before,
+        COALESCE(SUM(CASE WHEN (? = '' OR e.entry_date >= ?) AND (? = '' OR e.entry_date <= ?) AND e.direction = 'in' THEN e.amount ELSE 0 END), 0) AS inflow,
+        COALESCE(SUM(CASE WHEN (? = '' OR e.entry_date >= ?) AND (? = '' OR e.entry_date <= ?) AND e.direction = 'out' THEN e.amount ELSE 0 END), 0) AS outflow,
+        COUNT(*) AS entries
+      FROM (${BOOK_SOURCE}) e
+      WHERE e.status = 'posted'
+      GROUP BY e.payment_account_id
+    `).all(dateFrom || '', dateFrom || '', dateFrom || '', dateFrom || '', dateTo || '', dateTo || '',
+      dateFrom || '', dateFrom || '', dateTo || '', dateTo || '');
+    const byId = new Map(sums.map((r) => [r.id, r]));
+    return accounts
+      .filter((a) => a.is_active || byId.has(a.id))
+      .map((a) => {
+        const r = byId.get(a.id) || { before: 0, inflow: 0, outflow: 0, entries: 0 };
+        const opening = round2(Number(a.opening_balance || 0) + Number(r.before));
+        return {
+          id: a.id,
+          name: a.name,
+          accountType: a.account_type,
+          bankName: a.bank_name || null,
+          accountNumberLast4: a.account_number ? String(a.account_number).slice(-4) : null,
+          ifsc: a.ifsc || null,
+          upiId: a.upi_id || null,
+          isDefault: Boolean(a.is_default),
+          isActive: Boolean(a.is_active),
+          opening,
+          in: round2(r.inflow),
+          out: round2(r.outflow),
+          closing: round2(opening + Number(r.inflow) - Number(r.outflow)),
+          entries: Number(r.entries || 0),
+        };
+      });
   }
 }

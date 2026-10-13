@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Alert, LoadingState, Modal } from '../ui';
+import { accountLabel, defaultAccountFor } from '../../lib/accounts';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const METHODS = [['cash', 'Cash'], ['upi', 'UPI'], ['bank', 'Bank'], ['credit', 'Credit (on account)']];
@@ -20,15 +21,19 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const [pick, setPick] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [banks, setBanks] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, prods, custs] = await Promise.all([
+        const [s, prods, custs, accts] = await Promise.all([
           apiRequest(`/api/pos/sales/${saleId}`),
           apiRequest('/api/products?limit=500&isActive=1'),
           apiRequest('/api/customers?limit=500').catch(() => ({ items: [] })),
+          apiRequest('/api/finance/accounts').catch(() => []),
         ]);
+        const bankList = (Array.isArray(accts) ? accts : accts.items || []).filter((a) => a.accountType === 'bank' || a.accountType === 'upi');
+        setBanks(bankList);
         setSale(s);
         setProducts(prods.items || []);
         const list = custs.items || custs || [];
@@ -48,6 +53,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           paymentMethod: paid ? paid.method : 'credit',
           amountReceived: s.amountPaid,
           notes: s.notes || '',
+          paymentAccountId: paid?.paymentAccountId || '',
           customerPoNumber: s.customerPoNumber || '',
           customerPoDate: s.customerPoDate || '',
         });
@@ -101,6 +107,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           ...cart,
           paymentMethod: form.paymentMethod,
           amountReceived: form.paymentMethod === 'credit' ? 0 : Number(form.amountReceived || 0),
+          paymentAccountId: ['upi', 'bank'].includes(form.paymentMethod) ? form.paymentAccountId || undefined : undefined,
           notes: form.notes,
           customerPoNumber: form.customerPoNumber.trim(),
           customerPoDate: form.customerPoNumber.trim() ? form.customerPoDate : '',
@@ -180,6 +187,14 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
                 {METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
+            {['upi', 'bank'].includes(form.paymentMethod) && banks.length > 0 && (
+              <label className="block text-sm"><span className="label">Received in bank</span>
+                <select className="input-field" value={form.paymentAccountId} onChange={(e) => setForm({ ...form, paymentAccountId: e.target.value })}>
+                  <option value="">Default bank{defaultAccountFor(banks, form.paymentMethod) ? ` (${defaultAccountFor(banks, form.paymentMethod).name})` : ''}</option>
+                  {banks.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
+                </select>
+              </label>
+            )}
             {form.paymentMethod !== 'credit' && (
               <label className="block text-sm"><span className="label">Amount received ₹</span>
                 <input type="number" min="0" step="0.01" className="input-field" value={form.amountReceived} onChange={(e) => setForm({ ...form, amountReceived: e.target.value })} />

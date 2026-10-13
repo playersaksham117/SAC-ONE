@@ -121,6 +121,9 @@ function mapPayment(row) {
     amount: Number(row.amount || 0),
     reference: row.reference,
     notes: row.notes,
+    paymentAccountId: row.payment_account_id || null,
+    paymentAccountName: row.payment_account_name || null,
+    bankName: row.bank_name || null,
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
@@ -276,7 +279,9 @@ export class PosSaleRepository {
 
   listPayments(saleId) {
     return getDatabase().prepare(`
-      SELECT * FROM pos_payments WHERE sale_id = ? ORDER BY created_at ASC
+      SELECT p.*, a.name AS payment_account_name, a.bank_name
+      FROM pos_payments p LEFT JOIN financial_payment_accounts a ON a.id = p.payment_account_id
+      WHERE p.sale_id = ? ORDER BY p.created_at ASC
     `).all(saleId).map(mapPayment);
   }
 
@@ -401,8 +406,8 @@ export class PosSaleRepository {
       });
 
       const insertPay = db.prepare(`
-        INSERT INTO pos_payments (id, sale_id, method, amount, reference, notes, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO pos_payments (id, sale_id, method, amount, reference, notes, payment_account_id, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const pay of payments) {
         insertPay.run(
@@ -412,6 +417,7 @@ export class PosSaleRepository {
           pay.amount,
           pay.reference || null,
           pay.notes || null,
+          pay.paymentAccountId || null,
           header.createdBy || null,
           now
         );

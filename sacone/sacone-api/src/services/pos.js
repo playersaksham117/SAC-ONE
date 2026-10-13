@@ -150,6 +150,22 @@ export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStat
 }
 
 /** Defaults match migration 028; empty values print nothing. */
+/** Bank details printed under "Our Bankers" (and used for the UPI pay QR), or null. */
+export function bankForPrint(acct) {
+  if (!acct || !(acct.accountNumber || acct.upiId)) return null;
+  return {
+    id: acct.id,
+    name: acct.name,
+    bankName: acct.bankName,
+    accountHolder: acct.accountHolder,
+    accountNumber: acct.accountNumber,
+    ifsc: acct.ifsc,
+    branch: acct.branch,
+    accountType: acct.bankAccountType,
+    upiId: acct.upiId,
+  };
+}
+
 export function invoicePrintSettings() {
   const get = (key, fallback = '') => {
     const value = settingsRepo.get(key)?.value;
@@ -159,6 +175,10 @@ export function invoicePrintSettings() {
     layout: get('invoice.layout', 'classic') === 'modern' ? 'modern' : 'classic',
     copyLabel: get('invoice.copy_label', 'ORIGINAL FOR RECIPIENT'),
     bankDetails: get('invoice.bank_details'),
+    bank: bankForPrint(repos.financeAccounts.findDefault()),
+    // Settings → Invoice printing: UPI pay QR on printed bills, and the scan-to-pay QR on SAC-POS.
+    printUpiQr: settingsRepo.getBoolean('invoice.upi_qr_print', true),
+    posUpiQr: settingsRepo.getBoolean('pos.upi_qr_screen', true),
     terms: get('invoice.terms'),
     declaration: get('invoice.declaration', 'Certified that the particulars given above are true and correct.'),
   };
@@ -278,10 +298,12 @@ export class PosService {
     });
   }
 
-  #normalizePayments(payments, grandTotal) {
+  #normalizePayments(payments, grandTotal, defaultAccountId = null) {
     if (!Array.isArray(payments) || payments.length === 0) {
       throw new AppError('At least one payment is required', 400);
     }
+    // UPI / bank money lands in a bank account: as chosen, else the terminal's, else the firm's default bank.
+    const fallbackAccount = defaultAccountId || repos.financeAccounts.findDefault()?.id || null;
     const normalized = payments.map((p) => {
       const method = String(p.method || '').toLowerCase();
       if (!PAYMENT_METHODS.has(method)) {
@@ -291,11 +313,24 @@ export class PosService {
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new AppError('Payment amount must be positive', 400);
       }
+      let paymentAccountId = null;
+      if (method === 'upi' || method === 'bank') {
+        if (p.paymentAccountId) {
+          const acct = repos.financeAccounts.findById(p.paymentAccountId);
+          if (!acct?.isActive || !['bank', 'upi'].includes(acct.accountType)) {
+            throw new AppError('Choose an active bank or UPI account for this payment', 400, 'BANK_INVALID');
+          }
+          paymentAccountId = acct.id;
+        } else {
+          paymentAccountId = fallbackAccount;
+        }
+      }
       return {
         method,
         amount,
         reference: p.reference || null,
         notes: p.notes || null,
+        paymentAccountId,
       };
     });
 
@@ -388,7 +423,8 @@ export class PosService {
 
     const { payments: normalizedPayments, amountPaid, amountCredit, paymentStatus } = this.#normalizePayments(
       data.payments,
-      totals.grandTotal
+      totals.grandTotal,
+      data.defaultPaymentAccountId
     );
 
     if (amountCredit > 0 && customer.isWalkIn) {
@@ -643,7 +679,7 @@ export class PosService {
       const method = data.paymentMethod || 'cash';
       const received = method === 'credit' ? 0 : Math.min(total, Math.max(0, Number(data.amountReceived ?? total)));
       payments = [
-        ...(received > 0 ? [{ method, amount: received }] : []),
+        ...(received > 0 ? [{ method, amount: received, paymentAccountId: data.paymentAccountId || undefined }] : []),
         ...(total - received > 0.009 ? [{ method: 'credit', amount: Math.round((total - received) * 100) / 100 }] : []),
       ];
     }

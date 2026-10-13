@@ -8,6 +8,7 @@ import PageHeader, { Alert, Modal, StatusBadge } from '../../../../components/ui
 import {
   EmptyPanel, ModuleTabs, SectionCard, SkeletonGrid, StatCard, StatusPill, Toolbar,
 } from '../../../../components/module-ui';
+import { accountLabel } from '../../../../lib/accounts';
 
 const INBOX_STATUS_COLORS = {
   applied: 'bg-emerald-100 text-emerald-700',
@@ -143,14 +144,14 @@ function SyncKeyBanner({ secret, onClose }) {
 
 /* ───────────────────────── Devices tab ───────────────────────── */
 
-function DevicesTab({ devices, warehouses, users, onChanged, onSecret, setError }) {
+function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecret, setError }) {
   const { checkPermission } = useAuth();
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const open = (device = null) => setForm(device
-    ? { id: device.id, name: device.name, warehouseId: device.warehouseId, actingUserId: device.actingUserId, notes: device.notes || '' }
-    : { name: '', code: '', warehouseId: warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || '', actingUserId: '', notes: '' });
+    ? { id: device.id, name: device.name, warehouseId: device.warehouseId, actingUserId: device.actingUserId, notes: device.notes || '', paymentAccountId: device.paymentAccountId || '' }
+    : { name: '', code: '', warehouseId: warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || '', actingUserId: '', notes: '', paymentAccountId: '' });
 
   const save = async (e) => {
     e.preventDefault();
@@ -212,6 +213,7 @@ function DevicesTab({ devices, warehouses, users, onChanged, onSecret, setError 
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <dt className="text-slate-500">Warehouse</dt><dd className="truncate text-right">{d.warehouseName || '—'}</dd>
+                <dt className="text-slate-500">UPI / bank to</dt><dd className="truncate text-right">{d.paymentAccountName || 'Default bank'}</dd>
                 <dt className="text-slate-500">Acts as</dt><dd className="truncate text-right">{d.actingUserName || '—'}</dd>
                 <dt className="text-slate-500">Last seen</dt><dd className="text-right">{ago(d.lastSeenAt)}</dd>
                 <dt className="text-slate-500">Last push</dt><dd className="text-right">{ago(d.lastPushAt)}</dd>
@@ -276,6 +278,14 @@ function DevicesTab({ devices, warehouses, users, onChanged, onSecret, setError 
                 <option value="">Me</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.fullName} ({u.roleName})</option>)}
               </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="dev-bank">UPI / bank payments go to</label>
+              <select id="dev-bank" className="input-field" value={form.paymentAccountId} onChange={(e) => setForm({ ...form, paymentAccountId: e.target.value })}>
+                <option value="">Firm&apos;s default bank{banks.find((b) => b.isDefault) ? ` (${banks.find((b) => b.isDefault).name})` : ''}</option>
+                {banks.map((b) => <option key={b.id} value={b.id}>{accountLabel(b)}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">Also printed under &ldquo;Our Bankers&rdquo; (with its UPI pay QR) on this phone&apos;s invoices.</p>
             </div>
             <div>
               <label className="label" htmlFor="dev-notes">Notes</label>
@@ -554,6 +564,7 @@ export default function PosDevicesPage() {
   const [posUsers, setPosUsers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [users, setUsers] = useState([]);
+  const [banks, setBanks] = useState([]);
   const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -581,6 +592,7 @@ export default function PosDevicesPage() {
   useEffect(() => {
     load();
     apiRequest('/api/warehouses').then((w) => setWarehouses((Array.isArray(w) ? w : w.items || []).filter((x) => x.isActive))).catch(() => {});
+    apiRequest('/api/finance/accounts').then((a) => setBanks((Array.isArray(a) ? a : a.items || []).filter((x) => x.accountType === 'bank' || x.accountType === 'upi'))).catch(() => {});
     apiRequest('/api/users').then((u) => setUsers((Array.isArray(u) ? u : u.items || []).filter((x) => x.isActive))).catch(() => {});
   }, [load]);
 
@@ -628,7 +640,7 @@ export default function PosDevicesPage() {
           </div>
 
           {tab === 'devices' && (
-            <DevicesTab devices={devices} warehouses={warehouses} users={users} onChanged={load} onSecret={setSecret} setError={setError} />
+            <DevicesTab devices={devices} warehouses={warehouses} users={users} banks={banks} onChanged={load} onSecret={setSecret} setError={setError} />
           )}
           {tab === 'users' && (
             <PosUsersTab posUsers={posUsers} warehouses={warehouses} onChanged={load} setError={setError} />

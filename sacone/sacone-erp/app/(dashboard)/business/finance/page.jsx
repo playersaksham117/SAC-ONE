@@ -10,6 +10,7 @@ import {
   SkeletonGrid, SkeletonBlock, EmptyPanel, Toolbar,
 } from '../../../../components/module-ui';
 import BankImportPanel from '../../../../components/finance/BankImportPanel';
+import BankAccountForm from '../../../../components/finance/BankAccountForm';
 
 function money(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -23,6 +24,11 @@ const STATUS_MAP = {
   posted: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-red-100 text-red-700',
   voided: 'bg-slate-200 text-slate-600',
+};
+
+const SOURCE_LABEL = {
+  customer_receipt: 'Customer receipt', supplier_payment: 'Supplier payment', bank_transfer: 'Bank transfer',
+  commission_payment: 'Commission', reversal: 'Reversal', pos_sale: 'Sale (UPI / bank)', pos_refund: 'Refund on credit note',
 };
 
 const FIN_TABS = [
@@ -73,8 +79,10 @@ export default function BankingPage() {
 
   const [catModal, setCatModal] = useState(false);
   const [catForm, setCatForm] = useState({ name: '', categoryType: 'expense', isActive: true });
-  const [acctModal, setAcctModal] = useState(false);
-  const [acctForm, setAcctForm] = useState({ name: '', accountType: 'cash', openingBalance: 0, isActive: true });
+  // undefined = closed, null = new account, object = editing that account
+  const [acctEditing, setAcctEditing] = useState(undefined);
+  const [bookAccounts, setBookAccounts] = useState([]);
+  const [bookAccountId, setBookAccountId] = useState('');
   const [cashBook, setCashBook] = useState(null);
   const [cashBookType, setCashBookType] = useState('cash');
   const [cashBookSummary, setCashBookSummary] = useState(null);
@@ -113,7 +121,10 @@ export default function BankingPage() {
       if (t === 'dashboard') setReports(await fetchReports());
       if (t === 'cashbook') {
         setCashBookSummary(await apiRequest('/api/cash-book/summary'));
-        setCashBook(await apiRequest(`/api/cash-book?accountType=${cashBookType}&limit=200`));
+        setBookAccounts(await apiRequest('/api/cash-book/accounts').catch(() => []));
+        setCashBook(await apiRequest(bookAccountId
+          ? `/api/cash-book?paymentAccountId=${bookAccountId}&limit=500`
+          : `/api/cash-book?accountType=${cashBookType}&limit=200`));
       }
       loadedRef.current.add(t);
     } catch (err) {
@@ -121,7 +132,7 @@ export default function BankingPage() {
     } finally {
       setTabLoading(false);
     }
-  }, [canView, filters, fetchReports, cashBookType]);
+  }, [canView, filters, fetchReports, cashBookType, bookAccountId]);
 
   useEffect(() => { loadTab(tab); }, [tab, loadTab]);
 
@@ -252,24 +263,13 @@ export default function BankingPage() {
     }
   };
 
-  const saveAccount = async (e) => {
-    e.preventDefault();
-    setSaving(true);
+  const makeDefault = async (acct) => {
     try {
-      await apiRequest('/api/finance/accounts', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...acctForm,
-          openingBalance: Number(acctForm.openingBalance || 0),
-        }),
-      });
-      setMessage('Payment account created');
-      setAcctModal(false);
+      await apiRequest(`/api/finance/accounts/${acct.id}`, { method: 'PUT', body: JSON.stringify({ isDefault: true }) });
+      setMessage(`${acct.name} is now the default bank: printed on invoices and used for UPI / bank sales.`);
       await reloadBootstrap();
     } catch (err) {
       setError(err.message);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -302,7 +302,7 @@ export default function BankingPage() {
           actions={(
             <div className="flex flex-wrap gap-2">
               {canEdit && tab === 'accounts' && (
-                <button type="button" className="btn-secondary" onClick={() => setAcctModal(true)}>+ Account</button>
+                <button type="button" className="btn-secondary" onClick={() => setAcctEditing(null)}>+ Account</button>
               )}
             </div>
           )}
@@ -331,13 +331,52 @@ export default function BankingPage() {
 
         {tab === 'cashbook' && (
           <div className="space-y-4">
+            {bookAccounts.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Each account</th>
+                      <th className="px-3 py-2 text-right">Opening</th>
+                      <th className="px-3 py-2 text-right">In</th>
+                      <th className="px-3 py-2 text-right">Out</th>
+                      <th className="px-3 py-2 text-right">Closing</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {bookAccounts.map((a) => (
+                      <tr
+                        key={a.id}
+                        className={`cursor-pointer hover:bg-slate-50 ${bookAccountId === a.id ? 'bg-brand-50' : ''}`}
+                        onClick={() => setBookAccountId(bookAccountId === a.id ? '' : a.id)}
+                      >
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{a.name}{a.isDefault && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">Default</span>}</div>
+                          <div className="text-xs text-slate-500 capitalize">{a.accountType}{a.bankName ? ` · ${a.bankName}` : ''}{a.accountNumberLast4 ? ` · A/c ••${a.accountNumberLast4}` : ''}{a.upiId ? ` · ${a.upiId}` : ''}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{money(a.opening)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{money(a.in)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-rose-700">{money(a.out)}</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{money(a.closing)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">Click an account to see its own book. Sale UPI / bank takings and refunds show in the bank they were paid into.</p>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
+              {bookAccountId && (
+                <button type="button" className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white" onClick={() => setBookAccountId('')}>
+                  {bookAccounts.find((a) => a.id === bookAccountId)?.name || 'Account'} ✕
+                </button>
+              )}
               {['cash', 'bank', 'upi'].map((t) => (
                 <button
                   key={t}
                   type="button"
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium uppercase ${cashBookType === t ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}
-                  onClick={() => setCashBookType(t)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium uppercase ${!bookAccountId && cashBookType === t ? 'bg-slate-900 text-white' : 'bg-slate-100'}`}
+                  onClick={() => { setBookAccountId(''); setCashBookType(t); }}
                 >
                   {t} Book
                 </button>
@@ -374,7 +413,7 @@ export default function BankingPage() {
                       <td className="px-3 py-2 uppercase">{e.paymentMode}</td>
                       <td className="px-3 py-2 font-mono text-xs">{e.reference || '—'}</td>
                       <td className="px-3 py-2 text-right">{money(e.amount)}</td>
-                      <td className="px-3 py-2 text-xs">{e.sourceType}</td>
+                      <td className="px-3 py-2 text-xs">{SOURCE_LABEL[e.sourceType] || e.sourceType}</td>
                     </tr>
                   ))}
                   {!cashBook?.items?.length && (
@@ -412,8 +451,26 @@ export default function BankingPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg capitalize">{a.accountType.charAt(0)}</div>
                   {canEdit && <button type="button" onClick={() => toggleAccount(a)}><StatusBadge active={a.isActive} /></button>}
                 </div>
-                <h4 className="mt-3 font-semibold">{a.name}</h4>
-                <p className="text-xs capitalize text-slate-500">{a.accountType} account</p>
+                <h4 className="mt-3 font-semibold">
+                  {a.name}
+                  {a.isDefault && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase text-emerald-700">Default bank</span>}
+                </h4>
+                <p className="text-xs capitalize text-slate-500">{a.accountType} account{a.bankAccountType ? ` · ${a.bankAccountType === 'od' || a.bankAccountType === 'cc' ? a.bankAccountType.toUpperCase() : a.bankAccountType}` : ''}</p>
+                {(a.bankName || a.upiId) && (
+                  <div className="mt-2 space-y-0.5 text-xs text-slate-600">
+                    {a.bankName && <div>{a.bankName}{a.branch ? `, ${a.branch}` : ''}</div>}
+                    {a.accountNumberLast4 && <div className="font-mono">A/c ••••{a.accountNumberLast4}{a.ifsc ? ` · ${a.ifsc}` : ''}</div>}
+                    {a.upiId && <div>UPI {a.upiId}</div>}
+                  </div>
+                )}
+                {canEdit && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => setAcctEditing(a)}>Edit</button>
+                    {a.accountType === 'bank' && a.isActive && !a.isDefault && (
+                      <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => makeDefault(a)}>Make default</button>
+                    )}
+                  </div>
+                )}
                 <div className="mt-3 border-t border-slate-100 pt-3">
                   <div className="text-[10px] uppercase text-slate-400">Opening Balance</div>
                   <div className="text-lg font-bold tabular-nums">{money(a.openingBalance)}</div>
@@ -423,23 +480,17 @@ export default function BankingPage() {
           </div>
         )}
 
-        <Modal open={acctModal} title="New Payment Account" onClose={() => setAcctModal(false)} footer={(
-          <>
-            <button type="button" className="btn-secondary" onClick={() => setAcctModal(false)}>Cancel</button>
-            <button type="submit" form="acct-form" className="btn-primary" disabled={saving}>Create</button>
-          </>
-        )}>
-          <form id="acct-form" onSubmit={saveAccount} className="space-y-3">
-            <input required className="input-field w-full" placeholder="Account name" value={acctForm.name} onChange={(e) => setAcctForm((f) => ({ ...f, name: e.target.value }))} />
-            <select className="input-field w-full" value={acctForm.accountType} onChange={(e) => setAcctForm((f) => ({ ...f, accountType: e.target.value }))}>
-              <option value="cash">Cash</option>
-              <option value="upi">UPI</option>
-              <option value="bank">Bank</option>
-              <option value="other">Other</option>
-            </select>
-            <input type="number" step="0.01" className="input-field w-full" placeholder="Opening balance" value={acctForm.openingBalance} onChange={(e) => setAcctForm((f) => ({ ...f, openingBalance: e.target.value }))} />
-          </form>
-        </Modal>
+        {acctEditing !== undefined && (
+          <BankAccountForm
+            account={acctEditing}
+            onClose={() => setAcctEditing(undefined)}
+            onSaved={async (saved) => {
+              setAcctEditing(undefined);
+              setMessage(`${saved.name} saved${saved.isDefault ? ' as the default bank' : ''}.`);
+              await reloadBootstrap();
+            }}
+          />
+        )}
       </div>
     </RequirePermission>
   );

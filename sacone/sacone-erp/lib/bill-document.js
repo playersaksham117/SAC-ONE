@@ -11,6 +11,8 @@
  *     taxable, gstRate, amount }], totals: [[label, amount, grand?]], footer, thanks }
  */
 
+import { qrSvg, upiPayUrl } from './upi-qr';
+
 export const PRINT_SIZES = [
   { value: '58mm', label: '58 mm' },
   { value: '80mm', label: '80 mm' },
@@ -131,7 +133,7 @@ const againstRef = (number, date) => (number ? `${number}${date ? ` dt ${ddmmyyy
 /** Sales invoice (GET /api/pos/sales/:id) + optional customer record. */
 export function saleDocument(sale, customer) {
   const discount = Number(sale.itemDiscountTotal || 0) + Number(sale.invoiceDiscount || 0);
-  const payments = (sale.payments || []).map((p) => [`${METHOD[p.method] || p.method}${p.reference ? ` (${p.reference})` : ''}`, p.amount]);
+  const payments = (sale.payments || []).map((p) => [`${METHOD[p.method] || p.method}${p.bankName ? ` · ${p.bankName}` : ''}${p.reference ? ` (${p.reference})` : ''}`, p.amount]);
   if (sale.amountCredit > 0) payments.push(['Balance due', sale.amountCredit]);
   return {
     title: 'TAX INVOICE',
@@ -160,6 +162,8 @@ export function saleDocument(sale, customer) {
     ],
     footer: 'Thank you for your business. This is a computer-generated invoice.',
     thanks: 'Thank you! Visit again.',
+    // UPI pay QR (when the bank has a UPI ID): asks for the balance due, else lets the payer type it.
+    pay: { amount: Number(sale.amountCredit || 0), note: `Invoice ${sale.invoiceNumber}` },
     classic: saleClassic(sale, customer),
   };
 }
@@ -329,13 +333,37 @@ function purchaseClassic(kind, spec, doc, supplier) {
   };
 }
 
+/* ───────────── our bankers + UPI QR ───────────── */
+
+const ACCOUNT_KIND = { savings: 'Savings', current: 'Current', od: 'OD', cc: 'CC' };
+
+/** "Our Bankers" lines: the default (or terminal) bank, else the free-text bank details. */
+function bankerLines(invoice = {}) {
+  const b = invoice.bank;
+  if (!b) return String(invoice.bankDetails || '').trim() ? [String(invoice.bankDetails).trim()] : [];
+  return [
+    [b.bankName, b.branch].filter(Boolean).join(', '),
+    [b.accountHolder, b.accountNumber ? `A/c No. ${b.accountNumber}` : '', ACCOUNT_KIND[b.accountType] ? `(${ACCOUNT_KIND[b.accountType]})` : ''].filter(Boolean).join(' '),
+    [b.ifsc ? `IFSC ${b.ifsc}` : '', b.upiId ? `UPI ${b.upiId}` : ''].filter(Boolean).join(' · '),
+  ].filter(Boolean);
+}
+
+/** UPI pay QR for a sale document, or '' (no UPI ID / not a sale). */
+function upiQr(model, invoice, company, px) {
+  const upiId = invoice?.bank?.upiId;
+  if (!upiId || !model.pay || invoice.printUpiQr === false) return '';
+  const url = upiPayUrl({ upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: model.pay.amount, note: model.pay.note });
+  const caption = model.pay.amount > 0 ? `Scan to pay ${money(model.pay.amount)}` : 'Scan to pay by UPI';
+  return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;
+}
+
 /* ───────────── layouts ───────────── */
 
 function amountCell(value) {
   return value === null || value === undefined ? '' : (value < 0 ? `−${money(-value)}` : money(value));
 }
 
-function thermalHtml(model, company, size) {
+function thermalHtml(model, company, size, invoice = {}) {
   const narrow = size === '58mm';
   const rows = model.items.map((l) => `
     <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}</td></tr>
@@ -353,6 +381,7 @@ function thermalHtml(model, company, size) {
   table{width:100%;border-collapse:collapse} td{padding:1px 0;vertical-align:top} .r{text-align:right;white-space:nowrap}
   .name{padding-top:5px;font-weight:600;word-break:break-word} hr{border:0;border-top:1px dashed #000;margin:6px 0}
   .total td{font-size:${narrow ? 13 : 15}px;font-weight:700;padding-top:3px}
+  .upi{text-align:center;margin-top:4px;font-size:${narrow ? 9 : 11}px} .upi svg{display:block;margin:0 auto 2px}
 </style></head><body>
   <h1>${esc(company?.businessName || 'SACONE')}</h1>
   ${companyAddress(company) ? `<div class="c muted">${companyAddress(company)}</div>` : ''}
@@ -363,11 +392,13 @@ function thermalHtml(model, company, size) {
   <table>${rows}</table><hr>
   <table>${model.totals.map(([k, v, grand]) => `<tr${grand ? ' class="total"' : ''}><td>${esc(grand ? String(k).toUpperCase() : k)}</td><td class="r">${amountCell(v)}</td></tr>`).join('')}</table>
   ${model.sideBox?.rows.length ? `<hr><table>${model.sideBox.rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${amountCell(v)}</td></tr>`).join('')}</table>` : ''}
+  ${model.pay && bankerLines(invoice).length ? `<hr><div class="c muted">${bankerLines(invoice).map(esc).join('<br>')}</div>` : ''}
+  ${upiQr(model, invoice, company, narrow ? 110 : 140)}
   ${model.thanks ? `<hr><div class="c muted">${esc(model.thanks)}</div>` : ''}
 </body></html>`;
 }
 
-function sheetHtml(model, company, size) {
+function sheetHtml(model, company, size, invoice = {}) {
   const a5 = size === 'A5';
   const items = model.items;
   const anyDiscount = items.some((l) => l.discount);
@@ -409,6 +440,8 @@ function sheetHtml(model, company, size) {
   .foot{margin-top:24px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;page-break-inside:avoid}
   .sign{border-top:1px solid #555;padding-top:4px;min-width:140px;text-align:center}
   .cap{text-transform:capitalize}
+  .bankbox{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;border:1px solid #ccc;border-radius:4px;padding:6px 8px;page-break-inside:avoid}
+  .upi{text-align:center;font-size:${a5 ? 8 : 9.5}px;color:#333} .upi svg{display:block;margin:0 auto 2px}
   @media print{.items th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
   <div class="head">
@@ -438,6 +471,10 @@ function sheetHtml(model, company, size) {
     <div class="muted">${items.length} item${items.length === 1 ? '' : 's'} · ${qty(items.reduce((s, l) => s + Number(l.qty || 0), 0))} qty</div>
     <table class="sum">${model.totals.map(([k, v, grand]) => `<tr${grand ? ' class="grand"' : ''}><td>${esc(k)}</td><td class="r">${amountCell(v)}</td></tr>`).join('')}</table>
   </div>
+  ${bankerLines(invoice).length || upiQr(model, invoice, company, 10) ? `<div class="bankbox">
+    <div><div class="label">Our bankers</div>${bankerLines(invoice).map((l, i) => `<div${i === 0 ? ' class="b"' : ''}>${esc(l)}</div>`).join('')}</div>
+    ${upiQr(model, invoice, company, a5 ? 78 : 96)}
+  </div>` : ''}
   <div class="foot">
     <div class="muted">${esc(model.footer)}</div>
     <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}<br><br>Authorised signatory</div>
@@ -481,7 +518,8 @@ function classicHtml(model, company, size, invoice = {}) {
       <td class="r">${l.igst ? `${l.gstRate}` : ''}</td><td class="r">${n2(l.igst)}</td></tr>`).join('');
   const emptyRow = '<tr class="fill">' + '<td></td>'.repeat(15) + '</tr>';
   const terms = String(invoice.terms || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-  const bank = String(invoice.bankDetails || '').trim();
+  const bankers = bankerLines(invoice);
+  const qr = upiQr(model, invoice, company, a5 ? 54 : 84);
   const signName = company?.businessName || 'SACONE';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.number)}</title>
@@ -514,6 +552,7 @@ function classicHtml(model, company, size, invoice = {}) {
   .net{font-size:${fs * 1.35}px;font-weight:700;display:flex;justify-content:space-between;border-top:1px solid #000;border-bottom:1px solid #000;padding:${a5 ? 2 : 4}px 3px}
   .terms{font-size:${fs * 0.82}px;font-weight:700}
   .sign{display:flex;flex-direction:column;justify-content:space-between;text-align:right;font-weight:700}
+  .upi{text-align:center;font-size:${fs * 0.8}px;font-weight:700} .upi svg{display:block;margin:0 auto}
   @media print{.sheet{break-inside:auto}}
 </style></head><body>
 <div class="sheet">
@@ -575,7 +614,8 @@ function classicHtml(model, company, size, invoice = {}) {
       </div>
       <div style="display:flex;border-top:1px solid #000">
         <div class="vr b" style="padding:${a5 ? '1px 3px' : '2px 5px'};width:12%">Our's<br>Bankers</div>
-        <div class="b u" style="padding:${a5 ? '1px 3px' : '2px 5px'};flex:1">${esc(bank)}</div>
+        <div class="b" style="padding:${a5 ? '1px 3px' : '2px 5px'};flex:1">${bankers.map(esc).join('<br>')}</div>
+        ${qr ? `<div style="padding:${a5 ? '1px 3px' : '2px 5px'};border-left:1px solid #000">${qr}</div>` : ''}
       </div>
       <div style="display:flex;border-top:1px solid #000;flex:1">
         <div class="vr terms" style="width:60%;padding:${a5 ? '1px 3px' : '2px 5px'}">
@@ -609,8 +649,8 @@ export const LAYOUTS = [
  * options.layout: 'classic' | 'modern' (A5/A4 only); options.invoice: GET /api/settings/invoice.
  */
 export function documentHtml(model, company, size, { layout = 'classic', invoice = {} } = {}) {
-  if (!isSheet(size)) return thermalHtml(model, company, size);
-  return layout === 'modern' || !model.classic ? sheetHtml(model, company, size) : classicHtml(model, company, size, invoice);
+  if (!isSheet(size)) return thermalHtml(model, company, size, invoice);
+  return layout === 'modern' || !model.classic ? sheetHtml(model, company, size, invoice) : classicHtml(model, company, size, invoice);
 }
 
 /** Sales invoice HTML (kept for callers that pass a raw sale). */

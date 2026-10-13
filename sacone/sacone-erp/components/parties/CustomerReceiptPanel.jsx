@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { useLiveRefresh } from '../../lib/live';
 import { Modal } from '../ui';
+import { accountLabel, defaultAccountFor } from '../../lib/accounts';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -98,7 +99,7 @@ export default function CustomerReceiptPanel({ customers = [], onMessage, onErro
   };
 
   const openCreate = () => {
-    setForm({ ...EMPTY });
+    setForm({ ...EMPTY, paymentAccountId: defaultAccountFor(accounts, EMPTY.paymentMode)?.id || '' });
     setPreview(null);
     setOpenInvoices([]);
     setModalOpen(true);
@@ -257,7 +258,7 @@ export default function CustomerReceiptPanel({ customers = [], onMessage, onErro
           )}
           <div>
             <label className="label">Payment Mode *</label>
-            <select className="input-field" value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value })}>
+            <select className="input-field" value={form.paymentMode} onChange={(e) => setForm({ ...form, paymentMode: e.target.value, paymentAccountId: defaultAccountFor(accounts, e.target.value)?.id || form.paymentAccountId })}>
               {['cash', 'bank', 'upi', 'cheque', 'card', 'other'].map((m) => <option key={m} value={m}>{m.toUpperCase()}</option>)}
             </select>
           </div>
@@ -265,7 +266,7 @@ export default function CustomerReceiptPanel({ customers = [], onMessage, onErro
             <label className="label">Cash/Bank/UPI Account *</label>
             <select className="input-field" value={form.paymentAccountId} onChange={(e) => setForm({ ...form, paymentAccountId: e.target.value })}>
               <option value="">Select account</option>
-              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.accountType})</option>)}
+              {accounts.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
             </select>
           </div>
           <div>

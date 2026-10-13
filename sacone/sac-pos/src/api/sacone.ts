@@ -1,4 +1,5 @@
 import { request } from './client';
+import type { PayBank } from '../domain/upi';
 
 /** Typed calls to SACONE. Auth → ERP session; everything else → device sync key (/api/v1/sync). */
 
@@ -26,7 +27,14 @@ export interface PingResult {
   company: CompanyInfo | null;
   settings: {
     invoicePrefix: string; allowNegativeStock: boolean;
-    invoice?: { layout?: 'classic' | 'modern'; copyLabel?: string; bankDetails?: string; terms?: string; declaration?: string };
+    invoice?: {
+      layout?: 'classic' | 'modern'; copyLabel?: string; bankDetails?: string; terms?: string; declaration?: string;
+      /** The terminal's bank (else the firm's default) for "Our Bankers" and the UPI pay QR. */
+      bank?: PayBank | null;
+      /** Settings → Invoice printing: print the UPI QR on bills / show the scan-to-pay QR here. */
+      printUpiQr?: boolean;
+      posUpiQr?: boolean;
+    };
   };
 }
 

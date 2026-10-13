@@ -1,4 +1,5 @@
 import { withFinancialYear } from '../database/context.js';
+import { IFSC_PATTERN, INDIAN_BANKS, bankForIfsc } from '../core/indian-banks.js';
 import { AppError } from '../core/http.js';
 import { nowIso } from '../core/utils.js';
 import { repos } from '../repositories/index.js';
@@ -81,6 +82,53 @@ function postTimestamps(status) {
   return { submittedAt: now };
 }
 
+const ACCOUNT_KINDS = { savings: 'Savings', current: 'Current', od: 'Overdraft (OD)', cc: 'Cash Credit (CC)' };
+const UPI_PATTERN = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
+
+/**
+ * Bank details of a bank (or UPI) account, checked. Only keys present in `data` are returned.
+ * The account number is entered twice; an IFSC fills in the bank name from its first 4 letters.
+ */
+function cleanBankDetails(data, accountType, existing) {
+  const out = {};
+  const text = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+  const isBank = accountType === 'bank';
+  if (!isBank && accountType !== 'upi') return out;
+
+  if (data.upiId !== undefined) {
+    const upi = String(data.upiId ?? '').trim();
+    if (upi && !UPI_PATTERN.test(upi)) throw new AppError('UPI ID should look like name@bank', 400, 'BANK_INVALID');
+    out.upiId = upi || null;
+  }
+  if (!isBank) return out;
+
+  if (data.accountNumber !== undefined) {
+    const number = String(data.accountNumber ?? '').replace(/[\s-]/g, '');
+    if (number && !/^[0-9]{9,18}$/.test(number)) throw new AppError('Account number should be 9 to 18 digits', 400, 'BANK_INVALID');
+    const confirm = String(data.accountNumberConfirm ?? '').replace(/[\s-]/g, '');
+    if (number && number !== existing.accountNumber && number !== confirm) {
+      throw new AppError('The two account numbers do not match', 400, 'BANK_MISMATCH');
+    }
+    out.accountNumber = number || null;
+  }
+  if (data.ifsc !== undefined) {
+    const ifsc = String(data.ifsc ?? '').replace(/\s/g, '').toUpperCase();
+    if (ifsc && !IFSC_PATTERN.test(ifsc)) throw new AppError('IFSC should be 11 characters like SBIN0001234 (5th is zero)', 400, 'BANK_INVALID');
+    out.ifsc = ifsc || null;
+    const fromIfsc = ifsc ? bankForIfsc(ifsc) : null;
+    if (fromIfsc) out.bankName = fromIfsc;
+  }
+  if (data.bankName !== undefined && !out.bankName) out.bankName = text(data.bankName, 120);
+  if (data.accountHolder !== undefined) out.accountHolder = text(data.accountHolder, 120);
+  if (data.branch !== undefined) out.branch = text(data.branch, 120);
+  if (data.bankAccountType !== undefined) {
+    const kind = String(data.bankAccountType ?? '').toLowerCase();
+    if (kind && !ACCOUNT_KINDS[kind]) throw new AppError('Account type should be Savings, Current, OD or CC', 400, 'BANK_INVALID');
+    out.bankAccountType = kind || null;
+  }
+  return out;
+}
+
 export class FinanceService {
   // ── Categories ──────────────────────────────────────────
   listCategories(query, actor) {
@@ -135,12 +183,34 @@ export class FinanceService {
     return accountRepo.findAll({ includeInactive: query.includeInactive === 'true' });
   }
 
+  /** Only an active bank account with its account number and IFSC can be the default bank. */
+  #makeDefault(id) {
+    const acct = accountRepo.findById(id);
+    if (acct.accountType !== 'bank') throw new AppError('Only a bank account can be the default bank', 400, 'BANK_INVALID');
+    if (!acct.isActive) throw new AppError('Switch the account on before making it the default bank', 400, 'BANK_INVALID');
+    if (!acct.accountNumber || !acct.ifsc) throw new AppError('Add the account number and IFSC before making it the default bank', 400, 'BANK_INVALID');
+    accountRepo.setDefault(id);
+  }
+
+  /** Bank list for the account form (IFSC bank codes). */
+  banks() {
+    return INDIAN_BANKS;
+  }
+
   createAccount(data, actor, req) {
     authService.checkPermission(actor.permissions, 'finance.ledger.edit');
     if (!data.name || !data.accountType) throw new AppError('Name and account type required', 400);
+    if (!['cash', 'upi', 'bank', 'other'].includes(data.accountType)) throw new AppError('Account type must be cash, UPI, bank or other', 400);
+    const bank = cleanBankDetails(data, data.accountType, {});
+    if (data.isDefault === true && (data.accountType !== 'bank' || !bank.accountNumber || !bank.ifsc)) {
+      throw new AppError('Add the account number and IFSC of a bank account to make it the default bank', 400, 'BANK_INVALID');
+    }
     const code = (data.code || data.name).toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 30);
     if (accountRepo.codeExists(code)) throw new AppError('Account code already exists', 409);
-    const acct = accountRepo.create({ ...data, code });
+    const created = accountRepo.create({ ...data, code });
+    accountRepo.updateBankDetails(created.id, bank);
+    if (data.isDefault === true) this.#makeDefault(created.id);
+    const acct = accountRepo.findById(created.id);
     auditRepo.create({
       userId: actor.user.id,
       userName: actor.user.fullName,
@@ -158,7 +228,12 @@ export class FinanceService {
     authService.checkPermission(actor.permissions, 'finance.ledger.edit');
     const existing = accountRepo.findById(id);
     if (!existing) throw new AppError('Payment account not found', 404);
-    const updated = accountRepo.update(id, data);
+    const bank = cleanBankDetails(data, existing.accountType, existing);
+    accountRepo.update(id, data);
+    accountRepo.updateBankDetails(id, bank);
+    if (data.isDefault === true) this.#makeDefault(id);
+    else if (data.isDefault === false) accountRepo.clearDefault(id);
+    const updated = accountRepo.findById(id);
     auditRepo.create({
       userId: actor.user.id,
       userName: actor.user.fullName,

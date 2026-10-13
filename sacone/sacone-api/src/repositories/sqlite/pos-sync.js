@@ -13,6 +13,8 @@ function mapDevice(row) {
     warehouseName: row.warehouse_name || null,
     actingUserId: row.acting_user_id,
     actingUserName: row.acting_user_name || null,
+    paymentAccountId: row.payment_account_id || null,
+    paymentAccountName: row.payment_account_name || null,
     keyPrefix: row.key_prefix,
     deviceFingerprint: row.device_fingerprint,
     platform: row.platform,
@@ -74,12 +76,13 @@ function mapInbox(row) {
 }
 
 const DEVICE_SELECT = `
-  SELECT d.*, w.name AS warehouse_name, u.full_name AS acting_user_name,
+  SELECT d.*, w.name AS warehouse_name, u.full_name AS acting_user_name, pa.name AS payment_account_name,
     (SELECT COUNT(*) FROM pos_sync_inbox i WHERE i.device_id = d.id AND i.status = 'failed') AS failed_count,
     (SELECT COUNT(*) FROM pos_sync_inbox i WHERE i.device_id = d.id AND i.status = 'pending_review') AS pending_review_count
   FROM pos_devices d
   LEFT JOIN warehouses w ON w.id = d.warehouse_id
   LEFT JOIN users u ON u.id = d.acting_user_id
+  LEFT JOIN financial_payment_accounts pa ON pa.id = d.payment_account_id
 `;
 
 /* ───────────────────────── devices ───────────────────────── */
@@ -134,13 +137,14 @@ export class PosDeviceRepository {
     if (!current) return null;
     getDatabase().prepare(`
       UPDATE pos_devices
-      SET name = ?, warehouse_id = ?, acting_user_id = ?, notes = ?, updated_at = ?
+      SET name = ?, warehouse_id = ?, acting_user_id = ?, notes = ?, payment_account_id = ?, updated_at = ?
       WHERE id = ?
     `).run(
       data.name ?? current.name,
       data.warehouseId ?? current.warehouseId,
       data.actingUserId ?? current.actingUserId,
       data.notes !== undefined ? data.notes : current.notes,
+      data.paymentAccountId !== undefined ? (data.paymentAccountId || null) : current.paymentAccountId,
       nowIso(),
       id
     );

@@ -34,6 +34,8 @@ export default function SettingsPage() {
         'invoice.bank_details': value('invoice.bank_details'),
         'invoice.terms': value('invoice.terms'),
         'invoice.declaration': value('invoice.declaration'),
+        'invoice.upi_qr_print': String(value('invoice.upi_qr_print', 'true')) !== 'false' ? 'true' : 'false',
+        'pos.upi_qr_screen': String(value('pos.upi_qr_screen', 'true')) !== 'false' ? 'true' : 'false',
       });
     } catch (err) {
       setError(err.message);
@@ -137,9 +139,30 @@ export default function SettingsPage() {
               <input className="input-field" placeholder="ORIGINAL FOR RECIPIENT" {...field('invoice.copy_label')} />
             </label>
           </div>
-          <label className="block text-sm"><span className="label">Bank details (Our&apos;s Bankers)</span>
+          <label className="block text-sm"><span className="label">Bank details (Our&apos;s Bankers) — used only when no default bank is set</span>
             <input className="input-field" placeholder="ICICI Bank a/c no 151205500585, IFSC ICIC0001512" {...field('invoice.bank_details')} />
           </label>
+          <div className="rounded-lg border border-slate-200 p-4">
+            <div className="text-sm font-medium text-slate-900">UPI pay QR</div>
+            <p className="mt-1 text-xs text-slate-500">
+              Uses the UPI ID of the default bank (Banking &amp; Cash → Accounts), or of a terminal&apos;s own bank on SAC-POS. The QR asks for the bill&apos;s balance due.
+            </p>
+            {[
+              ['invoice.upi_qr_print', 'Print the UPI pay QR on bills', 'Under “Our Bankers” on A4 / A5 invoices and at the foot of 58 / 80 mm receipts, from the ERP and SAC-POS.'],
+              ['pos.upi_qr_screen', 'Let SAC-POS show a scan-to-pay QR', 'At checkout, when the payment is UPI, the cashier can open a QR with the bill amount for the customer to scan.'],
+            ].map(([key, label, hint]) => (
+              <label key={key} className="mt-3 flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  disabled={!canEdit || saving}
+                  checked={invoiceForm[key] === 'true'}
+                  onChange={(e) => setInvoiceForm((f) => ({ ...f, [key]: e.target.checked ? 'true' : 'false' }))}
+                />
+                <span><span className="font-medium">{label}</span><span className="block text-xs text-slate-500">{hint}</span></span>
+              </label>
+            ))}
+          </div>
           <label className="block text-sm"><span className="label">Terms &amp; conditions (one per line)</span>
             <textarea
               className="input-field min-h-[110px]"

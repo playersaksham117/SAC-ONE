@@ -21,7 +21,7 @@ import { generateApiKeySecret, hashApiKey } from '../repositories/sqlite/webstor
 import { authService } from './index.js';
 import { firmService } from './firms.js';
 import { currentFirmId } from '../database/context.js';
-import { posService, invoicePrintSettings } from './pos.js';
+import { posService, bankForPrint, invoicePrintSettings } from './pos.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
@@ -227,7 +227,11 @@ export class PosSyncService {
       settings: {
         invoicePrefix: `${device.code}-`,
         allowNegativeStock: repos.systemSettings.getBoolean('allow_negative_stock', false),
-        invoice: invoicePrintSettings(),
+        // The terminal's bank (else the firm's default) prints under "Our Bankers" with the UPI QR.
+        invoice: {
+          ...invoicePrintSettings(),
+          ...(device.paymentAccountId ? { bank: bankForPrint(repos.financeAccounts.findById(device.paymentAccountId)) || invoicePrintSettings().bank } : {}),
+        },
       },
     };
   }
@@ -534,6 +538,7 @@ export class PosSyncService {
       invoiceDiscount,
       payments,
       invoiceNumber,
+      defaultPaymentAccountId: device.paymentAccountId || null,
       // Customer's PO from the phone; a malformed date is dropped rather than failing the sale.
       customerPoNumber: str(sale.customer_po_number).slice(0, 60) || undefined,
       customerPoDate: str(sale.customer_po_number) && /^\d{4}-\d{2}-\d{2}$/.test(str(sale.customer_po_date))
@@ -946,12 +951,24 @@ export class PosDeviceAdminService {
     if (deviceRepo.codeExists(code)) throw new AppError('Device code already exists', 409);
 
     const { rawKey, keyPrefix, keyHash } = generateApiKeySecret();
-    const device = deviceRepo.create({
+    const paymentAccountId = this.#terminalBank(data.paymentAccountId);
+    const created = deviceRepo.create({
       code, name, warehouseId: warehouse.id, actingUserId, keyPrefix, keyHash,
       notes: data.notes, createdBy: actor.user.id,
     });
-    this.#audit(actor, req, 'create', device.id, { code, name, warehouseId: warehouse.id });
+    const device = paymentAccountId ? deviceRepo.update(created.id, { paymentAccountId }) : created;
+    this.#audit(actor, req, 'create', device.id, { code, name, warehouseId: warehouse.id, paymentAccountId });
     return { device, syncKey: rawKey };
+  }
+
+  /** A terminal's UPI / bank money goes to an active bank or UPI account (or the default bank when none). */
+  #terminalBank(id) {
+    if (!id) return null;
+    const acct = repos.financeAccounts.findById(id);
+    if (!acct?.isActive || !['bank', 'upi'].includes(acct.accountType)) {
+      throw new AppError('Choose an active bank or UPI account for this terminal', 400, 'BANK_INVALID');
+    }
+    return acct.id;
   }
 
   update(id, data, actor, req) {
@@ -963,6 +980,7 @@ export class PosDeviceAdminService {
     if (data.actingUserId && !userRepo.findById(data.actingUserId)?.isActive) {
       throw new AppError('Acting user must be an active ERP user', 400);
     }
+    if (data.paymentAccountId) this.#terminalBank(data.paymentAccountId);
     const updated = deviceRepo.update(id, data);
     this.#audit(actor, req, 'update', id, data);
     return updated;

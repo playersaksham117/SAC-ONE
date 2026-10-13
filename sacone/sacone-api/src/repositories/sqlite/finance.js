@@ -38,6 +38,15 @@ function mapAccount(row) {
     isActive: Boolean(row.is_active),
     isSystem: Boolean(row.is_system),
     notes: row.notes,
+    bankName: row.bank_name || null,
+    accountHolder: row.account_holder || null,
+    accountNumber: row.account_number || null,
+    accountNumberLast4: row.account_number ? String(row.account_number).slice(-4) : null,
+    ifsc: row.ifsc || null,
+    branch: row.branch || null,
+    bankAccountType: row.bank_account_type || null,
+    upiId: row.upi_id || null,
+    isDefault: Boolean(row.is_default),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -142,8 +151,41 @@ export class FinancePaymentAccountRepository {
   findAll({ includeInactive = false } = {}) {
     const wh = includeInactive ? '' : 'WHERE is_active = 1';
     return getDatabase().prepare(`
-      SELECT * FROM financial_payment_accounts ${wh} ORDER BY name ASC
+      SELECT * FROM financial_payment_accounts ${wh} ORDER BY is_default DESC, name ASC
     `).all().map(mapAccount);
+  }
+
+  /** The firm's default bank (printed on invoices), if any. */
+  findDefault() {
+    return mapAccount(getDatabase().prepare(`
+      SELECT * FROM financial_payment_accounts WHERE is_default = 1 AND is_active = 1 ORDER BY updated_at DESC LIMIT 1
+    `).get());
+  }
+
+  clearDefault(id) {
+    getDatabase().prepare('UPDATE financial_payment_accounts SET is_default = 0, updated_at = ? WHERE id = ?').run(nowIso(), id);
+  }
+
+  /** Make one account the firm's default bank (only one at a time). */
+  setDefault(id) {
+    const db = getDatabase();
+    db.transaction(() => {
+      db.prepare('UPDATE financial_payment_accounts SET is_default = 0 WHERE is_default = 1 AND id != ?').run(id);
+      db.prepare('UPDATE financial_payment_accounts SET is_default = 1, updated_at = ? WHERE id = ?').run(nowIso(), id);
+    })();
+  }
+
+  /** Bank fields (only keys given are changed). */
+  updateBankDetails(id, bank) {
+    const cols = {
+      bankName: 'bank_name', accountHolder: 'account_holder', accountNumber: 'account_number', ifsc: 'ifsc',
+      branch: 'branch', bankAccountType: 'bank_account_type', upiId: 'upi_id',
+    };
+    const keys = Object.keys(cols).filter((k) => bank[k] !== undefined);
+    if (!keys.length) return;
+    getDatabase().prepare(`
+      UPDATE financial_payment_accounts SET ${keys.map((k) => `${cols[k]} = ?`).join(', ')}, updated_at = ? WHERE id = ?
+    `).run(...keys.map((k) => bank[k]), nowIso(), id);
   }
 
   findById(id) {
@@ -185,6 +227,7 @@ export class FinancePaymentAccountRepository {
         name = COALESCE(?, name),
         opening_balance = COALESCE(?, opening_balance),
         is_active = COALESCE(?, is_active),
+        is_default = CASE WHEN ? = 0 THEN 0 ELSE is_default END,
         notes = COALESCE(?, notes),
         updated_at = ?
       WHERE id = ?
@@ -192,6 +235,7 @@ export class FinancePaymentAccountRepository {
       data.name ?? null,
       data.openingBalance !== undefined ? num(data.openingBalance) : null,
       data.isActive !== undefined ? (data.isActive ? 1 : 0) : null,
+      data.isActive === false ? 0 : 1,
       data.notes ?? null,
       now,
       id

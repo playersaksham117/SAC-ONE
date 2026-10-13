@@ -28,6 +28,9 @@ financeRouter.put('/categories/:id', asyncHandler(async (req, res) => {
 }));
 
 // Payment accounts
+financeRouter.get('/banks', asyncHandler(async (req, res) => {
+  sendSuccess(res, financeService.banks());
+}));
 financeRouter.get('/accounts', asyncHandler(async (req, res) => {
   sendSuccess(res, financeService.listAccounts(req.query, req.actor));
 }));

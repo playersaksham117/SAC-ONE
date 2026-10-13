@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import { formatPoDate, poLabel } from '../domain/po';
+import { bankerLines, hasUpi, qrSvg, upiPayUrl, type PayBank } from '../domain/upi';
 import { Platform } from 'react-native';
 import type { CompanyInfo } from '../api/sacone';
 import { formatNotes } from '../domain/cash';
@@ -65,7 +66,7 @@ function paymentRows(sale: Sale) {
 
 /* ───────────── thermal receipt (58 / 80 mm) ───────────── */
 
-function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: '58mm' | '80mm') {
+function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: '58mm' | '80mm', invoice: InvoiceSettings = {}) {
   const t = sale.totals;
   const narrow = size === '58mm';
   const rows = t.lines.map((l) => `
@@ -83,6 +84,8 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   table{width:100%;border-collapse:collapse} td{padding:1px 0;vertical-align:top} .r{text-align:right;white-space:nowrap}
   .name{padding-top:5px;font-weight:600;word-break:break-word} hr{border:0;border-top:1px dashed #000;margin:6px 0}
   .total td{font-size:${narrow ? 13 : 15}px;font-weight:700;padding-top:3px}
+  .upi{text-align:center;font-size:9px;font-weight:700;margin-top:4px} .upi svg{display:block;margin:0 auto 2px}
+  .bankbox{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;border:1px solid #ccc;border-radius:4px;padding:6px 8px;page-break-inside:avoid}
 </style></head><body>
   <h1>${esc(company?.businessName || 'SACONE')}</h1>
   ${company?.address ? `<div class="c muted">${esc(company.address)}${company.city ? `, ${esc(company.city)}` : ''}</div>` : ''}
@@ -104,13 +107,15 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     <tr class="total"><td>TOTAL</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
   </table><hr>
   <table>${paymentRows(sale)}</table>
+  ${bankerLines(invoice.bank, invoice.bankDetails).length && upiQr(sale, company, invoice, 10) ? `<hr><div class="c muted">${bankerLines(invoice.bank, invoice.bankDetails).map(esc).join('<br>')}</div>` : ''}
+  ${upiQr(sale, company, invoice, size === '58mm' ? 110 : 140)}
   <hr><div class="c muted">Thank you! Visit again.</div>
 </body></html>`;
 }
 
 /* ───────────── tax-invoice sheet (A5 / A4) ───────────── */
 
-function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PdfSize) {
+function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PdfSize, invoice: InvoiceSettings = {}) {
   const t = sale.totals;
   const a5 = size === 'A5';
   const anyDiscount = t.lines.some((l) => l.discountAmount > 0);
@@ -147,6 +152,8 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   .sum{width:${a5 ? '55%' : '45%'}} .sum td{padding:2px 0} .grand td{border-top:2px solid #111;font-size:${a5 ? 13 : 15}px;font-weight:700;padding-top:5px}
   .foot{margin-top:24px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;page-break-inside:avoid}
   .sign{border-top:1px solid #555;padding-top:4px;min-width:140px;text-align:center}
+  .upi{text-align:center;font-size:9px;font-weight:700;margin-top:4px} .upi svg{display:block;margin:0 auto 2px}
+  .bankbox{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;border:1px solid #ccc;border-radius:4px;padding:6px 8px;page-break-inside:avoid}
 </style></head><body>
   <div class="head">
     <div>
@@ -188,6 +195,10 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       <tr class="grand"><td>Total</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
     </table>
   </div>
+  ${bankerLines(invoice.bank, invoice.bankDetails).length ? `<div class="bankbox">
+    <div><div class="label">Our bankers</div>${bankerLines(invoice.bank, invoice.bankDetails).map((l, i) => `<div${i === 0 ? ' class="b"' : ''}>${esc(l)}</div>`).join('')}</div>
+    ${upiQr(sale, company, invoice, a5 ? 78 : 96)}
+  </div>` : ''}
   <div class="foot">
     <div class="muted">Thank you for your business. This is a computer-generated invoice.</div>
     <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}<br><br>Authorised signatory</div>
@@ -211,6 +222,17 @@ export interface InvoiceSettings {
   bankDetails?: string;
   terms?: string;
   declaration?: string;
+  bank?: PayBank | null;
+  printUpiQr?: boolean;
+  posUpiQr?: boolean;
+}
+
+/** UPI pay QR for this bill (balance due, else payer types the amount), or '' when off / no UPI ID. */
+function upiQr(sale: Sale, company: CompanyInfo | null | undefined, invoice: InvoiceSettings, px: number) {
+  if (invoice.printUpiQr === false || !hasUpi(invoice.bank)) return '';
+  const url = upiPayUrl({ upiId: invoice.bank.upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: sale.amountDue, note: `Bill ${sale.number}` });
+  const caption = sale.amountDue > 0 ? `Scan to pay ${formatMoney(sale.amountDue)}` : 'Scan to pay by UPI';
+  return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;
 }
 
 const GST_STATES: Record<string, string> = {
@@ -310,6 +332,8 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   .kv{display:grid;grid-template-columns:1fr 1fr;column-gap:8px}
   .net{font-size:${fs * 1.35}px;font-weight:700;display:flex;justify-content:space-between;border-top:1px solid #000;border-bottom:1px solid #000;padding:${a5 ? 2 : 4}px 3px}
   .terms{font-size:${fs * 0.82}px;font-weight:700}
+  .upi{text-align:center;font-size:9px;font-weight:700;margin-top:4px} .upi svg{display:block;margin:0 auto 2px}
+  .bankbox{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;border:1px solid #ccc;border-radius:4px;padding:6px 8px;page-break-inside:avoid}
 </style></head><body>
 <div class="sheet">
   <div class="row"><div class="head">
@@ -364,7 +388,8 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
       </div>
       <div style="display:flex;border-top:1px solid #000">
         <div class="vr b" style="padding:${pad};width:12%">Our's<br>Bankers</div>
-        <div class="b u" style="padding:${pad};flex:1">${esc(invoice.bankDetails || '')}</div>
+        <div class="b" style="padding:${pad};flex:1">${bankerLines(invoice.bank, invoice.bankDetails).map(esc).join('<br>')}</div>
+        ${upiQr(sale, company, invoice, a5 ? 54 : 84) ? `<div style="padding:${pad};border-left:1px solid #000">${upiQr(sale, company, invoice, a5 ? 54 : 84)}</div>` : ''}
       </div>
       <div style="display:flex;border-top:1px solid #000;flex:1">
         <div class="vr terms" style="width:60%;padding:${pad}"><div class="u">Terms &amp; Conditions:-</div>${terms.map((x, i) => `<div>${i + 1}. ${esc(x)}</div>`).join('')}</div>
@@ -390,8 +415,8 @@ export function billHtml(
   sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PaperSize,
   { layout = 'classic', invoice = {} }: { layout?: Layout; invoice?: InvoiceSettings } = {},
 ): string {
-  if (!isSheet(size)) return thermalHtml(sale, company, deviceCode, size);
-  return layout === 'modern' ? sheetHtml(sale, company, deviceCode, size) : classicHtml(sale, company, deviceCode, size, invoice);
+  if (!isSheet(size)) return thermalHtml(sale, company, deviceCode, size, invoice);
+  return layout === 'modern' ? sheetHtml(sale, company, deviceCode, size, invoice) : classicHtml(sale, company, deviceCode, size, invoice);
 }
 
 /* ───────────── actions ───────────── */

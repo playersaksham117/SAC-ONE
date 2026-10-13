@@ -9,6 +9,7 @@ import {
 import { docNumber } from '../src/domain/numbering';
 import { salePayload } from '../src/domain/payloads';
 import { formatPoDate, parsePoDate, poLabel, readCustomerPo } from '../src/domain/po';
+import { bankerLines, hasUpi, qrMatrix, qrSvg, upiPayUrl } from '../src/domain/upi';
 import type { CartLine, Customer, Payment, Product, Sale } from '../src/domain/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -265,5 +266,27 @@ describe('cash drawer', () => {
     expect(formatNotes({ 10: 1, 500: 2, 50: 0 })).toBe('₹500 × 2, ₹10 × 1');
     expect(formatNotes({})).toBe('');
     expect(compactNotes({ 500: 1, 200: 0 })).toEqual({ 500: 1 });
+  });
+});
+
+describe('UPI pay QR', () => {
+  const bank = { bankName: 'HDFC Bank', branch: 'Model Town', accountHolder: 'Sarthi Enterprises', accountNumber: '50100123456789', ifsc: 'HDFC0001234', accountType: 'current', upiId: 'sarthi@hdfcbank' };
+  it('builds a UPI pay link with the amount', () => {
+    expect(upiPayUrl({ upiId: 'sarthi@hdfcbank', payee: 'Sarthi Enterprises', amount: 1180, note: 'Bill S1' }))
+      .toBe('upi://pay?pa=sarthi@hdfcbank&pn=Sarthi%20Enterprises&am=1180.00&cu=INR&tn=Bill%20S1');
+    expect(upiPayUrl({ upiId: 'a@b1' })).toBe('upi://pay?pa=a@b1&cu=INR');
+  });
+  it('makes a square QR matrix and an SVG', () => {
+    const m = qrMatrix('upi://pay?pa=sarthi@hdfcbank&am=10.00&cu=INR');
+    expect(m.length).toBeGreaterThanOrEqual(21);
+    expect(m.every((row) => row.length === m.length)).toBe(true);
+    expect(m[0].slice(0, 7).every(Boolean)).toBe(true); // finder pattern
+    expect(qrSvg('hello', 100)).toMatch(/^<svg[\s\S]*<path d="M/);
+  });
+  it('knows a usable UPI ID and prints bankers lines', () => {
+    expect(hasUpi(bank)).toBe(true);
+    expect(hasUpi({ upiId: 'no-at-sign' })).toBe(false);
+    expect(bankerLines(bank)).toEqual(['HDFC Bank, Model Town', 'Sarthi Enterprises A/c No. 50100123456789 (Current)', 'IFSC HDFC0001234 · UPI sarthi@hdfcbank']);
+    expect(bankerLines(null, 'ICICI a/c 123')).toEqual(['ICICI a/c 123']);
   });
 });

@@ -96,6 +96,13 @@ cashBookRouter.get('/', asyncHandler(async (req, res) => {
   }));
 }));
 
+// Each cash / bank / UPI account separately: opening, in, out, closing for the period.
+cashBookRouter.get('/accounts', asyncHandler(async (req, res) => {
+  authService.checkPermission(req.actor.permissions, 'finance.ledger.view');
+  const q = withFinancialYear(req.query);
+  sendSuccess(res, repos.cashBook.summaryByAccount({ dateFrom: q.dateFrom, dateTo: q.dateTo }));
+}));
+
 cashBookRouter.get('/summary', asyncHandler(async (req, res) => {
   authService.checkPermission(req.actor.permissions, 'finance.ledger.view');
   const q = withFinancialYear(req.query);
