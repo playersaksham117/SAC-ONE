@@ -6,6 +6,6 @@ export function dayKey(date = new Date()): string {
   return `${y}${m}${d}`;
 }
 
-export function docNumber(prefix: 'S' | 'R' | 'P' | 'C', seq: number, date = new Date()): string {
+export function docNumber(prefix: 'S' | 'R' | 'P' | 'C' | 'Q', seq: number, date = new Date()): string {
   return `${prefix}${dayKey(date)}-${String(seq).padStart(4, '0')}`;
 }

@@ -63,7 +63,7 @@ export interface ServerProduct {
 export interface ServerCustomer {
   uuid: string; code: string; name: string; phone: string | null; email: string | null; gstin: string | null;
   gst_state_code: string | null; address: string | null; city: string | null; state: string | null;
-  credit_limit: number; outstanding: number; is_active: boolean; updated_at: string;
+  credit_limit: number; outstanding: number; credit_approved?: boolean; is_active: boolean; updated_at: string;
 }
 
 export interface Page {
@@ -97,7 +97,7 @@ export const sync = {
   staff: (c: DeviceConfig, ids: string[]) =>
     request<{ staff: StaffStatus[] }>(c.baseUrl, '/api/v1/sync/staff', { query: { ids: ids.join(',') }, headers: deviceHeaders(c) }),
 
-  push: (c: DeviceConfig, kind: 'sales' | 'returns' | 'payments' | 'customers', records: unknown[]) =>
+  push: (c: DeviceConfig, kind: 'sales' | 'returns' | 'payments' | 'customers' | 'quotations', records: unknown[]) =>
     request<PushResult>(c.baseUrl, `/api/v1/sync/push/${kind}`, {
       method: 'POST', body: { [kind]: records }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),

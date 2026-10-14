@@ -32,6 +32,10 @@ customerRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, customerService.create(req.body, req.actor, req), 201);
 }));
 
+customerRouter.post('/:id/credit-approval', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerService.setCreditApproval(req.params.id, req.body || {}, req.actor, req));
+}));
+
 customerRouter.get('/:id/summary', asyncHandler(async (req, res) => {
   sendSuccess(res, customerService.getSummary(req.params.id, req.actor));
 }));

@@ -23,6 +23,8 @@ function mapCustomer(row) {
     shippingPostal: row.shipping_postal_code,
     creditLimit: Number(row.credit_limit || 0),
     outstandingBalance: Number(row.outstanding_balance || 0),
+    creditApproved: Boolean(row.credit_approved),
+    creditApprovedAt: row.credit_approved_at || null,
     isWalkIn: Boolean(row.is_walk_in),
     isActive: Boolean(row.is_active),
     primarySalesAgentId: row.primary_sales_agent_id || null,
@@ -101,7 +103,7 @@ function mapSupplierPayment(row) {
 }
 
 export class CustomerRepository {
-  findAll({ search = '', includeInactive = false, limit = 100, offset = 0 } = {}) {
+  findAll({ search = '', includeInactive = false, credit = '', limit = 100, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
     const params = [];
@@ -111,6 +113,9 @@ export class CustomerRepository {
       const q = `%${search}%`;
       params.push(q, q, q, q, q);
     }
+    // credit=approved | pending (not yet approved, walk-in excluded)
+    if (credit === 'approved') where.push('credit_approved = 1');
+    if (credit === 'pending') where.push('credit_approved = 0 AND is_walk_in = 0');
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const items = db.prepare(`
       SELECT * FROM customers ${clause}
@@ -225,6 +230,18 @@ export class CustomerRepository {
       nowIso(),
       id
     );
+    return this.findById(id);
+  }
+
+  /** Firm admin's credit decision (optionally with a new credit limit). */
+  setCreditApproval(id, { approved, creditLimit, userId }) {
+    const now = nowIso();
+    getDatabase().prepare(`
+      UPDATE customers SET credit_approved = ?, credit_approved_by = ?, credit_approved_at = ?,
+        credit_limit = COALESCE(?, credit_limit), updated_at = ?
+      WHERE id = ?
+    `).run(approved ? 1 : 0, approved ? userId : null, approved ? now : null,
+      creditLimit === undefined || creditLimit === null ? null : Number(creditLimit), now, id);
     return this.findById(id);
   }
 

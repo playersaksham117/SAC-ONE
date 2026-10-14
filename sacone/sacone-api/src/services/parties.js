@@ -1,6 +1,6 @@
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { isFirmAdmin, authService } from './index.js';
 
 const customerRepo = repos.customers;
 const supplierRepo = repos.suppliers;
@@ -27,6 +27,7 @@ export class CustomerService {
     authService.checkPermission(actor.permissions, 'parties.customers.view');
     return customerRepo.findAll({
       search: filters.search || '',
+      credit: filters.credit || '',
       includeInactive: filters.includeInactive === 'true' || filters.includeInactive === true,
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
@@ -145,7 +146,42 @@ export class CustomerService {
       newValue: customer,
       ...getRequestMeta(req),
     });
+    // Only the firm admin (or group owner) can allow credit; customers from SAC-POS wait for approval.
+    if (data.creditApproved === true && isFirmAdmin(actor.user) && !customer.isWalkIn) {
+      return customerRepo.setCreditApproval(customer.id, { approved: true, userId: actor.user.id });
+    }
     return customer;
+  }
+
+  /** Firm admin approves (or withdraws) credit for a customer, optionally setting the limit. */
+  setCreditApproval(id, data, actor, req) {
+    authService.checkPermission(actor.permissions, 'parties.customers.edit');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can approve credit', 403, 'ADMIN_ONLY');
+    const existing = customerRepo.findById(id);
+    if (!existing) throw new AppError('Customer not found', 404);
+    if (existing.isWalkIn) throw new AppError('Walk-in customers cannot buy on credit', 400);
+    const approved = data.approved !== false;
+    let creditLimit;
+    if (data.creditLimit !== undefined && data.creditLimit !== '' && data.creditLimit !== null) {
+      creditLimit = Number(data.creditLimit);
+      if (!Number.isFinite(creditLimit) || creditLimit < 0) throw new AppError('Credit limit must be zero or more (0 = no limit)', 400);
+    }
+    if (approved && !existing.phone && !existing.gstNumber) {
+      throw new AppError('Add the customer\'s mobile number or GSTIN before approving credit', 400);
+    }
+    const updated = customerRepo.setCreditApproval(id, { approved, creditLimit, userId: actor.user.id });
+    auditRepo.create({
+      userId: actor.user.id,
+      userName: actor.user.fullName,
+      action: approved ? 'approve_credit' : 'withdraw_credit',
+      module: 'parties',
+      recordType: 'customer',
+      recordId: id,
+      previousValue: { creditApproved: existing.creditApproved, creditLimit: existing.creditLimit },
+      newValue: { creditApproved: updated.creditApproved, creditLimit: updated.creditLimit },
+      ...getRequestMeta(req),
+    });
+    return updated;
   }
 
   update(id, data, actor, req) {

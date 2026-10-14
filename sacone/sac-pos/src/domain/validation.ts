@@ -171,6 +171,9 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
   if (credit > 0) {
     if (!ctx.customer) r.errors.push({ field: 'customer', message: 'Select a customer for credit (udhar) sales' });
     else {
+      if (!ctx.customer.creditApproved) {
+        r.errors.push({ field: 'customer', message: `${ctx.customer.name} is not approved for credit. Take full payment, or ask the admin to approve credit in SACONE ERP (Customers).` });
+      }
       if (!normalizePhone(ctx.customer.phone) && !ctx.customer.gstin) {
         r.errors.push({ field: 'customer', message: 'Credit customer needs a mobile number or GSTIN' });
       }

@@ -2,22 +2,25 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { PushResult } from '../api/sacone';
 import { dayKey, docNumber } from '../domain/numbering';
-import type { CustomerPayment, HeldBill, Sale, SaleReturn, SyncMeta } from '../domain/types';
+import type { CustomerPayment, HeldBill, Quotation, Sale, SaleReturn, SyncMeta } from '../domain/types';
 import { jsonStorage } from './persist';
 
-type Prefix = 'S' | 'R' | 'P' | 'C';
-type DocKind = 'sales' | 'returns' | 'payments';
+type Prefix = 'S' | 'R' | 'P' | 'C' | 'Q';
+type DocKind = 'sales' | 'returns' | 'payments' | 'quotations';
 
 interface LedgerState {
   sales: Sale[];
   returns: SaleReturn[];
   payments: CustomerPayment[];
+  quotations: Quotation[];
   held: HeldBill[];
-  seq: { day: string; S: number; R: number; P: number; C: number };
+  seq: { day: string; S: number; R: number; P: number; C: number; Q?: number };
   nextNumber: (prefix: Prefix) => string;
   addSale: (sale: Sale) => void;
   addReturn: (ret: SaleReturn) => void;
   addPayment: (p: CustomerPayment) => void;
+  addQuotation: (q: Quotation) => void;
+  markQuotationConverted: (id: string, saleId: string) => void;
   hold: (bill: HeldBill) => void;
   removeHeld: (id: string) => void;
   applyPushResults: (kind: DocKind, refToId: Record<string, string>, res: PushResult) => void;
@@ -48,16 +51,17 @@ export const useLedger = create<LedgerState>()(
       sales: [],
       returns: [],
       payments: [],
+      quotations: [],
       held: [],
-      seq: { day: dayKey(), S: 0, R: 0, P: 0, C: 0 },
+      seq: { day: dayKey(), S: 0, R: 0, P: 0, C: 0, Q: 0 },
 
       nextNumber(prefix) {
         const today = dayKey();
         const s = get().seq;
-        const seq = s.day === today ? { ...s } : { day: today, S: 0, R: 0, P: 0, C: 0 };
-        seq[prefix] += 1;
+        const seq = s.day === today ? { Q: 0, ...s } : { day: today, S: 0, R: 0, P: 0, C: 0, Q: 0 };
+        seq[prefix] = (seq[prefix] ?? 0) + 1;
         set({ seq });
-        return docNumber(prefix, seq[prefix]);
+        return docNumber(prefix, seq[prefix] as number);
       },
 
       addSale(sale) {
@@ -80,6 +84,14 @@ export const useLedger = create<LedgerState>()(
         set((s) => ({ payments: [p, ...s.payments] }));
       },
 
+      addQuotation(q) {
+        set((s) => ({ quotations: [q, ...(s.quotations ?? [])] }));
+      },
+
+      markQuotationConverted(id, saleId) {
+        set((s) => ({ quotations: (s.quotations ?? []).map((q) => (q.id === id ? { ...q, status: 'converted', convertedSaleId: saleId } : q)) }));
+      },
+
       hold(bill) {
         set((s) => ({ held: [bill, ...s.held].slice(0, 30) }));
       },
@@ -96,25 +108,25 @@ export const useLedger = create<LedgerState>()(
           if (id) byId[id] = outcome(r);
         }
         set((s) => ({
-          [kind]: (s[kind] as (SyncMeta & { id: string })[]).map((d) => (byId[d.id] ? { ...d, ...byId[d.id] } : d)),
+          [kind]: ((s[kind] ?? []) as (SyncMeta & { id: string })[]).map((d) => (byId[d.id] ? { ...d, ...byId[d.id] } : d)),
         }) as Partial<LedgerState>);
       },
 
       retry(kind, id) {
         set((s) => ({
-          [kind]: (s[kind] as (SyncMeta & { id: string })[]).map((d) => (d.id === id ? { ...d, sync: 'pending', syncError: null } : d)),
+          [kind]: ((s[kind] ?? []) as (SyncMeta & { id: string })[]).map((d) => (d.id === id ? { ...d, sync: 'pending', syncError: null } : d)),
         }) as Partial<LedgerState>);
       },
 
       /** Drop synced documents older than `keepDays` to keep the phone light. */
       clearForNewTerminal() {
-        set({ sales: [], returns: [], payments: [], held: [] });
+        set({ sales: [], returns: [], payments: [], quotations: [], held: [] });
       },
 
       prune(keepDays) {
         const cutoff = Date.now() - keepDays * 86400000;
         const keep = <T extends SyncMeta & { createdAt: string }>(d: T) => d.sync !== 'synced' || new Date(d.createdAt).getTime() >= cutoff;
-        set((s) => ({ sales: s.sales.filter(keep), returns: s.returns.filter(keep), payments: s.payments.filter(keep) }));
+        set((s) => ({ sales: s.sales.filter(keep), returns: s.returns.filter(keep), payments: s.payments.filter(keep), quotations: (s.quotations ?? []).filter(keep) }));
       },
     }),
     { name: 'sacpos.ledger', storage: jsonStorage },
@@ -135,8 +147,8 @@ export function pendingQty(sales: Sale[], returns: SaleReturn[]): Record<string,
   return out;
 }
 
-export function pendingCount(s: Pick<LedgerState, 'sales' | 'returns' | 'payments'>): { pending: number; review: number } {
-  const all = [...s.sales, ...s.returns, ...s.payments];
+export function pendingCount(s: Pick<LedgerState, 'sales' | 'returns' | 'payments'> & { quotations?: Quotation[] }): { pending: number; review: number } {
+  const all = [...s.sales, ...s.returns, ...s.payments, ...(s.quotations ?? [])];
   return {
     pending: all.filter((d) => d.sync === 'pending').length,
     review: all.filter((d) => d.sync === 'review').length,

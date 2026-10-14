@@ -37,6 +37,9 @@ posSyncRouter.post('/push/returns', asyncHandler(async (req, res) => {
 posSyncRouter.post('/push/payments', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.pushPayments(req.device, req.body || {}, req));
 }));
+posSyncRouter.post('/push/quotations', asyncHandler(async (req, res) => {
+  sendSuccess(res, posSyncService.pushQuotations(req.device, req.body || {}, req));
+}));
 posSyncRouter.post('/push/customers', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.pushCustomers(req.device, req.body || {}, req));
 }));

@@ -6,13 +6,13 @@ import { formatMoney, formatQty } from '../domain/money';
 import type { CartLine } from '../domain/types';
 import { validateLine } from '../domain/validation';
 import { useCartTotals } from '../lib/useCartTotals';
-import { holdCurrentBill } from '../services/pos';
+import { holdCurrentBill, saveQuotation } from '../services/pos';
 import { useCart } from '../store/cart';
 import { ExchangeNotice } from '../ui/ExchangeNotice';
 import { useCan } from '../store/session';
 import { confirm, notify } from '../ui/dialogs';
 import {
-  Badge, Banner, Button, Card, Divider, Empty, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper,
+  Badge, Banner, Button, Card, Chip, Divider, Empty, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper,
   colors, font, radius, space,
 } from '../ui/components';
 
@@ -79,6 +79,19 @@ export default function Cart() {
   const canOverride = useCan('overridePrice');
   const setInvoiceDiscount = useCart((s) => s.setInvoiceDiscount);
   const setCustomer = useCart((s) => s.setCustomer);
+  const canQuote = useCan('quote');
+  const quoting = useCart((s) => s.mode === 'quotation') && canQuote;
+  const fromQuotation = useCart((s) => s.fromQuotation);
+  const [validDays, setValidDays] = useState(15);
+
+  const save = () => {
+    try {
+      const q = saveQuotation({ validDays });
+      router.replace({ pathname: '/quotation/[id]', params: { id: q.id, done: '1' } });
+    } catch (e) {
+      notify('Cannot save quotation', (e as Error).message);
+    }
+  };
 
   const clear = async () => {
     const ex = useCart.getState().exchange;
@@ -119,16 +132,28 @@ export default function Cart() {
       scroll
       footer={(
         <View style={{ padding: space.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <Row>
-            <Button title="Hold" variant="secondary" icon="pause" onPress={hold} style={{ flex: 1 }} />
-            <Button title={`Checkout ${formatMoney(totals.grandTotal)}`} icon="card-outline" onPress={() => router.push('/checkout')} style={{ flex: 2 }} testID="go-checkout" />
-          </Row>
+          {quoting ? (
+            <>
+              <Row gap={space.xs} style={{ marginBottom: space.sm, alignItems: 'center' }}>
+                <Text style={{ color: colors.textMuted, fontSize: font.sm, marginRight: 4 }}>Valid for</Text>
+                {[7, 15, 30].map((d) => <Chip key={d} label={`${d} days`} active={validDays === d} onPress={() => setValidDays(d)} />)}
+              </Row>
+              <Button title={`Save quotation ${formatMoney(totals.grandTotal)}`} icon="document-text-outline" onPress={save} testID="save-quotation" />
+            </>
+          ) : (
+            <Row>
+              <Button title="Hold" variant="secondary" icon="pause" onPress={hold} style={{ flex: 1 }} />
+              <Button title={`Checkout ${formatMoney(totals.grandTotal)}`} icon="card-outline" onPress={() => router.push('/checkout')} style={{ flex: 2 }} testID="go-checkout" />
+            </Row>
+          )}
         </View>
       )}
     >
-      <Header title="Cart" subtitle={`${lines.length} item(s)`} onBack={() => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />
+      <Header title={quoting ? 'Quotation' : 'Cart'} subtitle={`${lines.length} item(s)`} onBack={() => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />
       <View style={{ paddingHorizontal: space.lg }}>
         <ExchangeNotice />
+        {quoting ? <Banner tone="info" messages={['Quotation: no stock or money moves. Customers can be walk-in.']} /> : null}
+        {!quoting && fromQuotation ? <Banner tone="info" messages={[`From quotation ${fromQuotation.number}: completing this sale marks it converted.`]} /> : null}
         <SectionTitle>Customer</SectionTitle>
         <Card onPress={() => router.push('/customer-picker')} style={{ padding: space.md }}>
           <Row>
@@ -141,6 +166,9 @@ export default function Cart() {
             </View>
             {customer ? <IconButton icon="close" label="Remove customer" onPress={() => setCustomer(null)} /> : <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}
           </Row>
+          {customer && !customer.creditApproved && !quoting ? (
+            <View style={{ marginTop: 6 }}><Badge tone="neutral" label="Cash only · credit needs admin approval" /></View>
+          ) : null}
           {customer && customer.outstanding > 0 ? (
             <View style={{ marginTop: 6 }}><Badge tone="warning" label={`Outstanding ${formatMoney(customer.outstanding)}${customer.creditLimit ? ` / limit ${formatMoney(customer.creditLimit)}` : ''}`} /></View>
           ) : null}

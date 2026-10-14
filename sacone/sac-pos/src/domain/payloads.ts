@@ -1,5 +1,5 @@
 import { normalizePhone } from './validation';
-import type { Customer, CustomerPayment, Sale, SaleReturn } from './types';
+import type { Customer, CustomerPayment, Quotation, Sale, SaleReturn } from './types';
 
 /** Builders for the SACONE `/api/v1/sync/push/*` contract (sacone-api/docs/POS_SYNC_API.md). */
 
@@ -26,6 +26,7 @@ export function salePayload(sale: Sale, userId: string) {
     customer_po_date: sale.customerPo?.date ?? null,
     cash_drawer: sale.cashDrawer ?? null,
     exchange_return_number: sale.exchange?.returnNumber ?? null,
+    quotation_no: sale.quotationNo ?? null,
     items: sale.totals.lines.map((l) => ({
       product_uuid: l.productId,
       sku: l.sku,
@@ -36,6 +37,34 @@ export function salePayload(sale: Sale, userId: string) {
       discount_amount: l.discountAmount,
       tax_rate: l.gstRate,
       total_amount: l.lineTotal,
+    })),
+  };
+}
+
+export function quotationPayload(q: Quotation, userId: string) {
+  const c = q.customer;
+  const isServerCustomer = c && !c.id.startsWith('local-');
+  return {
+    quotation_no: q.number,
+    quotation_date_utc: q.createdAt,
+    erp_user_id: userId,
+    valid_until: q.validUntil,
+    customer_uuid: isServerCustomer ? c!.id : undefined,
+    customer_name: c?.name ?? null,
+    customer_phone: c?.phone ? normalizePhone(c.phone) ?? c.phone : null,
+    customer_gstin: c?.gstin ?? null,
+    discount_amount: q.totals.invoiceDiscount,
+    total_amount: q.totals.grandTotal,
+    notes: q.notes ?? null,
+    items: q.totals.lines.map((l) => ({
+      product_uuid: l.productId,
+      sku: l.sku,
+      barcode: l.barcode ?? null,
+      product_name: l.name,
+      quantity: l.quantity,
+      unit_price: l.unitPrice,
+      discount_amount: l.discountAmount,
+      tax_rate: l.gstRate,
     })),
   };
 }

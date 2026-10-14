@@ -25,7 +25,10 @@ const EMPTY_SUPPLIER = {
 };
 
 export default function PartiesPage() {
-  const { checkPermission } = useAuth();
+  const { checkPermission, session } = useAuth();
+  // Credit (udhar) approval is for the firm admin or the group owner.
+  const canApproveCredit = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug) && checkPermission('parties.customers.edit');
+  const [creditFilter, setCreditFilter] = useState('');
   const canViewCustomers = checkPermission('parties.customers.view');
   const canViewSuppliers = checkPermission('parties.suppliers.view');
   const canCreateCustomer = checkPermission('parties.customers.create');
@@ -68,6 +71,7 @@ export default function PartiesPage() {
         limit: '200',
       });
       if (tab === 'customers' && canViewCustomers) {
+        if (creditFilter) q.set('credit', creditFilter);
         const data = await apiRequest(`/api/customers?${q}`);
         setCustomers(data.items || []);
       } else if (tab === 'suppliers' && canViewSuppliers) {
@@ -88,7 +92,7 @@ export default function PartiesPage() {
     setHistory([]);
     setStatement(null);
     setDetailTab('summary');
-  }, [tab, includeInactive]);
+  }, [tab, includeInactive, creditFilter]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -132,6 +136,26 @@ export default function PartiesPage() {
       });
     }
     setModalOpen(true);
+  };
+
+  const setCredit = async (approved) => {
+    let creditLimit;
+    if (approved) {
+      const answer = window.prompt(`Approve ${selected.name} for credit. Credit limit in ₹ (0 = no limit):`, String(selected.creditLimit || 0));
+      if (answer === null) return;
+      creditLimit = Number(answer || 0);
+    } else if (!window.confirm(`Withdraw credit for ${selected.name}? Their dues stay; new bills must be paid in full.`)) {
+      return;
+    }
+    setError('');
+    try {
+      const updated = await apiRequest(`/api/customers/${selected.id}/credit-approval`, { method: 'POST', body: JSON.stringify({ approved, creditLimit }) });
+      setMessage(approved ? `${updated.name} can now buy on credit.` : `Credit withdrawn for ${updated.name}.`);
+      setSelected((s) => ({ ...s, ...updated }));
+      await loadList(true);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const saveParty = async (e) => {
@@ -425,6 +449,13 @@ export default function PartiesPage() {
           <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(e.target.checked)} />
           Include inactive
         </label>
+        {tab === 'customers' && (
+          <select className="input-field max-w-[13rem]" value={creditFilter} onChange={(e) => setCreditFilter(e.target.value)} aria-label="Credit">
+            <option value="">All customers</option>
+            <option value="pending">Awaiting credit approval</option>
+            <option value="approved">Credit approved</option>
+          </select>
+        )}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
@@ -451,6 +482,12 @@ export default function PartiesPage() {
                     <td className="px-3 py-2 font-medium">
                       {row.name}
                       {row.isWalkIn && <span className="ml-2 text-[10px] uppercase text-slate-400">Walk-in</span>}
+                      {tab === 'customers' && !row.isWalkIn && (
+                        row.creditApproved
+                          ? <span className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Credit</span>
+                          : <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Cash only</span>
+                      )}
+                      {row.sourceChannel === 'pos' && <span className="ml-1 text-[10px] uppercase text-slate-400">SAC-POS</span>}
                     </td>
                     <td className="px-3 py-2">{row.phone || '—'}</td>
                     <td className="px-3 py-2">
@@ -481,6 +518,22 @@ export default function PartiesPage() {
                   <button type="button" className="btn-secondary text-xs" onClick={() => openEdit(selected)}>Edit</button>
                 )}
               </div>
+
+              {tab === 'customers' && !selected.isWalkIn && (
+                <div className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg p-3 text-sm ${selected.creditApproved ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                  <div>
+                    <div className="font-medium">{selected.creditApproved ? 'Approved for credit (udhar)' : 'Cash only: not approved for credit'}</div>
+                    <div className="text-xs text-slate-600">
+                      {selected.creditApproved
+                        ? `Limit ${selected.creditLimit > 0 ? money(selected.creditLimit) : 'none'}${selected.creditApprovedAt ? ` · since ${new Date(selected.creditApprovedAt).toLocaleDateString('en-IN')}` : ''}`
+                        : 'SAC-POS and the ERP will not sell to them on credit until an admin approves.'}
+                    </div>
+                  </div>
+                  {canApproveCredit && (selected.creditApproved
+                    ? <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => setCredit(false)}>Withdraw credit</button>
+                    : <button type="button" className="btn-primary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => setCredit(true)}>Approve credit</button>)}
+                </div>
+              )}
 
               <div className="mb-3 flex flex-wrap gap-1">
                   {(tab === 'customers'
@@ -679,6 +732,12 @@ export default function PartiesPage() {
           {tab === 'customers' ? (
             <>
               <input className="input-field" placeholder="Credit limit" type="number" value={form.creditLimit} onChange={(e) => setForm((p) => ({ ...p, creditLimit: e.target.value }))} />
+              {canApproveCredit && !editingId && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={Boolean(form.creditApproved)} onChange={(e) => setForm((p) => ({ ...p, creditApproved: e.target.checked }))} />
+                  Approve for credit (udhar)
+                </label>
+              )}
               <select className="input-field" value={form.sourceChannel} onChange={(e) => setForm((p) => ({ ...p, sourceChannel: e.target.value }))}>
                 <option value="manual">Source: Manual</option>
                 <option value="pos">Source: POS</option>

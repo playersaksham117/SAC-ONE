@@ -22,6 +22,7 @@ import { authService } from './index.js';
 import { firmService } from './firms.js';
 import { currentFirmId } from '../database/context.js';
 import { posService, bankForPrint, invoicePrintSettings } from './pos.js';
+import { quotationService } from './quotations.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
@@ -51,6 +52,8 @@ export const DEVICE_PERMISSIONS = Object.freeze([
   'parties.customer_receipts.view',
   'parties.customer_receipts.create',
   'inventory.adjustments.create',
+  'pos.quotations.view',
+  'pos.quotations.create',
 ]);
 
 /** ERP permission a staff member needs for each synced record type. */
@@ -60,6 +63,7 @@ const RECORD_PERMISSIONS = Object.freeze({
   payment: 'parties.customer_receipts.create',
   customer: 'parties.customers.create',
   stock_event: 'inventory.adjustments.create',
+  quotation: 'pos.quotations.create',
 });
 
 /** Inbox statuses that mean "server has it — client may mark the record synced". */
@@ -382,6 +386,11 @@ export class PosSyncService {
     );
   }
 
+  /** Quotations made on the phone (Sale / Quotation toggle) become ERP quotations. */
+  pushQuotations(device, body, req) {
+    return this.#runBatch(device, req, 'quotation', body.quotations || [], (q) => q.quotation_no, this.#applyQuotation);
+  }
+
   pushStockEvents(device, body, req) {
     return this.#runBatch(device, req, 'stock_event', body.stock_events || [], (e) => e.event_uuid, this.#applyStockEvent);
   }
@@ -394,6 +403,7 @@ export class PosSyncService {
   pushAll(device, body, req) {
     const sections = [
       ['customers', () => this.pushCustomers(device, body, req)],
+      ['quotations', () => this.pushQuotations(device, body, req)],
       ['sales', () => this.pushSales(device, body, req)],
       ['returns', () => this.pushReturns(device, body, req)],
       ['payments', () => this.pushPayments(device, body, req)],
@@ -455,6 +465,53 @@ export class PosSyncService {
     const walkIn = customerRepo.findWalkIn();
     if (!walkIn) throw syncError('Walk-in customer is not configured in ERP', 'WALK_IN_MISSING', 500);
     return { id: walkIn.id, created: false };
+  }
+
+  #applyQuotation(device, actor, req, q, ref) {
+    const items = Array.isArray(q.items) ? q.items : [];
+    if (!items.length) throw syncError('Quotation has no items', 'EMPTY_QUOTATION');
+    const lines = items.map((item, index) => {
+      const product = this.#resolveProduct(item);
+      if (!product) {
+        throw syncError(`Line ${index + 1}: product not found in ERP (sku ${item.sku || '—'})`, 'UNKNOWN_PRODUCT');
+      }
+      const line = {
+        productId: product.id,
+        quantity: num(item.quantity),
+        unitPrice: num(item.unit_price, product.sellingPrice),
+        discountAmount: num(item.discount_amount, 0),
+      };
+      if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
+      return line;
+    });
+    const hasCustomer = str(q.customer_uuid) || str(q.customer_phone) || str(q.customer_name);
+    const customer = hasCustomer ? this.#resolveCustomer(q, actor, req) : null;
+    const date = parseTerminalTime(q.quotation_date_utc || q.created_at) || nowIso();
+    const created = quotationService.create({
+      warehouseId: device.warehouseId,
+      customerId: customer?.id || null,
+      items: lines,
+      invoiceDiscount: round2(num(q.discount_amount, 0)),
+      quotationDate: date.slice(0, 10),
+      validUntil: /^\d{4}-\d{2}-\d{2}$/.test(str(q.valid_until)) ? str(q.valid_until) : undefined,
+      status: 'sent',
+      notes: [q.notes, `From ${device.name} (${device.code}-${ref})`].filter(Boolean).join(' · '),
+      customerPoNumber: str(q.customer_po_number).slice(0, 60) || undefined,
+      customerPoDate: str(q.customer_po_number) && /^\d{4}-\d{2}-\d{2}$/.test(str(q.customer_po_date)) ? str(q.customer_po_date) : undefined,
+    }, actor, req);
+    return { status: 'applied', resultType: 'quotation', resultId: created.id, number: created.quotationNumber };
+  }
+
+  /** A phone sale made from a phone quotation marks that quotation converted. */
+  #markQuotationConverted(device, quotationRef, saleId, actor) {
+    const ref = str(quotationRef);
+    if (!ref) return;
+    const inbox = inboxRepo.find(device.id, 'quotation', ref);
+    if (inbox?.status !== 'applied' || !inbox.resultId) return;
+    const quote = repos.quotations.findById(inbox.resultId);
+    if (quote && ['draft', 'sent', 'accepted'].includes(quote.status)) {
+      repos.quotations.updateStatus(quote.id, 'converted', { convertedSaleId: saleId, updatedBy: actor.user.id });
+    }
   }
 
   #applySale(device, actor, req, sale, ref) {
@@ -550,6 +607,7 @@ export class PosSyncService {
         `Synced from ${device.name}`,
       ].filter(Boolean).join(' · '),
     }, actor, req, { offlineSync: true, completedAt });
+    this.#markQuotationConverted(device, sale.quotation_no, created.id, actor);
 
     return {
       status: 'applied',
@@ -811,6 +869,7 @@ export class PosSyncService {
         state: c.state,
         credit_limit: Number(c.credit_limit || 0),
         outstanding: Number(c.outstanding_balance || 0),
+        credit_approved: Boolean(c.credit_approved),
         is_active: Boolean(c.is_active),
         updated_at: c.updated_at,
       })),

@@ -430,6 +430,19 @@ export class PosService {
     if (amountCredit > 0 && customer.isWalkIn) {
       throw new AppError('Credit sale is not allowed for walk-in customers', 400);
     }
+    // Credit (udhar) only for customers the firm admin approved. A phone that sold offline is
+    // recorded with a warning so the admin sees it; everywhere else it is refused.
+    if (amountCredit > 0 && !customer.creditApproved) {
+      if (offlineSync) {
+        warnings.push({ code: 'CREDIT_NOT_APPROVED', message: `${customer.name} is not approved for credit; approve or collect in the ERP` });
+      } else {
+        throw new AppError(
+          `${customer.name} is not approved for credit. The firm admin can approve credit in Customers & Suppliers.`,
+          400,
+          'CREDIT_NOT_APPROVED'
+        );
+      }
+    }
     if (amountCredit > 0 && customer.creditLimit > 0) {
       const projected = customer.outstandingBalance + amountCredit;
       if (projected > customer.creditLimit + 0.02 && offlineSync) {

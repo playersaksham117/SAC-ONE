@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ApiError } from '../api/client';
 import { sync, type DeviceConfig } from '../api/sacone';
-import { customerPayload, paymentPayload, returnPayload, salePayload } from '../domain/payloads';
+import { customerPayload, paymentPayload, quotationPayload, returnPayload, salePayload } from '../domain/payloads';
 import type { SyncMeta } from '../domain/types';
 import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
@@ -59,7 +59,7 @@ export function syncNow(): Promise<void> {
 
 async function pushDocs<T extends SyncMeta & { id: string; number: string; userId: string }>(
   cfg: DeviceConfig,
-  kind: 'sales' | 'returns' | 'payments',
+  kind: 'sales' | 'returns' | 'payments' | 'quotations',
   docs: T[],
   build: (d: T, userId: string) => unknown,
 ): Promise<number> {
@@ -129,6 +129,8 @@ async function runCycle(): Promise<void> {
     }
 
     // 3b. documents
+    // Quotations before sales, so a sale made from one can mark it converted.
+    const sentQuotes = await pushDocs(cfg, 'quotations', useLedger.getState().quotations ?? [], quotationPayload);
     const ledger = useLedger.getState();
     const sentSales = await pushDocs(cfg, 'sales', ledger.sales, salePayload);
     const sentReturns = await pushDocs(cfg, 'returns', useLedger.getState().returns, returnPayload);
@@ -165,6 +167,7 @@ async function runCycle(): Promise<void> {
       sentSales && `${sentSales} sale(s)`,
       sentReturns && `${sentReturns} return(s)`,
       sentPayments && `${sentPayments} payment(s)`,
+      sentQuotes && `${sentQuotes} quotation(s)`,
     ].filter(Boolean);
     useSyncStatus.setState({
       status: 'idle',

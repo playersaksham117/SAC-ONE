@@ -11,11 +11,11 @@ import { useCartTotals } from '../../lib/useCartTotals';
 import { useCart } from '../../store/cart';
 import { searchProducts, useCatalog } from '../../store/catalog';
 import { useLedger } from '../../store/ledger';
-import { useCurrentUser } from '../../store/session';
+import { useCan, useCurrentUser } from '../../store/session';
 import { syncNow } from '../../sync/engine';
 import { ExchangeNotice } from '../../ui/ExchangeNotice';
 import { QtyPrompt } from '../../ui/QtyPrompt';
-import { Badge, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, colors, font, radius, space } from '../../ui/components';
+import { Badge, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, Segmented, colors, font, radius, space } from '../../ui/components';
 
 function stockTone(available: number) {
   if (available <= 0) return 'danger' as const;
@@ -28,6 +28,10 @@ export default function Sell() {
   const products = useCatalog((s) => s.products);
   const pending = usePendingQty();
   const lines = useCart((s) => s.lines);
+  const mode = useCart((s) => s.mode);
+  const setMode = useCart((s) => s.setMode);
+  const canQuote = useCan('quote');
+  const quoting = canQuote && mode === 'quotation';
   const add = useCart((s) => s.add);
   const setQty = useCart((s) => s.setQty);
   const [qtyFor, setQtyFor] = useState<Product | null>(null);
@@ -126,6 +130,15 @@ export default function Sell() {
         )}
       />
       <View style={{ paddingHorizontal: space.lg }}>
+        {canQuote ? (
+          <View style={{ marginBottom: space.sm }}>
+            <Segmented<'sale' | 'quotation'>
+              value={quoting ? 'quotation' : 'sale'}
+              onChange={setMode}
+              options={[{ value: 'sale', label: 'Sale' }, { value: 'quotation', label: 'Quotation' }]}
+            />
+          </View>
+        ) : null}
         <ExchangeNotice />
         <SearchBar
           value={query}
@@ -162,14 +175,14 @@ export default function Sell() {
           onPress={() => router.push('/cart')}
           style={({ pressed }) => ({
             position: 'absolute', left: space.lg, right: space.lg, bottom: space.lg, height: 64, borderRadius: radius.lg,
-            backgroundColor: colors.dark, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, gap: space.md,
+            backgroundColor: quoting ? colors.primary : colors.dark, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, gap: space.md,
             opacity: pressed ? 0.9 : 1,
           })}
         >
           <View style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
             <Text style={{ color: '#fff', fontWeight: '800' }}>{formatQty(totals.count)}</Text>
           </View>
-          <Text style={{ color: '#CBD5E1', flex: 1, fontWeight: '600' }}>{totals.n} item{totals.n > 1 ? 's' : ''} in cart</Text>
+          <Text style={{ color: '#CBD5E1', flex: 1, fontWeight: '600' }}>{quoting ? 'Quotation · ' : ''}{totals.n} item{totals.n > 1 ? 's' : ''}{quoting ? '' : ' in cart'}</Text>
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.lg }}>{formatMoney(grand)}</Text>
           <Ionicons name="chevron-forward" size={20} color="#fff" />
         </Pressable>

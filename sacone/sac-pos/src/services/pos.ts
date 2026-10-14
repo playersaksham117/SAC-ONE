@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { round2 } from '../domain/money';
 import { can } from '../domain/permissions';
 import { calculateCart, lineRefundValue } from '../domain/tax';
-import type { Approval, Customer, CustomerPayment, Payment, RefundMethod, Sale, SaleReturn } from '../domain/types';
+import type { Approval, Customer, CustomerPayment, Payment, Quotation, RefundMethod, Sale, SaleReturn } from '../domain/types';
 import { compactNotes, type CashDrawer } from '../domain/cash';
 import {
   gstinStateCode, normalizePhone, validateCheckout, validateCollection, validateCustomerDraft, validateReturn,
@@ -116,15 +116,44 @@ export function completeSale(
     cashDrawer: cashDrawer ? { received: compactNotes(cashDrawer.received), change: compactNotes(cashDrawer.change) } : undefined,
     exchange: cart.exchange ? { returnId: cart.exchange.returnId, returnNumber: cart.exchange.returnNumber, credit: exchangeCreditFor(totals.grandTotal) } : null,
     notes: cart.notes || null,
+    quotationNo: cart.fromQuotation?.number ?? null,
     customerPo: customerPo?.number ? customerPo : null,
     returned: {},
     sync: 'pending',
   };
   useLedger.getState().addSale(sale);
+  if (cart.fromQuotation) useLedger.getState().markQuotationConverted(cart.fromQuotation.id, sale.id);
   if (customer && amountDue > 0) useCatalog.getState().adjustOutstanding(customer.id, amountDue);
   cart.clear();
   kick();
   return sale;
+}
+
+/** Save the cart as a quotation (no payment, no stock); it syncs to SACONE quotations. */
+export function saveQuotation({ validDays = 15 }: { validDays?: number } = {}): Quotation {
+  const user = requireUser('quote');
+  const cart = useCart.getState();
+  if (!cart.lines.length) throw new Error('Add items to the quotation first');
+  const totals = cartTotals();
+  const customer = cartCustomer();
+  const valid = new Date(Date.now() + Math.max(1, validDays) * 86400000);
+  const q: Quotation = {
+    id: Crypto.randomUUID(),
+    number: useLedger.getState().nextNumber('Q'),
+    createdAt: new Date().toISOString(),
+    userId: user.userId,
+    userName: user.name,
+    customer: customer ? { id: customer.id, name: customer.name, phone: customer.phone, gstin: customer.gstin, gstStateCode: customer.gstStateCode } : null,
+    totals,
+    validUntil: `${valid.getFullYear()}-${String(valid.getMonth() + 1).padStart(2, '0')}-${String(valid.getDate()).padStart(2, '0')}`,
+    notes: cart.notes || null,
+    status: 'open',
+    sync: 'pending',
+  };
+  useLedger.getState().addQuotation(q);
+  cart.clear();
+  kick();
+  return q;
 }
 
 export function holdCurrentBill(label?: string) {
@@ -208,6 +237,7 @@ export function createCustomer(draft: CustomerDraft): LocalCustomer {
     state: draft.state?.trim() || null,
     creditLimit: 0,
     outstanding: 0,
+    creditApproved: false, // new customers buy cash until an admin approves credit in the ERP
     isActive: true,
     updatedAt: new Date().toISOString(),
     isLocal: true,

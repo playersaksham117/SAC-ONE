@@ -7,7 +7,7 @@ import {
   validateCheckout, validateCollection, validateCustomerDraft, validateLine, validateReturn,
 } from '../src/domain/validation';
 import { docNumber } from '../src/domain/numbering';
-import { salePayload } from '../src/domain/payloads';
+import { quotationPayload, salePayload } from '../src/domain/payloads';
 import { formatPoDate, parsePoDate, poLabel, readCustomerPo } from '../src/domain/po';
 import { bankerLines, hasUpi, qrMatrix, qrSvg, upiPayUrl } from '../src/domain/upi';
 import type { CartLine, Customer, Payment, Product, Sale } from '../src/domain/types';
@@ -26,7 +26,7 @@ const product = (over: Partial<Product> = {}): Product => ({
   onHand: 10, available: 10, isActive: true, updatedAt: '', ...over,
 });
 const customer = (over: Partial<Customer> = {}): Customer => ({
-  id: 'c1', name: 'Ravi Traders', phone: '9876543210', creditLimit: 0, outstanding: 0,
+  id: 'c1', name: 'Ravi Traders', phone: '9876543210', creditLimit: 0, outstanding: 0, creditApproved: true,
   isActive: true, updatedAt: '', ...over,
 });
 
@@ -183,6 +183,14 @@ describe('checkout validation', () => {
     ctx.customer = customer({ creditLimit: 0 });
     expect(validateCheckout(ctx).errors).toEqual([]);
   });
+  it('credit only for customers the admin approved', () => {
+    const ctx = base();
+    ctx.payments = [{ method: 'credit', amount: ctx.totals.grandTotal }];
+    ctx.customer = customer({ creditApproved: false });
+    expect(validateCheckout(ctx).errors.some((e) => /not approved for credit/.test(e.message))).toBe(true);
+    ctx.payments = [{ method: 'cash', amount: ctx.totals.grandTotal }];
+    expect(validateCheckout(ctx).errors).toEqual([]);
+  });
   it('price override needs permission', () => {
     expect(validateLine(line({ unitPrice: 500 }), { canOverridePrice: false }).length).toBe(1);
     expect(validateLine(line({ unitPrice: 500 }), { canOverridePrice: true }).length).toBe(0);
@@ -288,5 +296,25 @@ describe('UPI pay QR', () => {
     expect(hasUpi({ upiId: 'no-at-sign' })).toBe(false);
     expect(bankerLines(bank)).toEqual(['HDFC Bank, Model Town', 'Sarthi Enterprises A/c No. 50100123456789 (Current)', 'IFSC HDFC0001234 · UPI sarthi@hdfcbank']);
     expect(bankerLines(null, 'ICICI a/c 123')).toEqual(['ICICI a/c 123']);
+  });
+});
+
+describe('quotations', () => {
+  it('builds the quotation sync payload and links a sale to its quotation', () => {
+    const totals = calculateCart([line()]);
+    const q = {
+      id: 'q1', number: 'Q261014-0001', createdAt: '2026-10-14T05:00:00.000Z', userId: 'u1', userName: 'A',
+      customer: { id: 'c9', name: 'Ravi Traders', phone: '+91 9876543210' }, totals, validUntil: '2026-10-29',
+      notes: 'Bulk', status: 'open' as const, sync: 'pending' as const,
+    };
+    const p = quotationPayload(q, 'u1');
+    expect(p).toMatchObject({ quotation_no: 'Q261014-0001', customer_uuid: 'c9', customer_phone: '9876543210', valid_until: '2026-10-29', erp_user_id: 'u1' });
+    expect(p.items[0]).toMatchObject({ product_uuid: 'p1', quantity: totals.lines[0].quantity });
+    const sale: Sale = {
+      id: 's1', number: 'S261014-0001', createdAt: q.createdAt, userId: 'u1', userName: 'A', customer: null, totals,
+      payments: [{ method: 'cash', amount: totals.grandTotal }], amountPaid: totals.grandTotal, amountDue: 0, returned: {}, sync: 'pending',
+      quotationNo: q.number,
+    };
+    expect(salePayload(sale, 'u1').quotation_no).toBe('Q261014-0001');
   });
 });

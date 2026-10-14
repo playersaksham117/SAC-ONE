@@ -68,6 +68,7 @@ export function mapServerCustomer(c: ServerCustomer): Customer {
     state: c.state,
     creditLimit: Number(c.credit_limit || 0),
     outstanding: Number(c.outstanding || 0),
+    creditApproved: c.credit_approved === true,
     isActive: c.is_active,
     updatedAt: c.updated_at,
   };

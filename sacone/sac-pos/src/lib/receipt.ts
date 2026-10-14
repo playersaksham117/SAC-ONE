@@ -6,7 +6,7 @@ import type { CompanyInfo } from '../api/sacone';
 import { formatNotes } from '../domain/cash';
 import { formatMoney, formatQty } from '../domain/money';
 import { invoiceShareMessage, shareFileName } from '../domain/share';
-import type { Sale } from '../domain/types';
+import type { Quotation, Sale } from '../domain/types';
 import { DocumentShareService } from '../services/documentShare';
 
 /**
@@ -40,6 +40,20 @@ const NO_MARGINS: Print.PageMargins = { top: 0, bottom: 0, left: 0, right: 0 };
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 const METHOD: Record<string, string> = { cash: 'Cash', upi: 'UPI', bank: 'Card / Bank', credit: 'Credit (due)' };
+
+const isQuote = (sale: Sale) => sale.docKind === 'quotation';
+const docTitle = (sale: Sale) => (isQuote(sale) ? 'QUOTATION' : 'TAX INVOICE');
+const validRow = (sale: Sale, cls = '') => (isQuote(sale) && sale.validUntil
+  ? `<tr><td${cls}>Valid until</td><td class="r">${new Date(`${sale.validUntil}T00:00:00`).toLocaleDateString('en-IN')}</td></tr>` : '');
+
+/** A phone quotation shaped like a bill, so every layout can print it (no payments, no pay QR). */
+export function quotationForPrint(q: Quotation): Sale {
+  return {
+    id: q.id, number: q.number, createdAt: q.createdAt, userId: q.userId, userName: q.userName, customer: q.customer,
+    totals: q.totals, payments: [], amountPaid: 0, amountDue: 0, notes: q.notes, returned: {},
+    serverNumber: q.serverNumber, sync: q.sync, docKind: 'quotation', validUntil: q.validUntil,
+  } as Sale;
+}
 
 const billNumber = (sale: Sale, deviceCode?: string) =>
   sale.serverNumber ?? (deviceCode ? `${deviceCode}-${sale.number}` : sale.number);
@@ -91,8 +105,9 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   ${company?.address ? `<div class="c muted">${esc(company.address)}${company.city ? `, ${esc(company.city)}` : ''}</div>` : ''}
   ${company?.gstNumber ? `<div class="c muted">GSTIN ${esc(company.gstNumber)}</div>` : ''}
   ${company?.phone ? `<div class="c muted">Ph ${esc(company.phone)}</div>` : ''}
-  <hr><div class="c"><b>TAX INVOICE</b></div>
-  <table><tr><td>Bill</td><td class="r">${esc(billNumber(sale, deviceCode))}</td></tr>
+  <hr><div class="c"><b>${docTitle(sale)}</b></div>
+  <table><tr><td>${isQuote(sale) ? 'Quotation' : 'Bill'}</td><td class="r">${esc(billNumber(sale, deviceCode))}</td></tr>
+  ${validRow(sale)}
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
   ${sale.customerPo?.number ? `<tr><td>Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
@@ -106,7 +121,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     ${taxRows(sale)}
     <tr class="total"><td>TOTAL</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
   </table><hr>
-  <table>${paymentRows(sale)}</table>
+  ${isQuote(sale) ? '' : `<table>${paymentRows(sale)}</table>`}
   ${bankerLines(invoice.bank, invoice.bankDetails).length && upiQr(sale, company, invoice, 10) ? `<hr><div class="c muted">${bankerLines(invoice.bank, invoice.bankDetails).map(esc).join('<br>')}</div>` : ''}
   ${upiQr(sale, company, invoice, size === '58mm' ? 110 : 140)}
   <hr><div class="c muted">Thank you! Visit again.</div>
@@ -163,8 +178,9 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       ${company?.gstNumber ? `<div class="muted">GSTIN <b>${esc(company.gstNumber)}</b>${company.gstStateCode ? ` · State ${esc(company.gstStateCode)}` : ''}</div>` : ''}
     </div>
     <div class="r">
-      <h2>TAX INVOICE</h2>
-      <table class="meta"><tr><td class="muted">Invoice</td><td class="b r">${esc(billNumber(sale, deviceCode))}</td></tr>
+      <h2>${docTitle(sale)}</h2>
+      <table class="meta"><tr><td class="muted">${isQuote(sale) ? 'Quotation' : 'Invoice'}</td><td class="b r">${esc(billNumber(sale, deviceCode))}</td></tr>
+      ${validRow(sale, ' class="muted"')}
       <tr><td class="muted">Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
       <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
       ${sale.customerPo?.number ? `<tr><td class="muted">Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}</table>
@@ -176,7 +192,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
     ? `<div class="b">${esc(sale.customer.name)}</div>${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
     : '<div class="b">Walk-in customer</div>'}
     </div>
-    <div class="box"><div class="label">Payment</div><table>${paymentRows(sale)}</table></div>
+    ${isQuote(sale) ? '' : `<div class="box"><div class="label">Payment</div><table>${paymentRows(sale)}</table></div>`}
   </div>
   <table class="items">
     <thead><tr>
@@ -229,7 +245,7 @@ export interface InvoiceSettings {
 
 /** UPI pay QR for this bill (balance due, else payer types the amount), or '' when off / no UPI ID. */
 function upiQr(sale: Sale, company: CompanyInfo | null | undefined, invoice: InvoiceSettings, px: number) {
-  if (invoice.printUpiQr === false || !hasUpi(invoice.bank)) return '';
+  if (isQuote(sale) || invoice.printUpiQr === false || !hasUpi(invoice.bank)) return '';
   const url = upiPayUrl({ upiId: invoice.bank.upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: sale.amountDue, note: `Bill ${sale.number}` });
   const caption = sale.amountDue > 0 ? `Scan to pay ${formatMoney(sale.amountDue)}` : 'Scan to pay by UPI';
   return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;
@@ -339,15 +355,15 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div class="row"><div class="head">
     <div class="gst">GSTIN : ${esc(company?.gstNumber || '')}</div>
     <div class="mob">${company?.phone ? `Mobile: ${esc(company.phone)}` : ''}</div>
-    <div class="ttl">Tax Invoice</div>
-    ${invoice.copyLabel ? `<div class="u">${esc(invoice.copyLabel)}</div>` : ''}
-    <div class="b">${sale.amountDue > 0 ? 'CREDIT MEMO' : 'CASH-MEMO'}</div>
+    <div class="ttl">${isQuote(sale) ? 'Quotation' : 'Tax Invoice'}</div>
+    ${invoice.copyLabel && !isQuote(sale) ? `<div class="u">${esc(invoice.copyLabel)}</div>` : ''}
+    <div class="b">${isQuote(sale) ? (sale.validUntil ? `VALID UNTIL ${new Date(`${sale.validUntil}T00:00:00`).toLocaleDateString('en-GB')}` : '') : sale.amountDue > 0 ? 'CREDIT MEMO' : 'CASH-MEMO'}</div>
     <div class="firm">${esc(company?.businessName || 'SACONE')}</div>
     <div class="b">${esc([company?.address, company?.city, company?.state].filter(Boolean).join(', '))}</div>
   </div></div>
   <div class="row">
     <div class="vr" style="width:50%">
-      <div style="display:flex;justify-content:space-between"><span class="b">Invoice No. ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="b">${isQuote(sale) ? 'Quotation No.' : 'Invoice No.'} ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
       <div class="b">E-Way Bill No. :</div>
     </div>
     <div style="width:50%">

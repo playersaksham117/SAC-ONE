@@ -7,6 +7,7 @@
 export const P = {
   terminal: 'pos.terminal.view',
   sell: 'pos.sales.create',
+  quote: 'pos.quotations.create',
   viewSales: 'pos.sales.view',
   returns: 'pos.returns.create',
   approveReturns: 'pos.returns.approve',
@@ -22,6 +23,7 @@ export const P = {
 export type Capability =
   | 'useTerminal'
   | 'sell'
+  | 'quote'
   | 'viewSales'
   | 'returns'
   | 'approveReturns'
@@ -35,6 +37,7 @@ export type Capability =
 const RULES: Record<Capability, string[]> = {
   useTerminal: [P.terminal],
   sell: [P.sell],
+  quote: [P.quote],
   viewSales: [P.viewSales, P.sell],
   returns: [P.returns],
   approveReturns: [P.approveReturns],
@@ -56,6 +59,7 @@ export function can(permissions: readonly string[] | null | undefined, capabilit
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   useTerminal: 'Use POS terminal',
   sell: 'Create sales',
+  quote: 'Make quotations',
   viewSales: 'View sales',
   returns: 'Process returns',
   approveReturns: 'Approve returns & exchanges',

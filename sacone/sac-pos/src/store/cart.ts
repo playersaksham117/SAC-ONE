@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { CartLine, HeldBill, Product } from '../domain/types';
+import type { CartLine, HeldBill, Product, Quotation } from '../domain/types';
 
 /** Value of returned goods that pays for part of the next bill (exchange). */
 export interface ExchangeCredit {
@@ -18,6 +18,12 @@ interface CartState {
   invoiceDiscount: number;
   notes: string;
   exchange: ExchangeCredit | null;
+  /** Sale (bill) or quotation: the toggle on the Sell screen. */
+  mode: 'sale' | 'quotation';
+  /** The phone quotation this cart was loaded from (the sale converts it). */
+  fromQuotation: { id: string; number: string } | null;
+  setMode: (mode: 'sale' | 'quotation') => void;
+  loadQuotation: (q: Quotation) => void;
   add: (p: Product, qty?: number) => void;
   setQty: (productId: string, qty: number) => void;
   updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount'>>) => void;
@@ -40,6 +46,27 @@ export const useCart = create<CartState>()(
       invoiceDiscount: 0,
       notes: '',
       exchange: null,
+      mode: 'sale',
+      fromQuotation: null,
+
+      setMode(mode) {
+        set((s) => (s.exchange && mode === 'quotation' ? {} : { mode, fromQuotation: mode === 'quotation' ? null : s.fromQuotation }));
+      },
+
+      loadQuotation(q) {
+        set({
+          lines: q.totals.lines.map((l) => ({
+            productId: l.productId, name: l.name, sku: l.sku, barcode: l.barcode, hsn: l.hsn, unit: l.unit,
+            quantity: l.quantity, unitPrice: l.unitPrice, listPrice: l.listPrice ?? l.unitPrice, discountAmount: l.discountAmount, gstRate: l.gstRate,
+          })),
+          customerId: q.customer?.id ?? null,
+          invoiceDiscount: q.totals.invoiceDiscount,
+          notes: q.notes ?? '',
+          exchange: null,
+          mode: 'sale',
+          fromQuotation: { id: q.id, number: q.number },
+        });
+      },
 
       add(p, qty = 1) {
         set((s) => {
@@ -92,7 +119,7 @@ export const useCart = create<CartState>()(
       },
 
       clear() {
-        set({ lines: [], customerId: null, invoiceDiscount: 0, notes: '', exchange: null });
+        set({ lines: [], customerId: null, invoiceDiscount: 0, notes: '', exchange: null, fromQuotation: null });
       },
     }),
     { name: 'sacpos.cart', storage: jsonStorage },

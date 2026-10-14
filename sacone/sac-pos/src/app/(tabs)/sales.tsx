@@ -8,7 +8,7 @@ import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Button, Card, Empty, Header, Row, Screen, SearchBar, Segmented, colors, font, space } from '../../ui/components';
 
-type Tab = 'sales' | 'held' | 'returns' | 'payments';
+type Tab = 'sales' | 'quotes' | 'held' | 'returns' | 'payments';
 
 const time = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -20,6 +20,7 @@ export default function Sales() {
   const returns = useLedger((s) => s.returns);
   const payments = useLedger((s) => s.payments);
   const held = useLedger((s) => s.held);
+  const quotations = useLedger((s) => s.quotations ?? []);
 
   useEffect(() => { if (params.tab) setTab(params.tab); }, [params.tab]);
 
@@ -46,6 +47,7 @@ export default function Sales() {
           onChange={setTab}
           options={[
             { value: 'sales', label: `Bills ${sales.length}` },
+            { value: 'quotes', label: `Quotes ${quotations.length}` },
             { value: 'held', label: `Held ${held.length}` },
             { value: 'returns', label: 'Returns' },
             { value: 'payments', label: 'Collections' },
@@ -69,6 +71,29 @@ export default function Sales() {
               <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
                 <Text style={{ color: colors.textMuted, fontSize: font.xs, flex: 1 }} numberOfLines={1}>
                   {time(item.createdAt)} · {item.customer?.name ?? 'Walk-in'} · {item.payments.map((p) => p.method).join('+')}
+                </Text>
+                <DocSyncBadge doc={item} />
+              </Row>
+            </Card>
+          )}
+        />
+      )}
+
+      {tab === 'quotes' && (
+        <FlatList
+          data={quotations}
+          keyExtractor={(q) => q.id}
+          contentContainerStyle={{ padding: space.lg }}
+          ListEmptyComponent={<Empty icon="document-text-outline" title="No quotations" message="Switch the Sell screen to Quotation to make one." />}
+          renderItem={({ item }) => (
+            <Card style={{ marginBottom: space.sm, padding: space.md }} onPress={() => router.push({ pathname: '/quotation/[id]', params: { id: item.id } })}>
+              <Row style={{ justifyContent: 'space-between' }}>
+                <Text style={{ fontWeight: '800', color: colors.text }}>{item.number}{item.status === 'converted' ? ' · sold' : ''}</Text>
+                <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(item.totals.grandTotal)}</Text>
+              </Row>
+              <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
+                <Text style={{ color: colors.textMuted, fontSize: font.xs, flex: 1 }} numberOfLines={1}>
+                  {time(item.createdAt)} · {item.customer?.name ?? 'Walk-in'} · valid to {new Date(`${item.validUntil}T00:00:00`).toLocaleDateString('en-IN')}
                 </Text>
                 <DocSyncBadge doc={item} />
               </Row>

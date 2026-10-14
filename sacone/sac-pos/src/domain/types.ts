@@ -36,6 +36,8 @@ export interface Customer {
   state?: string | null;
   creditLimit: number;
   outstanding: number;
+  /** Credit (udhar) allowed: the firm admin approved this customer in SACONE ERP. */
+  creditApproved?: boolean;
   isActive: boolean;
   isLocal?: boolean;
   updatedAt: string;
@@ -117,9 +119,29 @@ export interface Sale extends SyncMeta {
   /** Set when this bill is the new half of an exchange: the return that paid for part of it. */
   exchange?: { returnId: string; returnNumber: string; credit: number } | null;
   notes?: string | null;
+  /** Local number of the phone quotation this bill was made from (ERP marks it converted). */
+  quotationNo?: string | null;
+  /** Print-only: render this document as a quotation (see quotationForPrint). */
+  docKind?: 'quotation';
+  validUntil?: string;
   /** The customer's purchase order (B2B), printed on the bill and synced to SACONE. */
   customerPo?: { number: string; date: string | null } | null;
   returned: Record<string, number>;   // productId → qty returned
+}
+
+/** A quotation made on this phone (Sale / Quotation toggle); synced to SACONE quotations. */
+export interface Quotation extends SyncMeta {
+  id: string;
+  number: string;
+  createdAt: string;
+  userId: string;
+  userName: string;
+  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode'> | null;
+  totals: CartTotals;
+  validUntil: string; // YYYY-MM-DD
+  notes?: string | null;
+  status: 'open' | 'converted';
+  convertedSaleId?: string | null;
 }
 
 export interface ReturnLine {
