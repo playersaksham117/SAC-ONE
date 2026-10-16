@@ -456,11 +456,12 @@ export default function BankingPage() {
                   {a.isDefault && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-[10px] font-bold uppercase text-emerald-700">Default bank</span>}
                 </h4>
                 <p className="text-xs capitalize text-slate-500">{a.accountType} account{a.bankAccountType ? ` · ${a.bankAccountType === 'od' || a.bankAccountType === 'cc' ? a.bankAccountType.toUpperCase() : a.bankAccountType}` : ''}</p>
-                {(a.bankName || a.upiId) && (
+                {(a.bankName || a.upiId || a.hasUpiQrImage) && (
                   <div className="mt-2 space-y-0.5 text-xs text-slate-600">
                     {a.bankName && <div>{a.bankName}{a.branch ? `, ${a.branch}` : ''}</div>}
                     {a.accountNumberLast4 && <div className="font-mono">A/c ••••{a.accountNumberLast4}{a.ifsc ? ` · ${a.ifsc}` : ''}</div>}
                     {a.upiId && <div>UPI {a.upiId}</div>}
+                    {a.hasUpiQrImage && <div className="text-emerald-700">UPI QR image uploaded</div>}
                   </div>
                 )}
                 {canEdit && (

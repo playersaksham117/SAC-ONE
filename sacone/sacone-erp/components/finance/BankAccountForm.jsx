@@ -9,6 +9,35 @@ const UPI = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
 const KINDS = [['savings', 'Savings'], ['current', 'Current'], ['od', 'Overdraft (OD)'], ['cc', 'Cash Credit (CC)']];
 const OTHER = '__other__';
 
+/** Shrink an uploaded QR picture in the browser (max 700 px, PNG, else JPEG) before saving. */
+function readQrImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { reject(new Error('Choose a PNG, JPG or WebP image of your UPI QR')); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read the image'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file is not a readable image'));
+      img.onload = () => {
+        const scale = Math.min(1, 700 / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        let url = canvas.toDataURL('image/png');
+        if (url.length > 450000) url = canvas.toDataURL('image/jpeg', 0.9);
+        if (url.length > 650000) { reject(new Error('The image is too large even after shrinking; crop it to just the QR')); return; }
+        resolve(url);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
  * Create or edit a cash / bank / UPI account. Bank accounts carry the bank, holder, account number
  * (typed twice), IFSC (fills the bank), branch, account type, UPI ID and the firm's default flag.
@@ -31,9 +60,32 @@ export default function BankAccountForm({ account, onClose, onSaved }) {
     isDefault: Boolean(account?.isDefault),
   }));
   const [bankChoice, setBankChoice] = useState('');
+  // undefined = unchanged, '' = removed, data URL = new upload
+  const [qrImage, setQrImage] = useState(undefined);
+  const [qrPreview, setQrPreview] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  useEffect(() => {
+    if (account?.hasUpiQrImage) {
+      apiRequest(`/api/finance/accounts/${account.id}/upi-qr`).then((r) => setQrPreview(r?.image || null)).catch(() => {});
+    }
+  }, [account]);
+
+  const pickQr = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const url = await readQrImage(file);
+      setQrImage(url);
+      setQrPreview(url);
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   useEffect(() => {
     apiRequest('/api/finance/banks').then((list) => {
@@ -72,6 +124,7 @@ export default function BankAccountForm({ account, onClose, onSaved }) {
       openingBalance: Number(form.openingBalance || 0),
       ...(editing ? {} : { accountType: form.accountType }),
       ...(hasUpi ? { upiId: form.upiId.trim() } : {}),
+      ...(hasUpi && qrImage !== undefined ? { upiQrImage: qrImage } : {}),
       ...(isBank ? {
         bankName: bankChoice === OTHER ? form.bankName.trim() : (bankChoice || form.bankName),
         accountHolder: form.accountHolder.trim(),
@@ -202,6 +255,30 @@ export default function BankAccountForm({ account, onClose, onSaved }) {
           <div>
             <label className="label" htmlFor="ba-upi2">UPI ID</label>
             <input id="ba-upi2" className="input-field" placeholder="yourname@okaxis" value={form.upiId} onChange={(e) => set({ upiId: e.target.value })} />
+          </div>
+        )}
+
+        {hasUpi && (
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="text-sm font-medium">UPI QR image (optional)</div>
+            <p className="mt-1 text-xs text-slate-500">
+              Upload the QR your bank, PhonePe, Paytm or GPay business gave you. Settings → Invoice printing decides whether bills and SAC-POS show this image or a QR made from the UPI ID.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              {qrPreview && qrImage !== '' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrPreview} alt="Uploaded UPI QR" className="h-28 w-28 rounded border border-slate-200 bg-white object-contain" />
+              ) : <div className="flex h-28 w-28 items-center justify-center rounded border border-dashed border-slate-300 text-xs text-slate-400">No image</div>}
+              <div className="flex flex-col gap-2">
+                <label className="btn-secondary !min-h-0 cursor-pointer !px-3 !py-1.5 text-xs">
+                  {qrPreview && qrImage !== '' ? 'Replace image' : 'Upload QR image'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={pickQr} />
+                </label>
+                {qrPreview && qrImage !== '' && (
+                  <button type="button" className="text-left text-xs font-medium text-red-600 hover:underline" onClick={() => { setQrImage(''); }}>Remove image</button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

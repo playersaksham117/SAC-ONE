@@ -100,6 +100,14 @@ function cleanBankDetails(data, accountType, existing) {
     if (upi && !UPI_PATTERN.test(upi)) throw new AppError('UPI ID should look like name@bank', 400, 'BANK_INVALID');
     out.upiId = upi || null;
   }
+  if (data.upiQrImage !== undefined) {
+    const image = String(data.upiQrImage ?? '').trim();
+    if (image && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+      throw new AppError('Upload the UPI QR as a PNG, JPG or WebP image', 400, 'BANK_INVALID');
+    }
+    if (image.length > 700000) throw new AppError('The UPI QR image is too large (keep it under 500 KB)', 400, 'BANK_INVALID');
+    out.upiQrImage = image || null;
+  }
   if (!isBank) return out;
 
   if (data.accountNumber !== undefined) {
@@ -190,6 +198,13 @@ export class FinanceService {
     if (!acct.isActive) throw new AppError('Switch the account on before making it the default bank', 400, 'BANK_INVALID');
     if (!acct.accountNumber || !acct.ifsc) throw new AppError('Add the account number and IFSC before making it the default bank', 400, 'BANK_INVALID');
     accountRepo.setDefault(id);
+  }
+
+  /** The uploaded UPI QR image of an account (for the account form preview). */
+  upiQrImage(id, actor) {
+    authService.checkPermission(actor.permissions, 'finance.ledger.view');
+    if (!accountRepo.findById(id)) throw new AppError('Payment account not found', 404);
+    return { image: accountRepo.getUpiQrImage(id) };
   }
 
   /** Bank list for the account form (IFSC bank codes). */

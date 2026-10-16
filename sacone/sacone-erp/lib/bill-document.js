@@ -348,10 +348,16 @@ function bankerLines(invoice = {}) {
   ].filter(Boolean);
 }
 
-/** UPI pay QR for a sale document, or '' (no UPI ID / not a sale). */
+/** UPI pay QR for a sale document: the uploaded QR image or one made from the UPI ID; '' when off. */
 function upiQr(model, invoice, company, px) {
+  if (!model.pay || invoice?.printUpiQr === false) return '';
+  const image = invoice?.upiQrSource === 'uploaded' ? invoice?.bank?.qrImage : null;
+  if (image && /^data:image\/(png|jpeg|webp);base64,/.test(image)) {
+    const caption = model.pay.amount > 0 ? `Scan & pay ${money(model.pay.amount)}` : 'Scan to pay by UPI';
+    return `<div class="upi"><img src="${esc(image)}" alt="UPI QR" width="${px}" height="${px}" style="display:block;margin:0 auto 2px;object-fit:contain"><div>${esc(caption)}</div></div>`;
+  }
   const upiId = invoice?.bank?.upiId;
-  if (!upiId || !model.pay || invoice.printUpiQr === false) return '';
+  if (!upiId) return '';
   const url = upiPayUrl({ upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: model.pay.amount, note: model.pay.note });
   const caption = model.pay.amount > 0 ? `Scan to pay ${money(model.pay.amount)}` : 'Scan to pay by UPI';
   return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;

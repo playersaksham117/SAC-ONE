@@ -233,11 +233,20 @@ export class PosSyncService {
         allowNegativeStock: repos.systemSettings.getBoolean('allow_negative_stock', false),
         // The terminal's bank (else the firm's default) prints under "Our Bankers" with the UPI QR.
         invoice: {
-          ...invoicePrintSettings(),
-          ...(device.paymentAccountId ? { bank: bankForPrint(repos.financeAccounts.findById(device.paymentAccountId)) || invoicePrintSettings().bank } : {}),
+          ...invoicePrintSettings({ withImage: false }),
+          ...(device.paymentAccountId
+            ? { bank: bankForPrint(repos.financeAccounts.findById(device.paymentAccountId), { withImage: false }) || invoicePrintSettings({ withImage: false }).bank }
+            : {}),
         },
       },
     };
+  }
+
+  /** The uploaded UPI QR image of this terminal's bank (else the default bank), for caching on the phone. */
+  upiQrImage(device) {
+    const acct = (device.paymentAccountId && repos.financeAccounts.findById(device.paymentAccountId)) || repos.financeAccounts.findDefault();
+    const bank = acct ? bankForPrint(acct) : null;
+    return { accountId: acct?.id || null, version: bank?.qrImageVersion || null, image: bank?.qrImage || null };
   }
 
   /* ---------- generic batch runner ---------- */

@@ -15,6 +15,9 @@ export interface PayBank {
   branch?: string | null;
   accountType?: string | null;
   upiId?: string | null;
+  /** An uploaded QR image exists in the ERP (fetched separately, cached by version). */
+  hasQrImage?: boolean;
+  qrImageVersion?: string | null;
 }
 
 const UPI_PATTERN = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;

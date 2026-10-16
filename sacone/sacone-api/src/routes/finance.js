@@ -31,6 +31,9 @@ financeRouter.put('/categories/:id', asyncHandler(async (req, res) => {
 financeRouter.get('/banks', asyncHandler(async (req, res) => {
   sendSuccess(res, financeService.banks());
 }));
+financeRouter.get('/accounts/:id/upi-qr', asyncHandler(async (req, res) => {
+  sendSuccess(res, financeService.upiQrImage(req.params.id, req.actor));
+}));
 financeRouter.get('/accounts', asyncHandler(async (req, res) => {
   sendSuccess(res, financeService.listAccounts(req.query, req.actor));
 }));

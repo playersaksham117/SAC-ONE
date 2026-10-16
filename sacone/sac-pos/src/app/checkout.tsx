@@ -7,6 +7,7 @@ import { readCustomerPo, todayPoText } from '../domain/po';
 import { hasUpi } from '../domain/upi';
 import { useDevice } from '../store/device';
 import { UpiQrModal } from '../ui/UpiQrModal';
+import { useUpiQr } from '../store/upiQr';
 import type { Payment, PaymentMethod } from '../domain/types';
 import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
@@ -76,6 +77,9 @@ export default function Checkout() {
   const deviceInfo = useDevice((s) => s.info);
   const invoiceCfg = deviceInfo?.settings?.invoice;
   const payBank = invoiceCfg?.bank;
+  const cachedQr = useUpiQr((s) => s.image);
+  const qrImage = invoiceCfg?.upiQrSource === 'uploaded' ? cachedQr : null;
+  const canShowQr = Boolean(payBank) && (Boolean(qrImage) || hasUpi(payBank));
   const [poOn, setPoOn] = useState(false);
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState('');
@@ -291,19 +295,19 @@ export default function Checkout() {
           </Card>
         )}
 
-        {upiAmount > 0 && invoiceCfg?.posUpiQr !== false && hasUpi(payBank) ? (
+        {upiAmount > 0 && invoiceCfg?.posUpiQr !== false && canShowQr && payBank ? (
           <Card style={{ marginTop: space.md }}>
             <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '700', color: colors.text }}>UPI {formatMoney(upiAmount)}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{payBank.upiId}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{payBank.upiId || 'Your UPI QR'}</Text>
               </View>
               <Button title="Show QR" icon="qr-code-outline" variant="secondary" size="sm" onPress={() => setQrOpen(true)} testID="show-upi-qr" />
             </Row>
           </Card>
         ) : null}
-        {qrOpen && hasUpi(payBank) ? (
-          <UpiQrModal bank={payBank} amount={upiAmount} payee={deviceInfo?.company?.businessName} note={`${deviceInfo?.device.code || 'POS'} sale`} onClose={() => setQrOpen(false)} />
+        {qrOpen && canShowQr && payBank ? (
+          <UpiQrModal bank={payBank} image={qrImage} amount={upiAmount} payee={deviceInfo?.company?.businessName} note={`${deviceInfo?.device.code || 'POS'} sale`} onClose={() => setQrOpen(false)} />
         ) : null}
 
         <View style={{ marginTop: space.md }}>

@@ -34,6 +34,8 @@ export interface PingResult {
       /** Settings → Invoice printing: print the UPI QR on bills / show the scan-to-pay QR here. */
       printUpiQr?: boolean;
       posUpiQr?: boolean;
+      /** 'uploaded' = show the firm's own QR image; 'generated' = QR from the UPI ID. */
+      upiQrSource?: 'generated' | 'uploaded';
     };
   };
 }
@@ -111,6 +113,10 @@ export const sync = {
     request<Page & { customers: ServerCustomer[] }>(c.baseUrl, '/api/v1/sync/customers', {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
+
+  /** The uploaded UPI QR image of this terminal's bank (only fetched when its version changes). */
+  upiQr: (c: DeviceConfig) =>
+    request<{ accountId: string | null; version: string | null; image: string | null }>(c.baseUrl, '/api/v1/sync/upi-qr', { headers: deviceHeaders(c), timeoutMs: 30000 }),
 
   /** productId → minimum selling price (before GST, after discounts). Full list every sync. */
   minPrices: (c: DeviceConfig) =>

@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import { formatPoDate, poLabel } from '../domain/po';
 import { bankerLines, hasUpi, qrSvg, upiPayUrl, type PayBank } from '../domain/upi';
+import { uploadedQr } from '../store/upiQr';
 import { Platform } from 'react-native';
 import type { CompanyInfo } from '../api/sacone';
 import { formatNotes } from '../domain/cash';
@@ -241,11 +242,18 @@ export interface InvoiceSettings {
   bank?: PayBank | null;
   printUpiQr?: boolean;
   posUpiQr?: boolean;
+  upiQrSource?: 'generated' | 'uploaded';
 }
 
 /** UPI pay QR for this bill (balance due, else payer types the amount), or '' when off / no UPI ID. */
 function upiQr(sale: Sale, company: CompanyInfo | null | undefined, invoice: InvoiceSettings, px: number) {
-  if (isQuote(sale) || invoice.printUpiQr === false || !hasUpi(invoice.bank)) return '';
+  if (isQuote(sale) || invoice.printUpiQr === false) return '';
+  const image = uploadedQr(invoice.upiQrSource);
+  if (image) {
+    const label = sale.amountDue > 0 ? `Scan & pay ${formatMoney(sale.amountDue)}` : 'Scan to pay by UPI';
+    return `<div class="upi"><img src="${image}" alt="UPI QR" width="${px}" height="${px}" style="display:block;margin:0 auto 2px;object-fit:contain"><div>${esc(label)}</div></div>`;
+  }
+  if (!hasUpi(invoice.bank)) return '';
   const url = upiPayUrl({ upiId: invoice.bank.upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: sale.amountDue, note: `Bill ${sale.number}` });
   const caption = sale.amountDue > 0 ? `Scan to pay ${formatMoney(sale.amountDue)}` : 'Scan to pay by UPI';
   return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;

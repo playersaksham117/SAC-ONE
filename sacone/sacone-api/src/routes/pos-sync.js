@@ -24,6 +24,9 @@ const ping = asyncHandler(async (req, res) => sendSuccess(res, posSyncService.pi
 posSyncRouter.get('/ping', ping);
 posSyncRouter.post('/ping', ping);
 posSyncRouter.get('/bootstrap', ping);
+posSyncRouter.get('/upi-qr', asyncHandler(async (req, res) => {
+  sendSuccess(res, posSyncService.upiQrImage(req.device));
+}));
 
 posSyncRouter.post('/push', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.pushAll(req.device, req.body || {}, req));

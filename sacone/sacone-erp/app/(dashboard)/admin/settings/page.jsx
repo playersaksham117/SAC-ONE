@@ -36,6 +36,7 @@ export default function SettingsPage() {
         'invoice.declaration': value('invoice.declaration'),
         'invoice.upi_qr_print': String(value('invoice.upi_qr_print', 'true')) !== 'false' ? 'true' : 'false',
         'pos.upi_qr_screen': String(value('pos.upi_qr_screen', 'true')) !== 'false' ? 'true' : 'false',
+        'invoice.upi_qr_source': value('invoice.upi_qr_source', 'generated') === 'uploaded' ? 'uploaded' : 'generated',
       });
     } catch (err) {
       setError(err.message);
@@ -147,6 +148,13 @@ export default function SettingsPage() {
             <p className="mt-1 text-xs text-slate-500">
               Uses the UPI ID of the default bank (Banking &amp; Cash → Accounts), or of a terminal&apos;s own bank on SAC-POS. The QR asks for the bill&apos;s balance due.
             </p>
+            <label className="mt-3 block text-sm"><span className="label">QR to show</span>
+              <select className="input-field max-w-md" {...field('invoice.upi_qr_source')}>
+                <option value="generated">Generate from the UPI ID (amount filled in for the customer)</option>
+                <option value="uploaded">Use the uploaded QR image (customer types the amount)</option>
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">Upload the image on the bank in Banking &amp; Cash → Accounts → Edit. Without an uploaded image the generated QR is used.</span>
+            </label>
             {[
               ['invoice.upi_qr_print', 'Print the UPI pay QR on bills', 'Under “Our Bankers” on A4 / A5 invoices and at the foot of 58 / 80 mm receipts, from the ERP and SAC-POS.'],
               ['pos.upi_qr_screen', 'Let SAC-POS show a scan-to-pay QR', 'At checkout, when the payment is UPI, the cashier can open a QR with the bill amount for the customer to scan.'],

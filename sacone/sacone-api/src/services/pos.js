@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
@@ -150,10 +151,18 @@ export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStat
 }
 
 /** Defaults match migration 028; empty values print nothing. */
-/** Bank details printed under "Our Bankers" (and used for the UPI pay QR), or null. */
-export function bankForPrint(acct) {
-  if (!acct || !(acct.accountNumber || acct.upiId)) return null;
+/**
+ * Bank details printed under "Our Bankers" (and used for the UPI pay QR), or null.
+ * withImage: include the uploaded QR image; phones instead get qrImageVersion and fetch it once.
+ */
+export function bankForPrint(acct, { withImage = true } = {}) {
+  if (!acct) return null;
+  const image = acct.hasUpiQrImage ? repos.financeAccounts.getUpiQrImage(acct.id) : null;
+  if (!(acct.accountNumber || acct.upiId || image)) return null;
   return {
+    hasQrImage: Boolean(image),
+    qrImageVersion: image ? crypto.createHash('sha1').update(image).digest('hex').slice(0, 12) : null,
+    ...(withImage && image ? { qrImage: image } : {}),
     id: acct.id,
     name: acct.name,
     bankName: acct.bankName,
@@ -166,7 +175,7 @@ export function bankForPrint(acct) {
   };
 }
 
-export function invoicePrintSettings() {
+export function invoicePrintSettings({ withImage = true } = {}) {
   const get = (key, fallback = '') => {
     const value = settingsRepo.get(key)?.value;
     return value === undefined || value === null ? fallback : String(value);
@@ -175,7 +184,9 @@ export function invoicePrintSettings() {
     layout: get('invoice.layout', 'classic') === 'modern' ? 'modern' : 'classic',
     copyLabel: get('invoice.copy_label', 'ORIGINAL FOR RECIPIENT'),
     bankDetails: get('invoice.bank_details'),
-    bank: bankForPrint(repos.financeAccounts.findDefault()),
+    bank: bankForPrint(repos.financeAccounts.findDefault(), { withImage }),
+    // 'generated' = QR made from the UPI ID with the amount filled in; 'uploaded' = the firm's own QR image.
+    upiQrSource: get('invoice.upi_qr_source', 'generated') === 'uploaded' ? 'uploaded' : 'generated',
     // Settings → Invoice printing: UPI pay QR on printed bills, and the scan-to-pay QR on SAC-POS.
     printUpiQr: settingsRepo.getBoolean('invoice.upi_qr_print', true),
     posUpiQr: settingsRepo.getBoolean('pos.upi_qr_screen', true),

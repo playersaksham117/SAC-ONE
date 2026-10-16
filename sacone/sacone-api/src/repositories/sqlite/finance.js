@@ -46,6 +46,7 @@ function mapAccount(row) {
     branch: row.branch || null,
     bankAccountType: row.bank_account_type || null,
     upiId: row.upi_id || null,
+    hasUpiQrImage: Boolean(row.upi_qr_image),
     isDefault: Boolean(row.is_default),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -162,6 +163,11 @@ export class FinancePaymentAccountRepository {
     `).get());
   }
 
+  /** The uploaded UPI QR image (data URL) of an account, or null. */
+  getUpiQrImage(id) {
+    return getDatabase().prepare('SELECT upi_qr_image FROM financial_payment_accounts WHERE id = ?').get(id)?.upi_qr_image || null;
+  }
+
   clearDefault(id) {
     getDatabase().prepare('UPDATE financial_payment_accounts SET is_default = 0, updated_at = ? WHERE id = ?').run(nowIso(), id);
   }
@@ -179,7 +185,7 @@ export class FinancePaymentAccountRepository {
   updateBankDetails(id, bank) {
     const cols = {
       bankName: 'bank_name', accountHolder: 'account_holder', accountNumber: 'account_number', ifsc: 'ifsc',
-      branch: 'branch', bankAccountType: 'bank_account_type', upiId: 'upi_id',
+      branch: 'branch', bankAccountType: 'bank_account_type', upiId: 'upi_id', upiQrImage: 'upi_qr_image',
     };
     const keys = Object.keys(cols).filter((k) => bank[k] !== undefined);
     if (!keys.length) return;

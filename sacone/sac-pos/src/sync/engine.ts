@@ -7,6 +7,7 @@ import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
 import { deviceConfig, useDevice } from '../store/device';
 import { useLedger } from '../store/ledger';
+import { useUpiQr } from '../store/upiQr';
 import { currentUser, useSession } from '../store/session';
 import { serverUrlCandidates } from '../lib/serverDiscovery';
 
@@ -102,6 +103,19 @@ async function runCycle(): Promise<void> {
       const recovered = e instanceof ApiError && e.isNetwork ? await recoverServer(cfg) : null;
       if (!recovered) throw e;
       cfg = recovered;
+    }
+
+    // 1b. the uploaded UPI QR image, only when the ERP has a new one
+    const bank = useDevice.getState().info?.settings?.invoice?.bank;
+    const wantVersion = bank?.hasQrImage ? bank.qrImageVersion ?? null : null;
+    if (wantVersion !== useUpiQr.getState().version) {
+      if (!wantVersion) useUpiQr.getState().set(null, null);
+      else {
+        try {
+          const qr = await sync.upiQr(cfg);
+          useUpiQr.getState().set(qr.version, qr.image);
+        } catch { /* keep the old image; retry next sync */ }
+      }
     }
 
     // 2. RBAC refresh for all staff profiles on this phone
