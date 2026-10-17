@@ -38,6 +38,8 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const canCreate = checkPermission('core.users.create');
+  // The group owner can use every terminal; others need a role with SAC-POS access.
+  const posAccess = (user) => user.roleSlug === 'owner_admin' || Boolean(roles.find((r) => r.id === user.roleId)?.canUsePos);
   const canEdit = checkPermission('core.users.edit');
 
   const loadData = async (silent = false) => {
@@ -142,7 +144,7 @@ export default function UsersPage() {
     <RequirePermission permission="core.users.view">
       <PageHeader
         title="User Management"
-        description={`Users of ${session?.firm?.name || 'this firm'}. Each firm has its own users and roles; staff sign in to their own firm only.`}
+        description={`Users of ${session?.firm?.name || 'this firm'}. Each firm has its own users and roles; staff sign in to their own firm only. SAC-POS staff are added here too: they sign in to the terminal with the same email and password.`}
         actions={canCreate && <button type="button" className="btn-primary" onClick={openCreate}>+ Add User</button>}
       />
 
@@ -155,6 +157,7 @@ export default function UsersPage() {
               <th className="px-4 py-3 text-left font-medium text-slate-600">Name</th>
               <th className="px-4 py-3 text-left font-medium text-slate-600">Email</th>
               <th className="px-4 py-3 text-left font-medium text-slate-600">Role</th>
+              <th className="px-4 py-3 text-left font-medium text-slate-600" title="The role includes POS terminal access">SAC-POS</th>
               <th className="px-4 py-3 text-left font-medium text-slate-600">Status</th>
               <th className="px-4 py-3 text-left font-medium text-slate-600">Last Login</th>
               {canEdit && <th className="px-4 py-3 text-right font-medium text-slate-600">Actions</th>}
@@ -166,6 +169,11 @@ export default function UsersPage() {
                 <td className="px-4 py-3 font-medium">{user.fullName}</td>
                 <td className="px-4 py-3 text-slate-600">{user.email}</td>
                 <td className="px-4 py-3">{user.roleName}</td>
+                <td className="px-4 py-3">
+                  {posAccess(user)
+                    ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Can use</span>
+                    : <span className="text-xs text-slate-400">—</span>}
+                </td>
                 <td className="px-4 py-3"><StatusBadge active={user.isActive} /></td>
                 <td className="px-4 py-3 text-slate-500">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}</td>
                 {canEdit && (
@@ -228,12 +236,13 @@ export default function UsersPage() {
               <select id="roleId" className="input-field" value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} required>
                 <option value="">Select role</option>
                 {roles.map((role) => (
-                  <option key={role.id} value={role.id}>{role.name}</option>
+                  <option key={role.id} value={role.id}>{role.name}{role.canUsePos ? ' · SAC-POS' : ''}</option>
                 ))}
               </select>
               {form.roleId && (
                 <p className="mt-1 text-xs text-slate-500">
                   {roles.find((r) => r.id === form.roleId)?.permissionCount ?? 0} permissions ·{' '}
+                  {roles.find((r) => r.id === form.roleId)?.canUsePos ? 'can sign in to SAC-POS · ' : 'no SAC-POS access · '}
                   <Link href={`/admin/roles/${form.roleId}`} className="text-brand-600 hover:underline">view role</Link>
                 </p>
               )}

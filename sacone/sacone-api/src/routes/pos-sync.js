@@ -133,16 +133,10 @@ posDeviceAdminRouter.post('/inbox/:id/reject', asyncHandler(async (req, res) => 
   sendSuccess(res, posSyncService.rejectInboxItem(req.params.id, req.body?.reason, req.actor));
 }));
 
-// POS PIN users
-posDeviceAdminRouter.get('/users', asyncHandler(async (req, res) => {
-  sendSuccess(res, posDeviceAdminService.listUsers(req.actor));
-}));
-posDeviceAdminRouter.post('/users', asyncHandler(async (req, res) => {
-  sendSuccess(res, posDeviceAdminService.createUser(req.body, req.actor, req), 201);
-}));
-posDeviceAdminRouter.put('/users/:id', asyncHandler(async (req, res) => {
-  sendSuccess(res, posDeviceAdminService.updateUser(req.params.id, req.body, req.actor, req));
-}));
+// SAC-POS staff are ERP users: add and manage them in User Management (/api/users).
+posDeviceAdminRouter.all(['/users', '/users/:id'], (req, res) => {
+  res.status(410).json({ success: false, error: { message: 'POS users are managed in User Management. Give the user a role with SAC-POS access.', code: 'MOVED_TO_USERS' } });
+});
 
 posDeviceAdminRouter.put('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posDeviceAdminService.update(req.params.id, req.body, req.actor, req));

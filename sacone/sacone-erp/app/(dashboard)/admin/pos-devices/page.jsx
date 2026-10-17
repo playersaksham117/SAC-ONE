@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { apiRequest, getApiBase } from '../../../../lib/api';
 import { useLiveRefresh } from '../../../../lib/live';
 import { RequirePermission, useAuth } from '../../../../lib/auth-context';
@@ -298,135 +299,6 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
   );
 }
 
-/* ───────────────────────── POS users tab ───────────────────────── */
-
-function PosUsersTab({ posUsers, warehouses, onChanged, setError }) {
-  const { checkPermission } = useAuth();
-  const [form, setForm] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  const save = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setError('');
-    try {
-      const body = { ...form, warehouseId: form.warehouseId || null };
-      if (!body.pin) delete body.pin;
-      if (form.id) await apiRequest(`/api/pos-devices/users/${form.id}`, { method: 'PUT', body: JSON.stringify(body) });
-      else await apiRequest('/api/pos-devices/users', { method: 'POST', body: JSON.stringify(body) });
-      setForm(null);
-      await onChanged();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggle = async (u) => {
-    try {
-      await apiRequest(`/api/pos-devices/users/${u.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !u.isActive }) });
-      await onChanged();
-    } catch (err) { setError(err.message); }
-  };
-
-  return (
-    <>
-      <Toolbar className="mb-4 justify-between">
-        <p className="text-sm text-slate-600">PIN logins for terminals. Changes reach every device on its next sync — terminals log in offline.</p>
-        {checkPermission('pos.devices.create') && (
-          <button type="button" className="btn-primary" onClick={() => setForm({ loginId: '', displayName: '', pin: '', role: 'cashier', warehouseId: '' })}>
-            Add POS user
-          </button>
-        )}
-      </Toolbar>
-
-      <SectionCard noPadding>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-2">Login ID</th>
-                <th className="px-4 py-2">Name</th>
-                <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2">Terminals</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {posUsers.map((u) => (
-                <tr key={u.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-mono text-xs">{u.loginId}</td>
-                  <td className="px-4 py-2">{u.displayName}</td>
-                  <td className="px-4 py-2 capitalize">{u.role}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{u.warehouseName || 'All warehouses'}</td>
-                  <td className="px-4 py-2"><StatusBadge active={u.isActive} /></td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right">
-                    {checkPermission('pos.devices.edit') && (
-                      <>
-                        <button type="button" className="text-xs font-medium text-brand-600" onClick={() => setForm({ ...u, pin: '', warehouseId: u.warehouseId || '' })}>Edit</button>
-                        <button type="button" className="ml-3 text-xs font-medium text-slate-500" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {!posUsers.length && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">No POS users yet</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
-
-      <Modal
-        open={Boolean(form)}
-        title={form?.id ? `Edit ${form.loginId}` : 'Add POS user'}
-        onClose={() => setForm(null)}
-        footer={(
-          <>
-            <button type="button" className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
-            <button type="submit" form="posuser-form" className="btn-primary" disabled={saving}>Save</button>
-          </>
-        )}
-      >
-        {form && (
-          <form id="posuser-form" onSubmit={save} className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="pu-login">Login ID</label>
-              <input id="pu-login" className="input-field uppercase" required disabled={Boolean(form.id)} maxLength={20} value={form.loginId} onChange={(e) => setForm({ ...form, loginId: e.target.value })} />
-            </div>
-            <div>
-              <label className="label" htmlFor="pu-pin">{form.id ? 'New PIN (optional)' : 'PIN (4–8 digits)'}</label>
-              <input id="pu-pin" className="input-field" inputMode="numeric" pattern="\d{4,8}" required={!form.id} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label" htmlFor="pu-name">Display name</label>
-              <input id="pu-name" className="input-field" required value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
-            </div>
-            <div>
-              <label className="label" htmlFor="pu-role">Role</label>
-              <select id="pu-role" className="input-field" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="cashier">Cashier</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="pu-wh">Terminals</label>
-              <select id="pu-wh" className="input-field" value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
-                <option value="">All warehouses</option>
-                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name} only</option>)}
-              </select>
-            </div>
-          </form>
-        )}
-      </Modal>
-    </>
-  );
-}
-
 /* ───────────────────────── Sync inbox tab ───────────────────────── */
 
 function InboxTab({ devices, onChanged, setError, setMessage }) {
@@ -561,7 +433,6 @@ function InboxTab({ devices, onChanged, setError, setMessage }) {
 export default function PosDevicesPage() {
   const [tab, setTab] = useState('devices');
   const [devices, setDevices] = useState([]);
-  const [posUsers, setPosUsers] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [users, setUsers] = useState([]);
   const [banks, setBanks] = useState([]);
@@ -574,13 +445,11 @@ export default function PosDevicesPage() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [d, pu, s] = await Promise.all([
+      const [d, s] = await Promise.all([
         apiRequest('/api/pos-devices'),
-        apiRequest('/api/pos-devices/users'),
         apiRequest('/api/pos-devices/inbox/summary'),
       ]);
       setDevices(d);
-      setPosUsers(pu);
       setSummary(s);
     } catch (err) {
       setError(err.message);
@@ -597,7 +466,7 @@ export default function PosDevicesPage() {
   }, [load]);
 
   // Device status (last seen, last sync) and the inbox summary follow every terminal sync.
-  useLiveRefresh(load, { tables: ['pos_devices', 'pos_users', 'pos_sync_inbox', 'warehouses', 'users'] });
+  useLiveRefresh(load, { tables: ['pos_devices', 'pos_sync_inbox', 'warehouses', 'users'] });
 
   const totals = useMemo(() => {
     const by = (status) => summary.filter((r) => r.status === status).reduce((s, r) => s + r.count, 0);
@@ -616,6 +485,10 @@ export default function PosDevicesPage() {
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
       <ServerUrlCard />
+      <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+        Terminal staff are managed in <Link href="/admin/users" className="font-semibold underline">User Management</Link>: add the person there with a role that has SAC-POS access,
+        and they sign in on the phone with that email and password. Disable the user there to block them on every terminal.
+      </div>
       <SyncKeyBanner secret={secret} onClose={() => setSecret(null)} />
 
       {loading ? <SkeletonGrid /> : (
@@ -633,7 +506,6 @@ export default function PosDevicesPage() {
               onChange={setTab}
               tabs={[
                 { id: 'devices', label: 'Devices' },
-                { id: 'users', label: 'POS users' },
                 { id: 'inbox', label: 'Sync inbox', badge: totals.failed + totals.review },
               ]}
             />
@@ -641,9 +513,6 @@ export default function PosDevicesPage() {
 
           {tab === 'devices' && (
             <DevicesTab devices={devices} warehouses={warehouses} users={users} banks={banks} onChanged={load} onSecret={setSecret} setError={setError} />
-          )}
-          {tab === 'users' && (
-            <PosUsersTab posUsers={posUsers} warehouses={warehouses} onChanged={load} setError={setError} />
           )}
           {tab === 'inbox' && (
             <InboxTab devices={devices} onChanged={load} setError={setError} setMessage={setMessage} />

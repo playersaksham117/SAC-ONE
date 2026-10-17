@@ -403,10 +403,15 @@ export class RoleService {
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.roles.view');
     const roles = roleRepo.findAll({ includeInactive: true, firmId: this.#firm() });
-    return roles.map((role) => ({
-      ...role,
-      permissionCount: roleRepo.getPermissions(role.id).length,
-    }));
+    return roles.map((role) => {
+      const perms = roleRepo.getPermissions(role.id);
+      return {
+        ...role,
+        permissionCount: perms.length,
+        // Staff with this role can sign in to SAC-POS terminals with their ERP login.
+        canUsePos: perms.some((p) => p.permission_key === 'pos.terminal.view'),
+      };
+    });
   }
 
   getById(id, actor) {

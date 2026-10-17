@@ -1071,60 +1071,6 @@ export class PosDeviceAdminService {
     return device;
   }
 
-  /* POS PIN users */
-
-  listUsers(actor) {
-    authService.checkPermission(actor.permissions, 'pos.devices.view');
-    return posUserRepo.findAll();
-  }
-
-  createUser(data, actor, req) {
-    authService.checkPermission(actor.permissions, 'pos.devices.create');
-    const loginId = str(data.loginId).toUpperCase();
-    if (!/^[A-Z0-9_-]{2,20}$/.test(loginId)) throw new AppError('Login ID must be 2–20 letters/digits', 400);
-    if (posUserRepo.loginIdExists(loginId)) throw new AppError('Login ID already exists', 409);
-    if (!str(data.displayName)) throw new AppError('Display name is required', 400);
-    const pinHash = this.#hashPin(data.pin, { required: true });
-    const user = posUserRepo.create({
-      loginId, displayName: str(data.displayName), pinHash, role: this.#role(data.role),
-      permissions: Array.isArray(data.permissions) ? data.permissions : null,
-      warehouseId: data.warehouseId || null, linkedUserId: data.linkedUserId || null, createdBy: actor.user.id,
-    });
-    this.#audit(actor, req, 'create_pos_user', user.id, { loginId, role: user.role });
-    return user;
-  }
-
-  updateUser(id, data, actor, req) {
-    authService.checkPermission(actor.permissions, 'pos.devices.edit');
-    if (!posUserRepo.findById(id)) throw new AppError('POS user not found', 404);
-    const patch = {
-      displayName: data.displayName !== undefined ? str(data.displayName) : undefined,
-      role: data.role !== undefined ? this.#role(data.role) : undefined,
-      permissions: data.permissions,
-      warehouseId: data.warehouseId,
-      linkedUserId: data.linkedUserId,
-      isActive: data.isActive,
-    };
-    if (data.pin) patch.pinHash = this.#hashPin(data.pin, { required: true });
-    const user = posUserRepo.update(id, patch);
-    this.#audit(actor, req, 'update_pos_user', id, { ...data, pin: data.pin ? '••••' : undefined });
-    return user;
-  }
-
-  #role(value) {
-    const role = str(value || 'cashier').toLowerCase();
-    if (!['admin', 'manager', 'cashier'].includes(role)) throw new AppError('Role must be admin, manager or cashier', 400);
-    return role;
-  }
-
-  /** sha256(pin) — identical to BillEase POS AuthService.hashPin so terminals can verify offline. */
-  #hashPin(pin, { required }) {
-    const value = str(pin);
-    if (!value && required) throw new AppError('PIN is required', 400);
-    if (!/^\d{4,8}$/.test(value)) throw new AppError('PIN must be 4–8 digits', 400);
-    return hashApiKey(value);
-  }
-
   #audit(actor, req, action, recordId, newValue) {
     auditRepo.create({
       userId: actor.user.id,
