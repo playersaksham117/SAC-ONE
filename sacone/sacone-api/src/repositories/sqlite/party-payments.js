@@ -704,7 +704,8 @@ export class CashBookRepository {
   }
 
   list({ accountType, paymentAccountId, dateFrom, dateTo, direction, firmId, limit = 200, offset = 0 } = {}) {
-    const where = [`e.status = 'posted'`];
+    // A reversed entry stays in the book beside its reversal, so the pair nets to zero.
+    const where = [`e.status IN ('posted', 'reversed')`];
     const params = [];
     if (accountType) { where.push('a.account_type = ?'); params.push(accountType); }
     if (paymentAccountId) { where.push('e.payment_account_id = ?'); params.push(paymentAccountId); }
@@ -742,7 +743,8 @@ export class CashBookRepository {
   }
 
   summaryByAccountType({ dateFrom, dateTo } = {}) {
-    const where = [`e.status = 'posted'`];
+    // A reversed entry stays in the book beside its reversal, so the pair nets to zero.
+    const where = [`e.status IN ('posted', 'reversed')`];
     const params = [];
     if (dateFrom) { where.push('e.entry_date >= ?'); params.push(dateFrom); }
     if (dateTo) { where.push('e.entry_date <= ?'); params.push(dateTo); }
@@ -781,7 +783,7 @@ export class CashBookRepository {
         COALESCE(SUM(CASE WHEN (? = '' OR e.entry_date >= ?) AND (? = '' OR e.entry_date <= ?) AND e.direction = 'out' THEN e.amount ELSE 0 END), 0) AS outflow,
         COUNT(*) AS entries
       FROM (${BOOK_SOURCE}) e
-      WHERE e.status = 'posted'
+      WHERE e.status IN ('posted', 'reversed')
       GROUP BY e.payment_account_id
     `).all(dateFrom || '', dateFrom || '', dateFrom || '', dateFrom || '', dateTo || '', dateTo || '',
       dateFrom || '', dateFrom || '', dateTo || '', dateTo || '');

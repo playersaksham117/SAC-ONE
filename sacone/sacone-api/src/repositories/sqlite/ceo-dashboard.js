@@ -404,7 +404,7 @@ export class CeoDashboardRepository {
         SELECT a.account_type, e.direction, COALESCE(SUM(e.amount), 0) as total
         FROM cash_book_entries e
         JOIN financial_payment_accounts a ON a.id = e.payment_account_id
-        WHERE e.status = 'posted'
+        WHERE e.status IN ('posted', 'reversed') -- a reversal and what it reversed net to zero
           AND e.entry_date >= date(?)
           AND e.entry_date < date(?)
         GROUP BY a.account_type, e.direction
