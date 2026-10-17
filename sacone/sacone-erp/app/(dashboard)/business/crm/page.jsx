@@ -9,6 +9,7 @@ import CustomerReceiptPanel from '../../../../components/parties/CustomerReceipt
 import SupplierPaymentPanel from '../../../../components/parties/SupplierPaymentPanel';
 import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
+import PartyCsvImport from '../../../../components/parties/PartyCsvImport';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -29,6 +30,7 @@ export default function PartiesPage() {
   // Credit (udhar) approval is for the firm admin or the group owner.
   const canApproveCredit = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug) && checkPermission('parties.customers.edit');
   const [creditFilter, setCreditFilter] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
   const canViewCustomers = checkPermission('parties.customers.view');
   const canViewSuppliers = checkPermission('parties.suppliers.view');
   const canCreateCustomer = checkPermission('parties.customers.create');
@@ -321,6 +323,11 @@ export default function PartiesPage() {
         actions={(
           <div className="flex flex-wrap gap-2">
             {canCreate && hubTab === 'master' && (
+              <button type="button" className="btn-secondary" onClick={() => { setMessage(''); setImportOpen(true); }}>
+                Import CSV
+              </button>
+            )}
+            {canCreate && hubTab === 'master' && (
               <button type="button" className="btn-primary" onClick={openCreate}>
                 {tab === 'customers' ? 'New customer' : 'New supplier'}
               </button>
@@ -331,6 +338,16 @@ export default function PartiesPage() {
 
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
+      {importOpen && (
+        <PartyCsvImport
+          kind={tab}
+          onClose={() => setImportOpen(false)}
+          onImported={async (r) => {
+            setMessage(`Import complete: ${r.created} created, ${r.updated} updated${r.errors?.length ? `, ${r.errors.length} with errors` : ''}.`);
+            await loadList(true);
+          }}
+        />
+      )}
 
       <div className="mb-3 flex flex-wrap gap-2">
         {[

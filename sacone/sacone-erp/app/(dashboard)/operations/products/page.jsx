@@ -7,6 +7,7 @@ import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
 import MinPricePanel from '../../../../components/products/MinPricePanel';
 import ProductCsvImport from '../../../../components/products/ProductCsvImport';
+import LabelPrintDialog from '../../../../components/products/LabelPrintDialog';
 
 const EMPTY_PRODUCT = {
   name: '',
@@ -235,6 +236,7 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState({
@@ -745,6 +747,7 @@ export default function ProductsPage() {
                         {selectedIds.length === 1 ? 'Edit' : 'Bulk Edit'}
                       </button>
                     )}
+                    <button type="button" className="btn-secondary" onClick={() => setLabelsOpen(true)}>🏷 Print labels</button>
                     {canDelete && (
                       <button type="button" className="btn-danger" onClick={handleBulkDelete} disabled={saving}>
                         Delete
@@ -1261,6 +1264,9 @@ export default function ProductsPage() {
         </ul>
       </Modal>
 
+      {labelsOpen && selectedProducts.length > 0 && (
+        <LabelPrintDialog products={selectedProducts} onClose={() => setLabelsOpen(false)} />
+      )}
       {importOpen && (
         <ProductCsvImport
           onClose={() => setImportOpen(false)}

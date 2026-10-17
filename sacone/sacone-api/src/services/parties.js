@@ -1,4 +1,5 @@
 import { AppError } from '../core/http.js';
+import { csvBool, csvNumber, parseCsv } from '../core/csv.js';
 import { repos } from '../repositories/index.js';
 import { isFirmAdmin, authService } from './index.js';
 
@@ -21,6 +22,32 @@ function getRequestMeta(req) {
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
+
+/** Shared row loop for customer / supplier CSV imports: update the matching party, else create. */
+function importParties(csvText, { repo, map, create, update, label }) {
+  const { rows } = parseCsv(csvText, { required: [['name', `${label.toLowerCase()}_name`]] });
+  const results = { created: 0, updated: 0, errors: [] };
+  for (const { line, data } of rows) {
+    try {
+      const payload = map(data);
+      if (!payload.name) throw new AppError(`${label} name is required`, 400);
+      const existingId = repo.findImportMatch(payload);
+      if (existingId) {
+        update(existingId, payload);
+        results.updated += 1;
+      } else {
+        create(payload);
+        results.created += 1;
+      }
+    } catch (err) {
+      results.errors.push({ row: line, name: data.name || data[`${label.toLowerCase()}_name`] || null, message: err.message });
+    }
+  }
+  return results;
+}
+
+const gstOf = (d) => (d.gst_number || d.gstin || d.gst || '').replace(/\s/g, '').toUpperCase() || undefined;
+const text = (v) => (String(v ?? '').trim() || undefined);
 
 export class CustomerService {
   list(filters, actor) {
@@ -151,6 +178,52 @@ export class CustomerService {
       return customerRepo.setCreditApproval(customer.id, { approved: true, userId: actor.user.id });
     }
     return customer;
+  }
+
+  /**
+   * Import customers from CSV (name required). Matches existing customers by code, GSTIN or mobile
+   * and updates them; others are created. credit_approved is honoured only for the firm admin.
+   */
+  importCsv(csvText, actor, req) {
+    authService.checkPermission(actor.permissions, 'parties.customers.create');
+    const admin = isFirmAdmin(actor.user);
+    const results = importParties(csvText, {
+      repo: customerRepo,
+      label: 'Customer',
+      map: (d) => ({
+        code: text(d.code || d.customer_code)?.toUpperCase(),
+        name: text(d.name || d.customer_name),
+        phone: text(d.phone || d.mobile),
+        email: text(d.email),
+        gstNumber: gstOf(d),
+        gstStateCode: text(d.gst_state_code || d.state_code),
+        address: text(d.address),
+        city: text(d.city),
+        state: text(d.state),
+        creditLimit: csvNumber(d.credit_limit),
+        notes: text(d.notes),
+        isActive: csvBool(d.is_active, undefined),
+        creditApproved: csvBool(d.credit_approved, undefined),
+      }),
+      create: (row) => {
+        const { isActive, creditApproved, ...rest } = row;
+        const created = this.create({ ...rest, sourceChannel: 'import', creditApproved: admin && creditApproved === true }, actor, req);
+        if (isActive === false) this.update(created.id, { isActive: false }, actor, req);
+      },
+      update: (id, row) => {
+        const { creditApproved, code, ...rest } = row;
+        const clean = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+        this.update(id, clean, actor, req);
+        if (admin && creditApproved !== undefined && creditApproved !== customerRepo.findById(id).creditApproved) {
+          this.setCreditApproval(id, { approved: creditApproved }, actor, req);
+        }
+      },
+    });
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName, action: 'import', module: 'parties',
+      recordType: 'customer', newValue: results, ...getRequestMeta(req),
+    });
+    return results;
   }
 
   /** Firm admin approves (or withdraws) credit for a customer, optionally setting the limit. */
@@ -339,6 +412,44 @@ export class SupplierService {
   }
 
   /** Record a purchase bill (also used later by Purchases module) */
+  /** Import suppliers from CSV (name required); matches by code, GSTIN or mobile and updates them. */
+  importCsv(csvText, actor, req) {
+    authService.checkPermission(actor.permissions, 'parties.suppliers.create');
+    const results = importParties(csvText, {
+      repo: supplierRepo,
+      label: 'Supplier',
+      map: (d) => ({
+        code: text(d.code || d.supplier_code)?.toUpperCase(),
+        name: text(d.name || d.supplier_name),
+        contactName: text(d.contact_name || d.contact_person || d.contact),
+        phone: text(d.phone || d.mobile),
+        email: text(d.email),
+        gstNumber: gstOf(d),
+        gstStateCode: text(d.gst_state_code || d.state_code),
+        address: text(d.address),
+        city: text(d.city),
+        state: text(d.state),
+        paymentTerms: text(d.payment_terms || d.terms),
+        notes: text(d.notes),
+        isActive: csvBool(d.is_active, undefined),
+      }),
+      create: (row) => {
+        const { isActive, ...rest } = row;
+        const created = this.create(rest, actor, req);
+        if (isActive === false) this.update(created.id, { isActive: false }, actor, req);
+      },
+      update: (id, row) => {
+        const { code, ...rest } = row;
+        this.update(id, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), actor, req);
+      },
+    });
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName, action: 'import', module: 'parties',
+      recordType: 'supplier', newValue: results, ...getRequestMeta(req),
+    });
+    return results;
+  }
+
   createBill(supplierId, data, actor, req) {
     authService.checkPermission(actor.permissions, 'parties.suppliers.edit');
     const supplier = this.getById(supplierId, actor);

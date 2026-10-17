@@ -28,6 +28,10 @@ customerRouter.get('/outstanding', asyncHandler(async (req, res) => {
   sendSuccess(res, partyStatementService.customerOutstanding(req.query, req.actor));
 }));
 
+customerRouter.post('/import', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerService.importCsv(req.body?.csv, req.actor, req));
+}));
+
 customerRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, customerService.create(req.body, req.actor, req), 201);
 }));
@@ -92,6 +96,10 @@ supplierRouter.get('/lookup', asyncHandler(async (req, res) => {
 
 supplierRouter.get('/outstanding', asyncHandler(async (req, res) => {
   sendSuccess(res, partyStatementService.supplierOutstanding(req.query, req.actor));
+}));
+
+supplierRouter.post('/import', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierService.importCsv(req.body?.csv, req.actor, req));
 }));
 
 supplierRouter.post('/', asyncHandler(async (req, res) => {

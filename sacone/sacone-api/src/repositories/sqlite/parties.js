@@ -102,7 +102,30 @@ function mapSupplierPayment(row) {
   };
 }
 
+/** Existing party for an imported row: same code, else same GSTIN, else same mobile (last 10 digits). */
+function findPartyMatch(table, { code, gstNumber, phone }) {
+  const db = getDatabase();
+  if (code) {
+    const r = db.prepare(`SELECT id FROM ${table} WHERE UPPER(code) = UPPER(?)`).get(code);
+    if (r) return r.id;
+  }
+  if (gstNumber) {
+    const r = db.prepare(`SELECT id FROM ${table} WHERE UPPER(gst_number) = UPPER(?)`).get(gstNumber);
+    if (r) return r.id;
+  }
+  const digits = String(phone || '').replace(/\D/g, '').slice(-10);
+  if (digits.length === 10) {
+    const r = db.prepare(`SELECT id FROM ${table} WHERE SUBSTR(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), -10) = ?`).get(digits);
+    if (r) return r.id;
+  }
+  return null;
+}
+
 export class CustomerRepository {
+  findImportMatch(row) {
+    return findPartyMatch('customers', row);
+  }
+
   findAll({ search = '', includeInactive = false, credit = '', limit = 100, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
@@ -422,6 +445,10 @@ export class CustomerRepository {
 }
 
 export class SupplierRepository {
+  findImportMatch(row) {
+    return findPartyMatch('suppliers', row);
+  }
+
   findAll({ search = '', includeInactive = false, limit = 100, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];

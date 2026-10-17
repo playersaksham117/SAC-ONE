@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState } from '../../../../components/ui';
+import LabelSettingsCard from '../../../../components/products/LabelSettingsCard';
 
 const TERMS_PLACEHOLDER = [
   'All disputes are subject to JALANDHAR jurisdiction.',
@@ -188,6 +189,7 @@ export default function SettingsPage() {
           )}
         </form>
       )}
+      {!loading && <LabelSettingsCard canEdit={canEdit} />}
     </RequirePermission>
   );
 }
