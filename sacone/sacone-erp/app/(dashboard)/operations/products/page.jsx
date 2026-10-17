@@ -6,6 +6,7 @@ import { useLiveRefresh } from '../../../../lib/live';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
 import MinPricePanel from '../../../../components/products/MinPricePanel';
+import ProductCsvImport from '../../../../components/products/ProductCsvImport';
 
 const EMPTY_PRODUCT = {
   name: '',
@@ -233,7 +234,6 @@ export default function ProductsPage() {
   const [pendingPayload, setPendingPayload] = useState(null);
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [csvText, setCsvText] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [viewOpen, setViewOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -611,28 +611,6 @@ export default function ProductsPage() {
       await apiDownload('/api/products/export', 'products.csv');
     } catch (err) {
       setError(err.message);
-    }
-  };
-
-  const handleImport = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      const result = await apiRequest('/api/products/import', {
-        method: 'POST',
-        body: JSON.stringify({ csv: csvText }),
-      });
-      setMessage(`Import complete: ${result.created} created, ${result.updated} updated${result.errors?.length ? `, ${result.errors.length} errors` : ''}.`);
-      setImportOpen(false);
-      setCsvText('');
-      await loadProducts();
-      await loadLookups();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -1283,32 +1261,16 @@ export default function ProductsPage() {
         </ul>
       </Modal>
 
-      <Modal
-        open={importOpen}
-        title="Import Products CSV"
-        onClose={() => setImportOpen(false)}
-        footer={(
-          <>
-            <button type="button" className="btn-secondary" onClick={() => setImportOpen(false)}>Cancel</button>
-            <button type="submit" form="import-form" className="btn-primary" disabled={saving}>
-              {saving ? 'Importing...' : 'Import'}
-            </button>
-          </>
-        )}
-      >
-        <form id="import-form" onSubmit={handleImport} className="space-y-3">
-          <p className="text-sm text-slate-500">
-            Required columns: <code>sku,name</code>. Optional: barcode, category, brand, unit, model_variant, hsn_code, gst_percentage, mrp, selling_price, purchase_price, reorder_level, minimum_stock, image_url, description, is_active, web_store_published.
-          </p>
-          <textarea
-            className="input-field min-h-[180px] font-mono text-xs"
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-            placeholder="sku,name,barcode,category,brand,unit,model_variant,..."
-            required
-          />
-        </form>
-      </Modal>
+      {importOpen && (
+        <ProductCsvImport
+          onClose={() => setImportOpen(false)}
+          onImported={async (result) => {
+            setMessage(`Import complete: ${result.created} created, ${result.updated} updated${result.errors?.length ? `, ${result.errors.length} with errors` : ''}.`);
+            await loadProducts();
+            await loadLookups();
+          }}
+        />
+      )}
     </RequirePermission>
   );
 }

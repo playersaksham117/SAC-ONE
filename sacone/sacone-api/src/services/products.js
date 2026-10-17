@@ -311,7 +311,9 @@ function resolveLookupId(repo, { id, name, createIfMissing = false, abbreviation
     return existing.id;
   }
   if (!name) return null;
-  const found = repo.findByName(name);
+  const found = repo.findByName(name)
+    // Units are also known by their abbreviation (a CSV says "KG" for the unit "Kilogram").
+    || (repo.findByAbbreviation && (repo.findByAbbreviation(abbreviation || name) || repo.findByAbbreviation(name)));
   if (found) return found.id;
   if (!createIfMissing) return null;
   const created = repo.create({
@@ -695,7 +697,7 @@ export class ProductService {
     const headers = [
       'sku', 'name', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
       'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
-      'image_url', 'description', 'is_active', 'web_store_published',
+      'image_url', 'description', 'is_active', 'web_store_published', 'item_type',
     ];
 
     const escape = (value) => {
@@ -709,7 +711,7 @@ export class ProductService {
       p.modelVariant || '',
       p.hsnCode || '', p.gstPercentage, p.mrp, p.sellingPrice, p.purchasePrice,
       p.reorderLevel, p.minimumStock, p.imageUrl || '', p.description || '',
-      p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0,
+      p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0, p.itemType === 'service' ? 'service' : 'product',
     ].map(escape).join(','));
 
     return `${headers.join(',')}\n${rows.join('\n')}`;
@@ -719,7 +721,8 @@ export class ProductService {
     authService.checkPermission(actor.permissions, 'products.products.create');
     if (!csvText?.trim()) throw new AppError('CSV content is required', 400);
 
-    const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
+    // Excel's "CSV UTF-8" starts with a byte-order mark; drop it so the first header is read.
+    const lines = csvText.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
     if (lines.length < 2) throw new AppError('CSV must include a header and at least one row', 400);
 
     const parseLine = (line) => {
@@ -746,7 +749,8 @@ export class ProductService {
       return result;
     };
 
-    const headers = parseLine(lines[0]).map((h) => h.toLowerCase());
+    // "Selling Price", "selling-price" and "selling_price" all mean selling_price.
+    const headers = parseLine(lines[0]).map((h) => h.toLowerCase().trim().replace(/[\s-]+/g, '_'));
     const required = ['sku', 'name'];
     for (const key of required) {
       if (!headers.includes(key)) {
@@ -787,7 +791,9 @@ export class ProductService {
           brandId,
           unitId,
           modelVariant: row.model_variant || row.variant || row.model || null,
-          hsnCode: row.hsn_code || null,
+          hsnCode: row.hsn_code || row.hsn || row.sac || row.hsn_sac || null,
+          // product / goods → stock-tracked; service → never stocked (blank keeps an existing item's type)
+          ...(row.item_type || row.type ? { itemType: /^serv/i.test(row.item_type || row.type) ? 'service' : 'goods' } : {}),
           gstPercentage: row.gst_percentage,
           mrp: row.mrp,
           sellingPrice: row.selling_price,
