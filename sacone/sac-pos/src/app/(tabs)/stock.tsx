@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { formatMoney, formatQty } from '../../domain/money';
 import { usePendingQty } from '../../lib/useSyncInfo';
-import { searchProducts, useCatalog } from '../../store/catalog';
+import { offerPrice, searchProducts, useCatalog } from '../../store/catalog';
 import { useDevice } from '../../store/device';
 import { Badge, Card, Chip, Empty, Header, Row, Screen, SearchBar, StatTile, colors, font, space } from '../../ui/components';
 
@@ -10,6 +10,7 @@ type Filter = 'all' | 'low' | 'out';
 
 export default function Stock() {
   const products = useCatalog((s) => s.products);
+  const minPrices = useCatalog((s) => s.minPrices);
   const lastPullAt = useCatalog((s) => s.lastPullAt);
   const warehouse = useDevice((s) => s.info?.warehouse?.name);
   const pending = usePendingQty();
@@ -52,7 +53,7 @@ export default function Stock() {
                 <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
                   {p.sku}{p.barcode ? ` · ${p.barcode}` : ''}{p.hsn ? ` · HSN ${p.hsn}` : ''}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{formatMoney(p.price)} + {p.gstRate}% GST · MRP {formatMoney(p.mrp)}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{formatMoney(offerPrice(p, minPrices))} + {p.gstRate}% GST · MRP {formatMoney(p.mrp)}</Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}>
                 <Text style={{ fontSize: font.xl, fontWeight: '800', color: avail <= 0 ? colors.danger : avail <= 5 ? colors.warning : colors.text }}>{formatQty(avail)}</Text>

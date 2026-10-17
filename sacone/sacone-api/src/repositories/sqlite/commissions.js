@@ -781,6 +781,20 @@ export function resolveFloor(product, rules) {
   return { floor: round2(base * (rule.minPercentOfMrp / 100)), rule };
 }
 
+/**
+ * Adds minSellingPrice (the Commission-settings floor, or null) and offerPrice to products.
+ * offerPrice is what billing offers by default: the minimum when one applies, else the selling price.
+ */
+export function withOfferPrices(products) {
+  const rules = new MinSellingPriceRepository().activeRules();
+  const any = rules.product.size || rules.brand.size || rules.category.size;
+  return products.map((p) => {
+    if (!p) return p;
+    const floor = any ? resolveFloor(p, rules)?.floor ?? null : null;
+    return { ...p, minSellingPrice: floor, offerPrice: floor ?? Number(p.sellingPrice || 0) };
+  });
+}
+
 export class MinSellingPriceRepository {
   list() {
     return getDatabase().prepare(`${MIN_PRICE_SELECT} ORDER BY m.scope, target_name`).all().map(mapMinPrice);

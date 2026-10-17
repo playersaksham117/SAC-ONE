@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartLine, HeldBill, Product, Quotation } from '../domain/types';
+import { offerPrice } from './catalog';
 
 /** Value of returned goods that pays for part of the next bill (exchange). */
 export interface ExchangeCredit {
@@ -74,9 +75,10 @@ export const useCart = create<CartState>()(
           if (existing) {
             return { lines: s.lines.map((l) => (l.productId === p.id ? { ...l, quantity: clampQty(l.quantity + qty) } : l)) };
           }
+          const price = offerPrice(p);
           const line: CartLine = {
             productId: p.id, name: p.name, sku: p.sku, barcode: p.barcode, hsn: p.hsn, unit: p.unit,
-            quantity: clampQty(qty), unitPrice: p.price, listPrice: p.price, discountAmount: 0, gstRate: p.gstRate,
+            quantity: clampQty(qty), unitPrice: price, listPrice: price, discountAmount: 0, gstRate: p.gstRate,
           };
           return { lines: [...s.lines, line] };
         });

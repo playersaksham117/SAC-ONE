@@ -33,6 +33,15 @@ interface CatalogState {
   reset: () => void;
 }
 
+/**
+ * Price a product is offered at when billed: its minimum selling price (Commission settings,
+ * before GST) when one is set, otherwise its selling price.
+ */
+export function offerPrice(p: Product, minPrices: Record<string, number> = useCatalog.getState().minPrices): number {
+  const min = minPrices?.[p.id];
+  return min != null && min > 0 ? min : p.price;
+}
+
 export function mapServerProduct(p: ServerProduct): Product {
   return {
     id: p.uuid,

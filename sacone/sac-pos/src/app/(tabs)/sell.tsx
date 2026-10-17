@@ -9,7 +9,7 @@ import type { Product } from '../../domain/types';
 import { usePendingQty, useSyncBadge } from '../../lib/useSyncInfo';
 import { useCartTotals } from '../../lib/useCartTotals';
 import { useCart } from '../../store/cart';
-import { searchProducts, useCatalog } from '../../store/catalog';
+import { offerPrice, searchProducts, useCatalog } from '../../store/catalog';
 import { useLedger } from '../../store/ledger';
 import { useCan, useCurrentUser } from '../../store/session';
 import { syncNow } from '../../sync/engine';
@@ -26,6 +26,7 @@ function stockTone(available: number) {
 export default function Sell() {
   const user = useCurrentUser();
   const products = useCatalog((s) => s.products);
+  const minPrices = useCatalog((s) => s.minPrices);
   const pending = usePendingQty();
   const lines = useCart((s) => s.lines);
   const mode = useCart((s) => s.mode);
@@ -91,7 +92,7 @@ export default function Sell() {
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(item.price)}</Text>
+          <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(offerPrice(item, minPrices))}</Text>
           {inCart ? (
             <Pressable
               onPress={() => setQtyFor(item)}

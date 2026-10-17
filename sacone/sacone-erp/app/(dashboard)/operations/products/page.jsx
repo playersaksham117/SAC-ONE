@@ -773,7 +773,7 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Category</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Brand</th>
                     <th className="px-4 py-3 text-right font-medium text-slate-600">MRP</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">Sell</th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-600" title="Minimum selling price from Commission settings; the selling price when no minimum is set">Min sell</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">GST%</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Status</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Web</th>
@@ -823,7 +823,7 @@ export default function ProductsPage() {
                         <td className="px-4 py-3 text-slate-600">{product.categoryName || '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{product.brandName || '—'}</td>
                         <td className="px-4 py-3 text-right">{product.mrp.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right">{product.sellingPrice.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right">{Number(product.offerPrice ?? product.sellingPrice).toFixed(2)}</td>
                         <td className="px-4 py-3">{product.gstPercentage}%</td>
                         <td className="px-4 py-3"><StatusBadge active={product.isActive} /></td>
                         <td className="px-4 py-3">
@@ -1137,7 +1137,7 @@ export default function ProductsPage() {
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Category</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Brand</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-600">MRP</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600">Sell</th>
+                <th className="px-3 py-2 text-right font-medium text-slate-600">Min sell</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">GST</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
               </tr>
@@ -1151,7 +1151,7 @@ export default function ProductsPage() {
                   <td className="px-3 py-2">{p.categoryName || '—'}</td>
                   <td className="px-3 py-2">{p.brandName || '—'}</td>
                   <td className="px-3 py-2 text-right">{Number(p.mrp).toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{Number(p.sellingPrice).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">{Number(p.offerPrice ?? p.sellingPrice).toFixed(2)}</td>
                   <td className="px-3 py-2">{p.gstPercentage}%</td>
                   <td className="px-3 py-2"><StatusBadge active={p.isActive} /></td>
                 </tr>

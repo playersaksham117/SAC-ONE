@@ -99,7 +99,7 @@ export default function QuickBillPanel({
       barcode: product.barcode,
       brandName: product.brandName,
       modelVariant: product.modelVariant,
-      unitPrice: product.sellingPrice,
+      unitPrice: (product.offerPrice ?? product.sellingPrice),
       gstPercentage: product.gstPercentage,
       hsnCode: product.hsnCode,
       stockHint: product.quantityAvailable,
@@ -262,7 +262,7 @@ export default function QuickBillPanel({
                       <span className="mt-0.5 block text-xs text-slate-500">Model: {p.modelVariant}</span>
                     )}
                   </span>
-                  <span className="font-bold text-slate-900">{money(p.sellingPrice)}</span>
+                  <span className="font-bold text-slate-900">{money(p.offerPrice ?? p.sellingPrice)}</span>
                 </button>
               </li>
             ))}

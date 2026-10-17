@@ -122,7 +122,7 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
         hsnCode: product.hsnCode,
         unitAbbreviation: product.unitAbbreviation,
         quantity: 1,
-        unitPrice: product.sellingPrice,
+        unitPrice: (product.offerPrice ?? product.sellingPrice),
         discountAmount: 0,
         discountPercent: 0,
         gstPercentage: product.gstPercentage,
@@ -444,7 +444,7 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
               <li key={p.id}>
                 <button type="button" className="flex w-full justify-between px-3 py-2 text-sm hover:bg-slate-50" onClick={() => addProduct(p)}>
                   <span>{p.name} <span className="font-mono text-xs text-slate-400">{p.sku}</span></span>
-                  <span>{money(p.sellingPrice)}</span>
+                  <span>{money(p.offerPrice ?? p.sellingPrice)}</span>
                 </button>
               </li>
             ))}

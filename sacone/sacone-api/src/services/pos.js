@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { withOfferPrices } from '../repositories/sqlite/commissions.js';
 import { withFinancialYear } from '../database/context.js';
 import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
@@ -267,12 +268,12 @@ export class PosService {
 
     // Exact barcode / SKU first for scanner speed
     const byBarcode = productRepo.findByBarcode(q);
-    if (byBarcode?.isActive) return { items: [byBarcode], match: 'barcode' };
+    if (byBarcode?.isActive) return { items: withOfferPrices([byBarcode]), match: 'barcode' };
     const bySku = productRepo.findBySku(q);
-    if (bySku?.isActive) return { items: [bySku], match: 'sku' };
+    if (bySku?.isActive) return { items: withOfferPrices([bySku]), match: 'sku' };
 
     const list = productRepo.findAll({ search: q, isActive: true, limit: 30, offset: 0 });
-    return { items: list.items, match: 'search' };
+    return { items: withOfferPrices(list.items), match: 'search' };
   }
 
   preview(data, actor) {
