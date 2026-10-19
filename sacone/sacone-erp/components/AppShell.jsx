@@ -9,6 +9,7 @@ import { useOwnerAppUrl } from '../lib/app-urls';
 import { LiveIndicator } from '../lib/live';
 import { recordModuleVisit } from '../lib/recent-modules';
 import ChangePasswordDialog from './ChangePasswordDialog';
+import CheckInButton from './attendance/CheckInButton';
 
 /** Financial year containing today (India), e.g. '2026-27'. */
 function currentFinancialYear() {
@@ -189,6 +190,7 @@ export default function AppShell({ children }) {
                 )}
               </div>
             </div>
+            <CheckInButton />
             <LiveIndicator />
             {!isHome && (
               <Link href="/dashboard" className="btn-secondary hidden text-sm sm:inline-flex">

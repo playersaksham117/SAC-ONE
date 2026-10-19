@@ -55,6 +55,10 @@ export const DEFAULT_ROLES = [
       'parties.customer_receipts.view', 'parties.customer_receipts.create', 'parties.customer_receipts.edit', 'parties.customer_receipts.approve',
       'parties.supplier_payments.view', 'parties.supplier_payments.create', 'parties.supplier_payments.edit', 'parties.supplier_payments.approve',
       'crm.contacts.view',
+      'crm.leads.view', 'crm.leads.create', 'crm.leads.edit', 'crm.leads.delete', 'crm.leads.approve',
+      'crm.activities.view', 'crm.activities.create',
+      'attendance.self.view', 'attendance.self.create',
+      'attendance.register.view', 'attendance.register.edit', 'attendance.reports.view',
       'finance.ledger.view', 'finance.ledger.create',
       'finance.bank_import.view', 'finance.bank_import.create', 'finance.bank_import.edit', 'finance.bank_import.approve',
       'reports.reports.view',
@@ -73,6 +77,7 @@ export const DEFAULT_ROLES = [
       'pos.quotations.view', 'pos.quotations.create', 'pos.quotations.approve',
       'products.products.view',
       'parties.customers.view', 'parties.customers.create',
+      'attendance.self.view', 'attendance.self.create',
     ],
   },
   {
@@ -91,6 +96,7 @@ export const DEFAULT_ROLES = [
       'warehouse.stock_counts.view', 'warehouse.stock_counts.create', 'warehouse.stock_counts.edit', 'warehouse.stock_counts.approve',
       'warehouse.occupancy.view',
       'parties.suppliers.view', 'parties.suppliers.create', 'parties.suppliers.edit',
+      'attendance.self.view', 'attendance.self.create',
     ],
   },
   {
@@ -107,6 +113,7 @@ export const DEFAULT_ROLES = [
       'warehouse.transfers.view', 'warehouse.transfers.create',
       'warehouse.stock_counts.view', 'warehouse.stock_counts.create',
       'warehouse.occupancy.view',
+      'attendance.self.view', 'attendance.self.create',
     ],
   },
   {
@@ -123,6 +130,9 @@ export const DEFAULT_ROLES = [
       'pos.sales.view', 'pos.terminal.view', 'sales.orders.view', 'pos.sales.create',
       'pos.quotations.view', 'pos.quotations.create', 'pos.quotations.edit', 'pos.quotations.approve',
       'reports.reports.view',
+      'crm.leads.view', 'crm.leads.create', 'crm.leads.edit',
+      'crm.activities.view', 'crm.activities.create',
+      'attendance.self.view', 'attendance.self.create',
     ],
   },
   {
@@ -144,6 +154,8 @@ export const DEFAULT_ROLES = [
       'parties.customers.view', 'parties.suppliers.view', 'crm.contacts.view',
       'parties.customer_receipts.view', 'parties.customer_receipts.create', 'parties.customer_receipts.edit', 'parties.customer_receipts.approve',
       'parties.supplier_payments.view', 'parties.supplier_payments.create', 'parties.supplier_payments.edit', 'parties.supplier_payments.approve',
+      'crm.activities.view',
+      'attendance.self.view', 'attendance.self.create', 'attendance.reports.view',
     ],
   },
   {
@@ -248,6 +260,19 @@ export const MODULE_DEFINITIONS = [
     sortOrder: 8,
     features: [
       { code: 'contacts', name: 'Contacts', actions: ['view', 'create', 'edit', 'delete'] },
+      // approve = see and reassign everyone's leads (others see the leads assigned to them)
+      { code: 'leads', name: 'Leads & Follow-ups', actions: ['view', 'create', 'edit', 'delete', 'approve'] },
+      { code: 'activities', name: 'Customer Activity', actions: ['view', 'create'] },
+    ],
+  },
+  {
+    code: 'attendance',
+    name: 'Attendance',
+    sortOrder: 13,
+    features: [
+      { code: 'self', name: 'Check In / Out', actions: ['view', 'create'] },
+      { code: 'register', name: 'Daily Register', actions: ['view', 'edit'] },
+      { code: 'reports', name: 'Attendance Summary', actions: ['view'] },
     ],
   },
   {

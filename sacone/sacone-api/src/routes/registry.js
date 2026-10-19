@@ -23,6 +23,7 @@ import { posSyncRouter, posDeviceAdminRouter } from './pos-sync.js';
 import { eventsRouter } from './events.js';
 import { openingBalanceRouter } from './opening-balances.js';
 import { sharedDocumentRouter } from './shared-documents.js';
+import { crmRouter, attendanceRouter } from './crm.js';
 
 export const ROUTES = [
   // Core & security
@@ -61,6 +62,8 @@ export const ROUTES = [
   ['/api/notes', noteRouter],
   ['/api/customer-receipts', customerReceiptRouter],
   ['/api/supplier-payment-vouchers', supplierPaymentVoucherRouter],
+  ['/api/crm', crmRouter],
+  ['/api/attendance', attendanceRouter],
 
   // Finance, analytics
   ['/api/finance', financeRouter],

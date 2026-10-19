@@ -13,6 +13,7 @@ import { useCurrentUser, useSession } from '../../store/session';
 import { syncNow, useSyncStatus } from '../../sync/engine';
 import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
+import { AttendanceCard } from '../../ui/AttendanceCard';
 import {
   Badge, Banner, Button, Card, Divider, Field, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, space,
 } from '../../ui/components';
@@ -91,6 +92,7 @@ export default function More() {
             <Button title="Lock" size="sm" variant="secondary" icon="lock-closed-outline" onPress={lock} testID="lock" />
           </Row>
         </Card>
+        <AttendanceCard />
 
         <SectionTitle>Today on this phone</SectionTitle>
         <Row gap={space.sm}>

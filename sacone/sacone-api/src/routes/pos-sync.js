@@ -7,6 +7,7 @@ import { currentSeq, waitForChange } from '../realtime/change-feed.js';
 import { currentFirmId } from '../database/context.js';
 import { commissionService } from '../services/commissions.js';
 import { serverAddresses } from '../core/server-addresses.js';
+import { attendanceService } from '../services/attendance.js';
 
 /** Tables behind what a terminal pulls (catalogue, stock, customers, staff, settings). */
 const POS_PULL_TABLES = new Set([
@@ -84,6 +85,13 @@ posSyncRouter.post('/products/ack', asyncHandler(async (req, res) => {
 /** productId → minimum selling price (before GST, after discounts). Full list, pulled every sync. */
 posSyncRouter.get('/min-prices', asyncHandler(async (req, res) => {
   sendSuccess(res, { prices: commissionService.minPriceMap() });
+}));
+
+/** Attendance from the terminal for the signed-in staff member: action 'in' | 'out' | 'status'. */
+posSyncRouter.post('/attendance', asyncHandler(async (req, res) => {
+  const userId = String(req.body?.userId || '');
+  const staff = posSyncService.staffStatus(req.device, { ids: userId }).staff[0];
+  sendSuccess(res, attendanceService.posPunch(staff, String(req.body?.action || 'status')));
 }));
 
 posSyncRouter.get('/staff', asyncHandler(async (req, res) => {

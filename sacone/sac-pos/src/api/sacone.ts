@@ -77,6 +77,13 @@ export interface StaffStatus {
 }
 
 /** Long-poll result: `changed` once data this terminal pulls was written on the server. */
+/** Today's attendance row for a staff member (times are ISO; inTime / outTime are IST 'HH:MM'). */
+export interface AttendanceToday {
+  status: 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'week_off';
+  checkIn: string | null; checkOut: string | null; inTime: string | null; outTime: string | null;
+  minutes: number; late: boolean; source: string;
+}
+
 export interface ChangeFeed {
   changed: boolean; seq: number; tables: string[]; reset?: boolean;
 }
@@ -117,6 +124,12 @@ export const sync = {
   /** The uploaded UPI QR image of this terminal's bank (only fetched when its version changes). */
   upiQr: (c: DeviceConfig) =>
     request<{ accountId: string | null; version: string | null; image: string | null }>(c.baseUrl, '/api/v1/sync/upi-qr', { headers: deviceHeaders(c), timeoutMs: 30000 }),
+
+  /** Check in / out (or read today) for a staff member; the server takes the time. */
+  attendance: (c: DeviceConfig, userId: string, action: 'status' | 'in' | 'out') =>
+    request<{ today: AttendanceToday | null; date: string }>(c.baseUrl, '/api/v1/sync/attendance', {
+      method: 'POST', body: { userId, action }, headers: deviceHeaders(c),
+    }),
 
   /** productId → minimum selling price (before GST, after discounts). Full list every sync. */
   minPrices: (c: DeviceConfig) =>

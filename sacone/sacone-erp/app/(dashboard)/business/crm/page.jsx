@@ -10,6 +10,7 @@ import SupplierPaymentPanel from '../../../../components/parties/SupplierPayment
 import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
 import PartyCsvImport from '../../../../components/parties/PartyCsvImport';
+import CustomerActivity from '../../../../components/crm/CustomerActivity';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -196,9 +197,9 @@ export default function PartiesPage() {
     }
   };
 
-  const selectRow = async (row) => {
+  const selectRow = async (row, firstTab = 'summary') => {
     setSelected(row);
-    setDetailTab('summary');
+    setDetailTab(firstTab);
     setError('');
     try {
       if (tab === 'customers') {
@@ -250,8 +251,16 @@ export default function PartiesPage() {
 
   useLiveRefresh(() => {
     loadList(true);
-    if (selected) loadDetail(detailTab);
+    if (selected && detailTab !== 'activity') loadDetail(detailTab);
   });
+
+  // Opened from CRM (lead → customer, a customer follow-up): /business/crm?customer=<id>
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('customer');
+    if (!id || !canViewCustomers) return;
+    apiRequest(`/api/customers/${id}`).then((c) => selectRow(c, checkPermission('crm.activities.view') ? 'activity' : 'summary')).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveBill = async (e) => {
     e.preventDefault();
@@ -554,7 +563,7 @@ export default function PartiesPage() {
 
               <div className="mb-3 flex flex-wrap gap-1">
                   {(tab === 'customers'
-                    ? [['summary', 'Summary'], ['sales', 'Sales History'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
+                    ? [['summary', 'Summary'], ...(checkPermission('crm.activities.view') ? [['activity', 'Activity']] : []), ['sales', 'Sales History'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
                     : [['summary', 'Summary'], ['purchases', 'Purchase History'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
                   ).map(([id, label]) => (
                   <button
@@ -574,6 +583,8 @@ export default function PartiesPage() {
                   <button type="button" className="btn-secondary text-xs" onClick={() => setPayModal(true)}>Record payment</button>
                 </div>
               )}
+
+              {detailTab === 'activity' && tab === 'customers' && <CustomerActivity customerId={selected.id} />}
 
               {detailTab === 'summary' && summary && (
                 <div className="grid grid-cols-2 gap-3 text-sm">
