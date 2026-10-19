@@ -113,6 +113,8 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
   ${sale.customerPo?.number ? `<tr><td>Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
   ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
+  ${sale.shipTo ? `<tr><td>Ship to</td><td class="r">${shipToText(sale).map(esc).join('<br>')}</td></tr>` : ''}
+  ${transportRows(sale).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}
   </table><hr>
   <table>${rows}</table><hr>
   <table>
@@ -184,7 +186,8 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       ${validRow(sale, ' class="muted"')}
       <tr><td class="muted">Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
       <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
-      ${sale.customerPo?.number ? `<tr><td class="muted">Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}</table>
+      ${sale.customerPo?.number ? `<tr><td class="muted">Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
+      ${transportRows(sale).map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}</table>
     </div>
   </div>
   <div class="party">
@@ -193,6 +196,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
     ? `<div class="b">${esc(sale.customer.name)}</div>${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
     : '<div class="b">Walk-in customer</div>'}
     </div>
+    ${sale.shipTo ? `<div class="box"><div class="label">Ship to</div>${shipToText(sale).map((x, i) => `<div${i ? '' : ' class="b"'}>${esc(x)}</div>`).join('')}</div>` : ''}
     ${isQuote(sale) ? '' : `<div class="box"><div class="label">Payment</div><table>${paymentRows(sale)}</table></div>`}
   </div>
   <table class="items">
@@ -292,6 +296,22 @@ export function amountInWords(amount: number): string {
   return `${rupees ? indian(rupees) : 'ZERO'}${paise ? ` AND ${two(paise)} PAISE` : ''} ONLY`;
 }
 
+/** "PB08AB1234 · LR 551 dt 19/10/2026 · E-way 1234…" — transport facts as [label, value]. */
+function transportRows(sale: Sale): [string, string][] {
+  const t = sale.transport;
+  if (!t) return [];
+  return [
+    ...(t.mode || t.transporter ? [['Transport', [t.mode, t.transporter].filter(Boolean).join(' · ')] as [string, string]] : []),
+    ...(t.vehicleNumber ? [['Vehicle No.', t.vehicleNumber] as [string, string]] : []),
+    ...(t.lrNumber ? [['LR / GR No.', `${t.lrNumber}${t.lrDate ? ` dt ${formatPoDate(t.lrDate)}` : ''}`] as [string, string]] : []),
+    ...(t.ewayBillNumber ? [['E-way bill', t.ewayBillNumber] as [string, string]] : []),
+  ];
+}
+const shipToText = (sale: Sale) => {
+  const st = sale.shipTo;
+  return st ? [st.name, st.address, [st.city, st.state].filter(Boolean).join(', '), st.gstin ? `GSTIN ${st.gstin}` : '', st.phone].filter(Boolean) : [];
+};
+
 function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PdfSize, invoice: InvoiceSettings) {
   const t = sale.totals;
   const a5 = size === 'A5';
@@ -320,6 +340,18 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     ${cust?.phone ? `<div class="pline">Mobile: ${esc(cust.phone)}</div>` : ''}
     ${cust?.gstin ? `<div class="pline">GSTIN: ${esc(cust.gstin)}</div>` : ''}
     <div class="pstate"><span>State : ${esc(GST_STATES[custCode] || '')}</span><span>State Code : ${esc(custCode)}</span></div>`;
+  // Consignee: the bill's Ship To when given, else the buyer.
+  const st = sale.shipTo;
+  const stCode = stateCode(st?.stateCode, st?.gstin);
+  const consignee = (label: string) => (st ? `
+    <div class="plabel">${esc(label)}</div>
+    <div class="pname">${esc(st.name)}</div>
+    ${st.address ? `<div class="pline">${esc(st.address)}</div>` : ''}
+    ${st.city ? `<div class="pline">${esc(st.city)}</div>` : ''}
+    ${st.phone ? `<div class="pline">Mobile: ${esc(st.phone)}</div>` : ''}
+    ${st.gstin ? `<div class="pline">GSTIN: ${esc(st.gstin)}</div>` : ''}
+    <div class="pstate"><span>State : ${esc(st.state || GST_STATES[stCode] || '')}</span><span>State Code : ${esc(stCode)}</span></div>` : party(label));
+  const tr = sale.transport || {};
   const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
   const rows = lines.map((l, i) => `<tr>
       <td class="c">${i + 1}</td><td class="b">${esc(l.name)}</td><td>${esc(l.hsn || '')}</td>
@@ -372,18 +404,18 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div class="row">
     <div class="vr" style="width:50%">
       <div style="display:flex;justify-content:space-between"><span class="b">${isQuote(sale) ? 'Quotation No.' : 'Invoice No.'} ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
-      <div class="b">E-Way Bill No. :</div>
+      <div class="b">E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}</div>
     </div>
     <div style="width:50%">
-      <div class="b">Mode of Transport :</div>
-      <div style="display:flex;justify-content:space-between"><span class="b">Vehicle No. :</span><span class="b">Driver :</span></div>
-      <div class="b">Goods Dispatch :</div>
+      <div class="b">Mode of Transport : ${esc(tr.mode || '')}</div>
+      <div style="display:flex;justify-content:space-between"><span class="b">Vehicle No. : ${esc(tr.vehicleNumber || '')}</span><span class="b">Driver :</span></div>
+      <div class="b">Goods Dispatch : ${esc(tr.transporter || '')}</div>
     </div>
   </div>
   <div class="row">
     <div class="vr" style="width:50%">${party('Detail of Receiver (Billed To)')}
       <div class="c b" style="margin-top:${a5 ? 2 : 6}px">P.O.S. ${esc(posCode)}${GST_STATES[posCode] ? `-${esc(GST_STATES[posCode])}` : ''}</div></div>
-    <div style="width:50%">${party('Detail of Consignee (Shipped To)')}
+    <div style="width:50%">${consignee('Detail of Consignee (Shipped To)')}
       <div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div></div>
   </div>
   <table class="items">${cols}<thead><tr>
@@ -401,7 +433,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div style="display:flex">
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000"><div class="vr" style="width:65%;padding:${pad}"><div class="kv">
-        <span>P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span>Dated : ${esc(formatPoDate(sale.customerPo?.date))}</span><span>Transport :</span><span>Pvt.Mark :</span><span>GR/RR No. :</span><span>Dated :</span>
+        <span>P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span>Dated : ${esc(formatPoDate(sale.customerPo?.date))}</span><span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span><span>GR/RR No. : ${esc(tr.lrNumber || '')}</span><span>Dated : ${esc(tr.lrNumber ? formatPoDate(tr.lrDate) : '')}</span>
         <span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span><span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span>
       </div></div><div style="width:35%"></div></div>
       <div style="border-bottom:1px solid #000;padding:${pad}"><span class="b">Amount In Words :</span> <span class="b">${esc(amountInWords(t.grandTotal))}</span></div>

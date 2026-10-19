@@ -1,3 +1,4 @@
+import type { ShipTo, Transport } from './dispatch';
 /** Core SAC-POS domain types (pure — no React Native imports). */
 
 export type PaymentMethod = 'cash' | 'upi' | 'bank' | 'credit';
@@ -126,6 +127,9 @@ export interface Sale extends SyncMeta {
   validUntil?: string;
   /** The customer's purchase order (B2B), printed on the bill and synced to SACONE. */
   customerPo?: { number: string; date: string | null } | null;
+  /** GST bills: transport / dispatch details and a consignee other than the buyer. */
+  transport?: Transport | null;
+  shipTo?: ShipTo | null;
   returned: Record<string, number>;   // productId → qty returned
 }
 

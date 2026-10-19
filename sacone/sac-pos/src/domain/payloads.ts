@@ -1,5 +1,6 @@
 import { normalizePhone } from './validation';
 import type { Customer, CustomerPayment, Quotation, Sale, SaleReturn } from './types';
+import { shipToPayload, transportPayload } from './dispatch';
 
 /** Builders for the SACONE `/api/v1/sync/push/*` contract (sacone-api/docs/POS_SYNC_API.md). */
 
@@ -24,6 +25,8 @@ export function salePayload(sale: Sale, userId: string) {
     notes: sale.notes ?? null,
     customer_po_number: sale.customerPo?.number ?? null,
     customer_po_date: sale.customerPo?.date ?? null,
+    transport: transportPayload(sale.transport),
+    ship_to: shipToPayload(sale.shipTo),
     cash_drawer: sale.cashDrawer ?? null,
     exchange_return_number: sale.exchange?.returnNumber ?? null,
     quotation_no: sale.quotationNo ?? null,

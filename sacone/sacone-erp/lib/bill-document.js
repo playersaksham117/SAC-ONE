@@ -130,6 +130,17 @@ function classicParty(label, name, contact, phone) {
 /** "INV/0012/26-27 dt 05/10/2026" — another document this one refers to. */
 const againstRef = (number, date) => (number ? `${number}${date ? ` dt ${ddmmyyyy(date)}` : ''}` : '');
 
+/** Transport / dispatch facts of a GST bill, as [label, value] rows. */
+function transportMeta(t) {
+  if (!t) return [];
+  return [
+    ...(t.transporter || t.mode ? [['Transport', [t.mode, t.transporter].filter(Boolean).join(' · ')]] : []),
+    ...(t.vehicleNumber ? [['Vehicle No.', t.vehicleNumber]] : []),
+    ...(t.lrNumber ? [['LR / GR No.', againstRef(t.lrNumber, t.lrDate)]] : []),
+    ...(t.ewayBillNumber ? [['E-way bill', t.ewayBillNumber]] : []),
+  ];
+}
+
 /** Sales invoice (GET /api/pos/sales/:id) + optional customer record. */
 export function saleDocument(sale, customer) {
   const discount = Number(sale.itemDiscountTotal || 0) + Number(sale.invoiceDiscount || 0);
@@ -142,6 +153,8 @@ export function saleDocument(sale, customer) {
     meta: [
       ['Invoice', sale.invoiceNumber], ['Date', when(sale.createdAt)],
       ...(sale.customerPoNumber ? [['Your PO', againstRef(sale.customerPoNumber, sale.customerPoDate)]] : []),
+      ...transportMeta(sale.transport),
+      ...(sale.shipTo?.name ? [['Ship to', [sale.shipTo.name, sale.shipTo.city, sale.shipTo.gstin && `GSTIN ${sale.shipTo.gstin}`].filter(Boolean).join(', ')]] : []),
       ...(sale.createdByName ? [['Cashier', sale.createdByName]] : []),
     ],
     partyLabel: 'Bill to',
@@ -175,14 +188,21 @@ function saleClassic(sale, customer) {
   const billTo = walkIn
     ? classicParty('Detail of Receiver (Billed To)', 'CASH', null, '')
     : classicParty('Detail of Receiver (Billed To)', sale.customerName, customer, sale.customerPhone);
-  const shipTo = !walkIn && customer?.shippingAddress
+  const given = sale.shipTo?.name
+    ? classicParty('Detail of Consignee (Shipped To)', sale.shipTo.name, {
+      address: sale.shipTo.address, city: sale.shipTo.city, state: sale.shipTo.state,
+      gstStateCode: sale.shipTo.stateCode, gstNumber: sale.shipTo.gstin,
+    }, sale.shipTo.phone)
+    : null;
+  const shipTo = given || (!walkIn && customer?.shippingAddress
     ? classicParty('Detail of Consignee (Shipped To)', sale.customerName, {
       ...customer, address: customer.shippingAddress, city: customer.shippingCity,
       state: customer.shippingState || customer.state, postalCode: customer.shippingPostal,
     }, sale.customerPhone)
-    : { ...billTo, label: 'Detail of Consignee (Shipped To)' };
+    : { ...billTo, label: 'Detail of Consignee (Shipped To)' });
   return {
     kind: 'sale',
+    transport: sale.transport || {},
     title: 'Tax Invoice',
     memo: sale.paymentStatus === 'paid' ? 'CASH-MEMO' : 'CREDIT MEMO',
     numberLabel: 'Invoice No.',
@@ -506,6 +526,7 @@ function classicHtml(model, company, size, invoice = {}) {
     phone: company?.phone || '', gstin: company?.gstNumber || '', state: company?.state || GST_STATES[companyCode] || '', stateCode: companyCode,
   };
   const shipTo = c.shipTo || ownParty;
+  const tr = c.transport || {};
   const posCode = c.placeOfSupplyCode || companyCode;
   const party = (p) => `
     <div class="plabel">${esc(p.label)}</div>
@@ -575,12 +596,12 @@ function classicHtml(model, company, size, invoice = {}) {
   <div class="row">
     <div class="vr" style="width:50%">
       <div style="display:flex;justify-content:space-between"><span class="b">${esc(c.numberLabel)} ${esc(c.number)}</span><span class="b">Dated : ${esc(c.date)}</span></div>
-      <div class="b">${c.kind === 'sale' ? 'E-Way Bill No. :' : '&nbsp;'}</div>
+      <div class="b">${c.kind === 'sale' ? `E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}` : '&nbsp;'}</div>
     </div>
     <div style="width:50%">
-      <div class="b">Mode of Transport :</div>
-      <div style="display:flex;justify-content:space-between"><span class="b">Vehicle No. :</span><span class="b">Driver :</span></div>
-      <div class="b">Goods Dispatch :</div>
+      <div class="b">Mode of Transport : ${esc(tr.mode || '')}</div>
+      <div style="display:flex;justify-content:space-between"><span class="b">Vehicle No. : ${esc(tr.vehicleNumber || '')}</span><span class="b">Driver :</span></div>
+      <div class="b">Goods Dispatch : ${esc(tr.transporter || '')}</div>
     </div>
   </div>
   <div class="row">
@@ -607,8 +628,8 @@ function classicHtml(model, company, size, invoice = {}) {
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000">
         <div class="vr" style="width:65%;padding:${a5 ? '1px 3px' : '2px 5px'}">
-          <div class="kv"><span>P.O. No. : ${esc(c.poNumber || '')}</span><span>Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span><span>Transport :</span><span>Pvt.Mark :</span>
-          <span>GR/RR No. :</span><span>Dated :</span><span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span>
+          <div class="kv"><span>P.O. No. : ${esc(c.poNumber || '')}</span><span>Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span><span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span>
+          <span>GR/RR No. : ${esc(tr.lrNumber || '')}</span><span>Dated : ${esc(tr.lrNumber ? ddmmyyyy(tr.lrDate) : '')}</span><span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span>
           <span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span></div>
         </div><div style="width:35%"></div>
       </div>

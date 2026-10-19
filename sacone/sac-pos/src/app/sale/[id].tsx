@@ -119,6 +119,10 @@ export default function SaleDetail() {
           <KeyValue label="Cashier" value={sale.userName} muted />
           {sale.customer ? <KeyValue label="Customer" value={sale.customer.name} muted /> : null}
           {sale.customerPo?.number ? <KeyValue label="Customer PO" value={poLabel(sale.customerPo)} muted /> : null}
+          {sale.shipTo ? <KeyValue label="Ship to" value={[sale.shipTo.name, sale.shipTo.city].filter(Boolean).join(', ')} muted /> : null}
+          {sale.transport?.vehicleNumber || sale.transport?.transporter ? <KeyValue label="Transport" value={[sale.transport.transporter, sale.transport.vehicleNumber].filter(Boolean).join(' · ')} muted /> : null}
+          {sale.transport?.lrNumber ? <KeyValue label="LR / GR" value={sale.transport.lrNumber} muted /> : null}
+          {sale.transport?.ewayBillNumber ? <KeyValue label="E-way bill" value={sale.transport.ewayBillNumber} muted /> : null}
           <Divider />
           {t.lines.map((l) => (
             <View key={l.productId} style={{ paddingVertical: 6 }}>

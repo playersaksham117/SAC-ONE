@@ -27,6 +27,7 @@ import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
 import { productService } from './products.js';
+import { shipToFrom, transportFrom } from '../core/dispatch.js';
 
 const deviceRepo = repos.posDevices;
 const posUserRepo = repos.posUsers;
@@ -609,6 +610,10 @@ export class PosSyncService {
       customerPoNumber: str(sale.customer_po_number).slice(0, 60) || undefined,
       customerPoDate: str(sale.customer_po_number) && /^\d{4}-\d{2}-\d{2}$/.test(str(sale.customer_po_date))
         ? str(sale.customer_po_date) : undefined,
+      // GST bills: transport / dispatch details and a separate Shipped To (consignee).
+      // A malformed block is dropped rather than failing the sale.
+      transport: (() => { try { return transportFrom(sale.transport); } catch { return null; } })(),
+      shipTo: (() => { try { return shipToFrom(sale.ship_to); } catch { return null; } })(),
       notes: [
         sale.notes,
         cashDrawerNote(sale.cash_drawer),

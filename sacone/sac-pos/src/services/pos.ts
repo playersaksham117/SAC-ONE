@@ -86,7 +86,10 @@ export function checkCheckout(payments: Payment[]): CheckResult {
 
 export function completeSale(
   customerPayments: Payment[],
-  { tendered, cashDrawer, customerPo }: { tendered?: number; cashDrawer?: CashDrawer | null; customerPo?: Sale['customerPo'] } = {},
+  { tendered, cashDrawer, customerPo, transport, shipTo }: {
+    tendered?: number; cashDrawer?: CashDrawer | null; customerPo?: Sale['customerPo'];
+    transport?: Sale['transport']; shipTo?: Sale['shipTo'];
+  } = {},
 ): Sale {
   const user = requireUser('sell');
   const cart = useCart.getState();
@@ -118,6 +121,8 @@ export function completeSale(
     notes: cart.notes || null,
     quotationNo: cart.fromQuotation?.number ?? null,
     customerPo: customerPo?.number ? customerPo : null,
+    transport: transport ?? null,
+    shipTo: shipTo ?? null,
     returned: {},
     sync: 'pending',
   };

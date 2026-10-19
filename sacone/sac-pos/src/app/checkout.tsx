@@ -13,6 +13,8 @@ import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
 import { useCart } from '../store/cart';
 import { Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
+import { emptyShipTo, emptyTransport, readShipTo, readTransport } from '../domain/dispatch';
+import { DispatchSection } from '../ui/DispatchSection';
 
 const METHODS: { method: PaymentMethod; label: string; icon: 'cash-outline' | 'qr-code-outline' | 'card-outline' | 'time-outline' }[] = [
   { method: 'cash', label: 'Cash', icon: 'cash-outline' },
@@ -84,6 +86,14 @@ export default function Checkout() {
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState('');
   const poCheck = poOn ? readCustomerPo(poNumber, poDate) : { po: null, error: null };
+  // GST-registered firms: Bill To / Ship To and transport details on the bill.
+  const gstFirm = Boolean(deviceInfo?.company?.gstNumber);
+  const [transportOn, setTransportOn] = useState(false);
+  const [transportDraft, setTransportDraft] = useState(emptyTransport);
+  const [shipOn, setShipOn] = useState(false);
+  const [shipDraft, setShipDraft] = useState(emptyShipTo);
+  const transportCheck = gstFirm && transportOn ? readTransport(transportDraft) : { value: null, error: null };
+  const shipCheck = gstFirm && shipOn ? readShipTo(shipDraft) : { value: null, error: null };
   const [submitError, setSubmitError] = useState<string[]>([]);
 
   const payments: Payment[] = useMemo(
@@ -111,7 +121,8 @@ export default function Checkout() {
     if (receivedTotal < cashPart - 0.001) drawerErrors.push(`Notes received (${formatMoney(receivedTotal)}) are less than the cash due (${formatMoney(cashPart)})`);
     else if (changeNotes !== changeNeeded) drawerErrors.push(`Change notes add up to ${formatMoney(changeNotes)}; give ${formatMoney(changeNeeded)}`);
   }
-  const blocked = check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error);
+  const blocked = check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error)
+    || Boolean(transportCheck.error) || Boolean(shipCheck.error);
 
   const choose = (method: PaymentMethod) => {
     setSplit(false);
@@ -130,6 +141,8 @@ export default function Checkout() {
         tendered: effectiveTendered || undefined,
         cashDrawer: drawerOn && cashPart > 0 ? { received, change: change > 0 ? changeShown : {} } : null,
         customerPo: poCheck.po,
+        transport: transportCheck.value,
+        shipTo: shipCheck.value,
       });
       if (router.canDismiss()) router.dismissAll();
       router.push({ pathname: '/sale/[id]', params: { id: sale.id, done: '1' } });
@@ -326,6 +339,16 @@ export default function Checkout() {
             </Card>
           ) : null}
         </View>
+
+        {gstFirm ? (
+          <DispatchSection
+            billToName={customer?.name ?? null}
+            transportOn={transportOn} setTransportOn={setTransportOn}
+            transport={transportDraft} setTransport={setTransportDraft} transportError={transportCheck.error}
+            shipOn={shipOn} setShipOn={setShipOn}
+            shipTo={shipDraft} setShipTo={setShipDraft} shipError={shipCheck.error}
+          />
+        ) : null}
 
         <View style={{ marginTop: space.md }}>
           {check.errors.length ? <Banner tone="danger" title="Cannot complete yet" messages={check.errors.map((e) => e.message)} /> : null}

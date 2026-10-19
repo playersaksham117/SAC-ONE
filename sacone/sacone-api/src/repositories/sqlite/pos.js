@@ -1,5 +1,6 @@
 import { getDatabase } from '../../database/connection.js';
 import { generateId, nowIso } from '../../core/utils.js';
+import { parseJsonObject } from '../../core/dispatch.js';
 
 // Customer master lives in parties.js (shared by POS + CRM + future web store)
 export { CustomerRepository } from './parties.js';
@@ -75,6 +76,8 @@ function mapSale(row) {
     notes: row.notes,
     customerPoNumber: row.customer_po_number || null,
     customerPoDate: row.customer_po_date || null,
+    transport: parseJsonObject(row.transport_details),
+    shipTo: parseJsonObject(row.ship_to),
     heldBillId: row.held_bill_id,
     quotationId: row.quotation_id || null,
     firmId: row.firm_id || null,
@@ -426,6 +429,11 @@ export class PosSaleRepository {
 
     tx();
     return this.findById(id);
+  }
+
+  setDispatch(id, { transport, shipTo }) {
+    getDatabase().prepare('UPDATE pos_sales SET transport_details = ?, ship_to = ? WHERE id = ?')
+      .run(transport ? JSON.stringify(transport) : null, shipTo ? JSON.stringify(shipTo) : null, id);
   }
 
   setCustomerPo(id, { number, date }) {

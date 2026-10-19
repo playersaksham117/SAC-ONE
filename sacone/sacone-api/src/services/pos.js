@@ -12,6 +12,7 @@ import { inventoryMovementService } from './inventory.js';
 import { customerService } from './parties.js';
 import { commissionService } from './commissions.js';
 import { numberOldCreditNotes } from './notes.js';
+import { shipToFrom, transportFrom } from '../core/dispatch.js';
 
 export { customerService };
 
@@ -505,6 +506,8 @@ export class PosService {
     }
 
     const customerPo = customerPoFrom(data);
+    const transport = transportFrom(data.transport);
+    const shipTo = shipToFrom(data.shipTo);
     const itemIds = totals.items.map(() => generateId());
     const sale = saleRepo.create({
       header: {
@@ -545,6 +548,7 @@ export class PosService {
       payments: normalizedPayments,
     });
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
+    if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
 
     // Inventory movements (POS sale) — never direct stock write
     for (let i = 0; i < sale.items.length; i++) {
@@ -725,6 +729,9 @@ export class PosService {
         notes: data.notes !== undefined ? data.notes : old.notes,
         // The customer's PO stays with the invoice unless the edit changes it.
         ...(() => { const po = customerPoFrom(data, old); return { customerPoNumber: po.number || '', customerPoDate: po.date || '' }; })(),
+        // Transport and Ship-to stay with the invoice unless the edit sends new ones.
+        transport: data.transport !== undefined ? data.transport : old.transport,
+        shipTo: data.shipTo !== undefined ? data.shipTo : old.shipTo,
       }, actor, req, { completedAt: old.completedAt || old.createdAt });
       saleRepo.restoreOrigin(created.id, { createdAt: old.createdAt, createdBy: old.createdBy });
       return created;
