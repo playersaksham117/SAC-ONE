@@ -5,7 +5,6 @@ import { authenticateDevice } from '../middleware/device-auth.js';
 import { posSyncService, posDeviceAdminService } from '../services/pos-sync.js';
 import { currentSeq, waitForChange } from '../realtime/change-feed.js';
 import { currentFirmId } from '../database/context.js';
-import { commissionService } from '../services/commissions.js';
 import { serverAddresses } from '../core/server-addresses.js';
 import { attendanceService } from '../services/attendance.js';
 
@@ -82,9 +81,9 @@ posSyncRouter.get('/products/pending-count', asyncHandler(async (req, res) => {
 posSyncRouter.post('/products/ack', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.acknowledge(req.device, req.body, 'products'));
 }));
-/** productId → minimum selling price (before GST, after discounts). Full list, pulled every sync. */
+/** No separate minimum prices: the selling price is the minimum. Older phones still ask, so answer with none. */
 posSyncRouter.get('/min-prices', asyncHandler(async (req, res) => {
-  sendSuccess(res, { prices: commissionService.minPriceMap() });
+  sendSuccess(res, { prices: {} });
 }));
 
 /** Attendance from the terminal for the signed-in staff member: action 'in' | 'out' | 'status'. */

@@ -90,7 +90,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const addItem = () => {
     const p = products.find((x) => x.id === pick);
     if (!p) return;
-    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, quantity: 1, unitPrice: p.offerPrice ?? p.sellingPrice, discountAmount: 0 }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0 }] }));
     setPick('');
   };
 
@@ -173,7 +173,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           <div className="flex flex-wrap gap-2">
             <select className="input-field flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
               <option value="">Add a product…</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.sku} · {money(p.offerPrice ?? p.sellingPrice)}</option>)}
+              {products.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.sku} · {money(p.sellingPrice)}</option>)}
             </select>
             <button type="button" className="btn-secondary" onClick={addItem} disabled={!pick}>Add</button>
           </div>

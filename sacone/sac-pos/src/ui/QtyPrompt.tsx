@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput } from 'react-native';
 import { formatMoney, formatQty } from '../domain/money';
 import type { Product } from '../domain/types';
-import { offerPrice, useCatalog } from '../store/catalog';
 import { Button, Chip, Row, colors, font, radius, space } from './components';
 
 const QUICK = [1, 2, 5, 10];
@@ -20,9 +19,7 @@ export function QtyPrompt({ product, current, available, onSet, onClose }: {
 }) {
   const [text, setText] = useState('');
   useEffect(() => { if (product) setText(current ? String(current) : ''); }, [product, current]);
-  const minPrices = useCatalog((s) => s.minPrices);
   if (!product) return null;
-  const price = offerPrice(product, minPrices);
 
   const qty = Math.round((Number(text.replace(',', '.')) || 0) * 1000) / 1000;
   const valid = text.trim() !== '' && Number.isFinite(qty) && qty >= 0;
@@ -36,7 +33,7 @@ export function QtyPrompt({ product, current, available, onSet, onClose }: {
           <Pressable onPress={() => undefined} style={{ backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.lg, maxWidth: 420, width: '100%', alignSelf: 'center' }}>
             <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }} numberOfLines={2}>{product.name}</Text>
             <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
-              {formatMoney(price)} · {product.itemType === 'service' ? 'Service' : `${formatQty(available)} ${product.unit} in stock`}{current ? ` · ${formatQty(current)} in cart` : ''}
+              {formatMoney(product.price)} · {product.itemType === 'service' ? 'Service' : `${formatQty(available)} ${product.unit} in stock`}{current ? ` · ${formatQty(current)} in cart` : ''}
             </Text>
 
             <TextInput
@@ -57,7 +54,7 @@ export function QtyPrompt({ product, current, available, onSet, onClose }: {
             />
             {valid && qty > 0 ? (
               <Text style={{ textAlign: 'center', color: overStock ? colors.warning : colors.textMuted, marginTop: 6 }}>
-                {formatQty(qty)} × {formatMoney(price)} = {formatMoney(qty * price)} + GST
+                {formatQty(qty)} × {formatMoney(product.price)} = {formatMoney(qty * product.price)} + GST
                 {overStock ? ` · more than in stock (${formatQty(available)})` : ''}
               </Text>
             ) : null}

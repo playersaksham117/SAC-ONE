@@ -6,8 +6,6 @@ import { repos } from '../repositories/index.js';
 import { authService, isFirmAdmin, userService } from './index.js';
 import {
   round2,
-  resolveFloor,
-  MinSellingPriceRepository,
   SalesAgentRepository,
   CommissionPlanRepository,
   SaleCommissionRepository,
@@ -22,7 +20,6 @@ const auditRepo = repos.auditLogs;
 const numberingRepo = repos.documentNumbering;
 const productRepo = repos.products;
 const cashRepo = repos.cashBook;
-const minPriceRepo = new MinSellingPriceRepository();
 
 /** Readable one-time password: no 0/O/1/l/I, always letters + digits + a symbol. */
 function generatePassword() {
@@ -219,78 +216,17 @@ export class CommissionService {
   }
 
   // ── Plans ───────────────────────────────────────────────
-  // ── Minimum selling prices (managed in Product Master; enforced at sale and commission time) ──
-  listMinPrices(actor) {
-    requirePerm(actor, 'products.products.view');
-    return minPriceRepo.list();
-  }
-
-  saveMinPrice(data, actor, req) {
-    requirePerm(actor, 'products.products.edit');
-    const scope = String(data.scope || '');
-    if (!['product', 'brand', 'category'].includes(scope)) throw new AppError('scope must be product, brand or category', 400);
-    const targetId = data.targetId;
-    const target = scope === 'product' ? repos.products.findById(targetId)
-      : scope === 'brand' ? repos.brands.findById(targetId) : repos.categories.findById(targetId);
-    if (!target) throw new AppError(`${scope} not found`, 404);
-
-    const minPrice = data.minPrice === '' || data.minPrice == null ? null : Number(data.minPrice);
-    const minPercentOfMrp = data.minPercentOfMrp === '' || data.minPercentOfMrp == null ? null : Number(data.minPercentOfMrp);
-    if (minPrice == null && minPercentOfMrp == null) throw new AppError('Set a minimum price or a % of MRP', 400);
-    if (minPrice != null && minPercentOfMrp != null) throw new AppError('Use either a minimum price or a % of MRP, not both', 400);
-    if (minPrice != null && !(minPrice >= 0)) throw new AppError('Minimum price must be zero or more', 400);
-    if (minPrice != null && scope !== 'product') throw new AppError('A fixed minimum price applies to one product; use % of MRP for brands and categories', 400);
-    if (minPercentOfMrp != null && !(minPercentOfMrp > 0 && minPercentOfMrp <= 100)) throw new AppError('% of MRP must be between 0 and 100', 400);
-
-    const saved = minPriceRepo.upsert({
-      scope, targetId, minPrice, minPercentOfMrp,
-      isActive: data.isActive !== false, notes: data.notes, createdBy: actor.user.id,
-    });
-    auditRepo.create({
-      userId: actor.user.id, userName: actor.user.fullName,
-      action: 'update', module: 'products', recordType: 'min_selling_price', recordId: saved.id,
-      newValue: saved, ...meta(req),
-    });
-    return saved;
-  }
-
-  deleteMinPrice(id, actor, req) {
-    requirePerm(actor, 'products.products.edit');
-    const existing = minPriceRepo.findById(id);
-    if (!existing) throw new AppError('Minimum price rule not found', 404);
-    minPriceRepo.remove(id);
-    auditRepo.create({
-      userId: actor.user.id, userName: actor.user.fullName,
-      action: 'delete', module: 'products', recordType: 'min_selling_price', recordId: id,
-      previousValue: existing, ...meta(req),
-    });
-    return { deleted: true };
-  }
-
-  /** productId → floor for every active product with a rule (SAC-POS pulls this; others use their price). */
-  minPriceMap() {
-    const rules = minPriceRepo.activeRules();
-    const map = {};
-    if (!rules.product.size && !rules.brand.size && !rules.category.size) return map;
-    for (const product of repos.products.findAll({ isActive: '1', limit: 100000 }).items || []) {
-      const hit = resolveFloor(product, rules);
-      if (hit) map[product.id] = hit.floor;
-    }
-    return map;
-  }
-
   /**
-   * Lines priced below their floor: the Commission-settings minimum when one applies, otherwise
-   * the product's selling price (no discount below it). Lines need productId, quantity,
-   * taxableAmount (after all discounts, before GST) and a name.
+   * Lines priced below the product's selling price, which is its minimum selling price (no
+   * discount below it). Lines need productId, quantity, taxableAmount (after all discounts,
+   * before GST) and a name.
    */
   belowMinPrice(lines) {
-    const rules = minPriceRepo.activeRules();
     const out = [];
     for (const line of lines) {
       const product = repos.products.findById(line.productId);
       if (!product || !(Number(line.quantity) > 0)) continue;
-      const floor = resolveFloor(product, rules)?.floor ?? Number(product.sellingPrice || 0);
+      const floor = Number(product.sellingPrice || 0);
       const price = unitNetPrice(line);
       if (floor > 0 && price + 0.005 < floor) {
         out.push({ productId: line.productId, name: line.productName || product.name, unitPrice: price, floor });

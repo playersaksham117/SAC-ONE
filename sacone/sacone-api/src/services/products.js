@@ -1,7 +1,6 @@
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
-import { withOfferPrices } from '../repositories/sqlite/commissions.js';
 import {
   generateSku,
   ensureUniqueSku,
@@ -341,12 +340,11 @@ function resolveBrandForSku(brandId) {
 export class ProductService {
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'products.products.view');
-    const result = productRepo.findAll({
+    return productRepo.findAll({
       ...filters,
       limit: filters.limit ? parseInt(filters.limit, 10) : 100,
       offset: filters.offset ? parseInt(filters.offset, 10) : 0,
     });
-    return { ...result, items: withOfferPrices(result.items || []) };
   }
 
   getById(id, actor) {
@@ -354,7 +352,7 @@ export class ProductService {
     const product = productRepo.findById(id);
     if (!product) throw new AppError('Product not found', 404);
     return {
-      ...withOfferPrices([product])[0],
+      ...product,
       skuLocked: productRepo.isReferenced(id),
     };
   }
