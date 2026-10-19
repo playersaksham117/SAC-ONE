@@ -16,19 +16,28 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   );
 }
 
+/**
+ * Staff sign-in: Login ID (or email) + the PIN their admin set in SACONE ERP → Users.
+ * Someone who signed in on this phone before can unlock with the PIN alone, even offline.
+ */
 export default function Login() {
   const profiles = useSession((s) => s.profiles);
-  const { loginOnline, unlock } = useSession.getState();
+  const { loginWithPin, unlock } = useSession.getState();
   const info = useDevice((s) => s.info);
   const list = useMemo(() => Object.values(profiles).filter((p) => p.pinHash), [profiles]);
 
-  const [mode, setMode] = useState<'pick' | 'pin' | 'password'>(list.length ? 'pick' : 'password');
+  const [mode, setMode] = useState<'pick' | 'unlock' | 'signin'>(list.length ? 'pick' : 'signin');
   const [selected, setSelected] = useState<Profile | null>(null);
+  const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const signIn = (who: string) => {
+    setIdentifier(who);
+    setPin('');
+    setMode('signin');
+  };
 
   const doUnlock = async (value = pin) => {
     if (!selected || value.length < 4) return;
@@ -42,25 +51,24 @@ export default function Login() {
       setError((e as Error).message);
       setPin('');
       const code = (e as { code?: string }).code;
-      if (code === 'PIN_LOCKED' || code === 'GRACE_EXPIRED' || code === 'NO_PIN') {
-        setEmail(selected.email);
-        setMode('password');
-      }
+      if (code === 'PIN_LOCKED' || code === 'GRACE_EXPIRED' || code === 'NO_PIN' || code === 'PIN_CHANGED') signIn(selected.email);
     } finally {
       setBusy(false);
     }
   };
 
-  const doPassword = async () => {
+  const doSignIn = async (value = pin) => {
+    if (value.length < 4 || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const { needsPin } = await loginOnline(email, password);
-      setPassword('');
+      await loginWithPin(identifier, value);
+      setPin('');
       syncNow().catch(() => undefined);
-      router.replace(needsPin ? '/set-pin' : '/');
+      router.replace('/');
     } catch (e) {
       setError((e as Error).message);
+      setPin('');
     } finally {
       setBusy(false);
     }
@@ -80,7 +88,7 @@ export default function Login() {
       {mode === 'pick' && (
         <>
           {list.map((p) => (
-            <Card key={p.userId} style={{ marginBottom: space.sm }} onPress={() => { setSelected(p); setPin(''); setError(null); setMode('pin'); }}>
+            <Card key={p.userId} style={{ marginBottom: space.sm }} onPress={() => { setSelected(p); setPin(''); setError(null); setMode('unlock'); }}>
               <Row>
                 <Avatar name={p.name} />
                 <View style={{ flex: 1 }}>
@@ -91,11 +99,11 @@ export default function Login() {
               </Row>
             </Card>
           ))}
-          <Button title="Sign in with ERP account" variant="secondary" icon="log-in-outline" onPress={() => { setError(null); setMode('password'); }} style={{ marginTop: space.md }} />
+          <Button title="Someone else: sign in with Login ID" variant="secondary" icon="log-in-outline" onPress={() => { setError(null); signIn(''); }} style={{ marginTop: space.md }} />
         </>
       )}
 
-      {mode === 'pin' && selected && (
+      {mode === 'unlock' && selected && (
         <Card>
           <Row style={{ justifyContent: 'center' }}>
             <Avatar name={selected.name} size={52} />
@@ -103,24 +111,21 @@ export default function Login() {
           <Text style={{ textAlign: 'center', fontSize: font.lg, fontWeight: '700', marginTop: space.sm, color: colors.text }}>{selected.name}</Text>
           <Text style={{ textAlign: 'center', color: colors.textMuted }}>Enter your PIN</Text>
           <PinPad value={pin} onChange={(v) => { setPin(v); if (v.length === 6) doUnlock(v); }} onSubmit={() => doUnlock()} />
-          <Row style={{ justifyContent: 'space-between', marginTop: space.lg }}>
-            <Button title="Back" variant="ghost" onPress={() => setMode('pick')} size="sm" />
-            <Button title="Use password" variant="ghost" onPress={() => { setEmail(selected.email); setMode('password'); }} size="sm" loading={busy} />
+          <Row style={{ justifyContent: 'flex-start', marginTop: space.lg }}>
+            <Button title="Back" variant="ghost" onPress={() => setMode('pick')} size="sm" loading={busy} />
           </Row>
         </Card>
       )}
 
-      {mode === 'password' && (
+      {mode === 'signin' && (
         <Card>
-          <Text style={{ fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: space.md }}>Sign in with your SACONE ERP account</Text>
-          <Field label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} placeholder="you@business.com" testID="login-email" />
-          <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" onSubmitEditing={doPassword} testID="login-password" />
-          <Button title="Sign in" icon="log-in-outline" onPress={doPassword} loading={busy} size="lg" testID="login-submit" />
+          <Text style={{ fontSize: font.lg, fontWeight: '700', color: colors.text, marginBottom: space.md }}>Sign in</Text>
+          <Field label="Login ID or email" value={identifier} onChangeText={setIdentifier} autoCapitalize="none" autoCorrect={false} placeholder="e.g. 1001 or you@business.com" testID="login-id" />
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>PIN</Text>
+          <PinPad value={pin} onChange={setPin} onSubmit={() => doSignIn()} />
+          <Button title="Sign in" icon="log-in-outline" onPress={() => doSignIn()} loading={busy} disabled={!identifier.trim() || pin.length < 4} size="lg" style={{ marginTop: space.md }} testID="login-submit" />
           <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.md }}>
-            Your ERP role decides what you can do here. After the first sign-in you can unlock with a PIN, even offline.
-          </Text>
-          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.xs }}>
-            No account? Staff logins are issued only by your admin in SACONE ERP (Administration → Users). This app cannot create accounts.
+            Your Login ID and PIN are set by your admin in SACONE ERP (Users → Edit → SAC-POS sign-in). The PIN cannot be set or changed on this phone. Signing in needs a connection; afterwards your PIN also unlocks the phone offline.
           </Text>
           {list.length ? <Button title="Back to staff list" variant="ghost" onPress={() => setMode('pick')} style={{ marginTop: space.sm }} /> : null}
         </Card>

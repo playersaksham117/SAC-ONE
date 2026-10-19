@@ -28,6 +28,7 @@ import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
 import { productService } from './products.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
+import { posPins } from './pos-pins.js';
 
 const deviceRepo = repos.posDevices;
 const posUserRepo = repos.posUsers;
@@ -857,6 +858,8 @@ export class PosSyncService {
           email: user.email,
           roleName: user.roleName,
           permissions: allowed ? repos.roles.getPermissions(user.roleId).map((p) => p.permission_key) : [],
+          // When the ERP last set / cleared this person's SAC-POS PIN: phones drop a cached PIN that changed.
+          pinSetAt: posPins.pinVersion(id),
         };
       }),
       server_time: nowIso(),

@@ -1,3 +1,4 @@
+import { posPins } from '../services/pos-pins.js';
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
 import { authenticate } from '../middleware/auth.js';
@@ -34,6 +35,14 @@ router.put('/me/password', signedIn(), asyncHandler(async (req, res) => {
   sendSuccess(res, authService.changePassword(req.actor, req.body || {}, req));
 }));
 
+// My own SAC-POS PIN (current password required); admins set other people's in Users.
+router.get('/me/pos-pin', signedIn(), asyncHandler(async (req, res) => {
+  sendSuccess(res, posPins.own(req.actor));
+}));
+router.put('/me/pos-pin', signedIn(), asyncHandler(async (req, res) => {
+  sendSuccess(res, posPins.setOwn(req.actor, req.body || {}, req));
+}));
+
 router.get('/firms', signedIn(), asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.choices(req.actor.user));
 }));
@@ -66,6 +75,10 @@ userRouter.post('/', asyncHandler(async (req, res) => {
 }));
 userRouter.put('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.update(req.params.id, req.body, req.actor, req));
+}));
+// SAC-POS Login ID and PIN (set only here, never on the phone). { loginId?, pin?, clear? }
+userRouter.put('/:id/pos-pin', asyncHandler(async (req, res) => {
+  sendSuccess(res, posPins.set(req.params.id, req.body || {}, req.actor, req));
 }));
 userRouter.post('/:id/deactivate', asyncHandler(async (req, res) => {
   sendSuccess(res, userService.deactivate(req.params.id, req.actor, req));

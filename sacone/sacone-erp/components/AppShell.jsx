@@ -103,7 +103,7 @@ function Sidebar({ sections, pathname, isHome, session, logout, onNavigate, canO
           <div className="truncate text-sm font-medium">{session?.user?.fullName}</div>
           <div className="truncate text-xs text-slate-400">{session?.user?.roleName}</div>
           <button type="button" onClick={() => setPasswordOpen(true)} className="mt-1 text-xs font-medium text-slate-300 hover:text-white hover:underline">
-            Change password
+            Password &amp; POS PIN
           </button>
         </div>
         <button type="button" onClick={logout} className="btn-secondary w-full text-slate-700">

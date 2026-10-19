@@ -50,7 +50,14 @@ export class AuthService {
     if (!valid) {
       throw new AppError('Invalid credentials', 401, 'INVALID_CREDENTIALS');
     }
+    return this.openSession(userRow, req, { firmId, financialYear });
+  }
 
+  /**
+   * A new session for a user whose credentials were checked (password here, or a SAC-POS PIN):
+   * token, audit entry, permissions and the firm / financial year to open.
+   */
+  openSession(userRow, req, { firmId, financialYear, method = 'password' } = {}) {
     sessionRepo.purgeExpired();
     const token = crypto.randomBytes(48).toString('hex');
     const expiresAt = addHours(new Date(), config.sessionTtlHours).toISOString();
@@ -71,7 +78,7 @@ export class AuthService {
       module: 'core',
       recordType: 'session',
       recordId: userRow.id,
-      newValue: { email: userRow.email },
+      newValue: { email: userRow.email, ...(method !== 'password' ? { method } : {}) },
       ...getRequestMeta(req),
     });
 
@@ -251,7 +258,10 @@ export class UserService {
 
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.users.view');
-    return userRepo.findAll({ includeInactive: true, firmId: this.#firm() });
+    const users = userRepo.findAll({ includeInactive: true, firmId: this.#firm() });
+    const pins = Object.fromEntries(getCoreDatabase().prepare('SELECT user_id, login_id, pin_hash, pin_set_at FROM user_pos_pins').all()
+      .map((r) => [r.user_id, { posLoginId: r.login_id || null, posPinSet: Boolean(r.pin_hash), posPinSetAt: r.pin_hash ? r.pin_set_at : null }]));
+    return users.map((u) => ({ posLoginId: null, posPinSet: false, posPinSetAt: null, ...u, ...pins[u.id] }));
   }
 
   getById(id, actor) {

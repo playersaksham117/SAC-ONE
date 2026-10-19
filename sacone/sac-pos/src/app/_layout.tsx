@@ -21,7 +21,6 @@ export default function RootLayout() {
           <Stack.Screen name="connect" />
           <Stack.Screen name="pair-scan" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="login" />
-          <Stack.Screen name="set-pin" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="cart" options={{ presentation: 'modal' }} />
           <Stack.Screen name="checkout" />

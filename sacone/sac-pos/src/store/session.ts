@@ -2,10 +2,9 @@ import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ApiError } from '../api/client';
-import { auth, sync, type StaffStatus } from '../api/sacone';
+import { sync, type StaffStatus } from '../api/sacone';
 import { can, type Capability } from '../domain/permissions';
-import { isValidEmail, isValidPin } from '../domain/validation';
-import { deviceConfig, useDevice } from './device';
+import { deviceConfig } from './device';
 import { jsonStorage } from './persist';
 
 /** How long a PIN keeps working without the terminal reaching SACONE. */
@@ -18,8 +17,11 @@ export interface Profile {
   email: string;
   roleName: string;
   permissions: string[];
+  /** Salted hash of the ERP-set PIN, kept for offline unlock. */
   pinHash: string | null;
   pinSalt: string | null;
+  /** When the ERP set that PIN; a different value from the ERP means sign in again. */
+  pinSetAt?: string | null;
   lastVerifiedAt: string;   // last time the ERP confirmed this user is active
   failedPins: number;
 }
@@ -27,8 +29,8 @@ export interface Profile {
 interface SessionState {
   profiles: Record<string, Profile>;
   currentUserId: string | null; // never persisted → app always starts locked
-  loginOnline: (email: string, password: string) => Promise<{ needsPin: boolean }>;
-  setPin: (pin: string) => Promise<void>;
+  /** Sign in with Login ID or email + the PIN set in ERP → Users (needs a connection). */
+  loginWithPin: (identifier: string, pin: string) => Promise<void>;
   unlock: (userId: string, pin: string) => Promise<void>;
   applyStaffStatus: (staff: StaffStatus[]) => void;
   lock: () => void;
@@ -51,54 +53,38 @@ export const useSession = create<SessionState>()(
       profiles: {},
       currentUserId: null,
 
-      async loginOnline(email, password) {
-        const baseUrl = useDevice.getState().baseUrl;
-        if (!baseUrl) throw new ApiError('Connect this phone to SACONE first', 0, 'NO_DEVICE');
-        if (!isValidEmail(email)) throw new ApiError('Enter your ERP email address', 0, 'VALIDATION');
-        if (!password) throw new ApiError('Enter your password', 0, 'VALIDATION');
-        const res = await auth.login(baseUrl, email, password);
+      async loginWithPin(identifier, pin) {
+        const cfg = deviceConfig();
+        if (!cfg) throw new ApiError('Connect this phone to SACONE first', 0, 'NO_DEVICE');
+        if (!identifier.trim()) throw new ApiError('Enter your Login ID or email', 0, 'VALIDATION');
+        if (!/^\d{4,6}$/.test(pin)) throw new ApiError('Enter your 4–6 digit PIN', 0, 'VALIDATION');
+        // The server checks the PIN (set in ERP → Users), this terminal's firm and POS access.
+        const res = await sync.login(cfg, identifier, pin);
         if (!can(res.permissions, 'useTerminal')) {
           throw new ApiError('Your ERP role does not allow POS access (needs "POS Terminal – view").', 403, 'FORBIDDEN');
         }
-        // The terminal belongs to one firm: the ERP must let this person open that firm.
-        const cfg = deviceConfig();
-        if (cfg) {
-          const { staff } = await sync.staff(cfg, [res.user.id]);
-          if (!staff[0]?.isActive) {
-            const firm = useDevice.getState().info?.company?.businessName;
-            throw new ApiError(`You do not have access to ${firm || 'this firm'} in SACONE. Ask the owner to add it in Users → Edit.`, 403, 'FIRM_FORBIDDEN');
-          }
-        }
-        const prev = get().profiles[res.user.id];
+        // Keep a salted hash on the phone so the same PIN unlocks offline (until the ERP changes it).
+        const salt = Crypto.randomUUID();
         const profile: Profile = {
           userId: res.user.id,
           name: res.user.fullName,
           email: res.user.email,
           roleName: res.user.roleName,
           permissions: res.permissions,
-          pinHash: prev?.pinHash ?? null,
-          pinSalt: prev?.pinSalt ?? null,
+          pinHash: await hashPin(pin, salt),
+          pinSalt: salt,
+          pinSetAt: res.pinSetAt ?? null,
           lastVerifiedAt: new Date().toISOString(),
           failedPins: 0,
         };
         set((s) => ({ profiles: { ...s.profiles, [profile.userId]: profile }, currentUserId: profile.userId }));
-        return { needsPin: !profile.pinHash };
-      },
-
-      async setPin(pin) {
-        const id = get().currentUserId;
-        if (!id) throw new ApiError('Sign in first', 0, 'NO_SESSION');
-        if (!isValidPin(pin)) throw new ApiError('Use 4–6 digits; avoid 1234 or repeated digits', 0, 'VALIDATION');
-        const salt = Crypto.randomUUID();
-        const pinHash = await hashPin(pin, salt);
-        set((s) => ({ profiles: { ...s.profiles, [id]: { ...s.profiles[id], pinHash, pinSalt: salt, failedPins: 0 } } }));
       },
 
       async unlock(userId, pin) {
         const profile = get().profiles[userId];
-        if (!profile?.pinHash || !profile.pinSalt) throw new ApiError('Sign in with your password first', 0, 'NO_PIN');
+        if (!profile?.pinHash || !profile.pinSalt) throw new ApiError('Sign in with your Login ID and PIN first', 0, 'NO_PIN');
         if (profile.failedPins >= MAX_PIN_ATTEMPTS) {
-          throw new ApiError('Too many wrong PINs — sign in with your ERP password', 0, 'PIN_LOCKED');
+          throw new ApiError('Too many wrong PINs on this phone — sign in again with your Login ID and PIN', 0, 'PIN_LOCKED');
         }
         const hash = await hashPin(pin, profile.pinSalt);
         if (hash !== profile.pinHash) {
@@ -118,6 +104,10 @@ export const useSession = create<SessionState>()(
               get().forget(userId);
               throw new ApiError('This user is disabled in the ERP', 403, 'USER_INACTIVE');
             }
+            if (st && st.pinSetAt !== undefined && (st.pinSetAt ?? null) !== (profile.pinSetAt ?? null)) {
+              set((s) => ({ profiles: { ...s.profiles, [userId]: { ...profile, pinHash: null, pinSalt: null } } }));
+              throw new ApiError('Your PIN was changed in the ERP — sign in with your Login ID and new PIN', 0, 'PIN_CHANGED');
+            }
             if (st) {
               fresh = { ...profile, permissions: st.permissions, roleName: st.roleName ?? profile.roleName, name: st.fullName ?? profile.name, lastVerifiedAt: new Date().toISOString() };
             }
@@ -126,7 +116,7 @@ export const useSession = create<SessionState>()(
           }
         }
         if (daysSince(fresh.lastVerifiedAt) > OFFLINE_GRACE_DAYS) {
-          throw new ApiError(`Offline for more than ${OFFLINE_GRACE_DAYS} days — connect and sign in with your password`, 0, 'GRACE_EXPIRED');
+          throw new ApiError(`Offline for more than ${OFFLINE_GRACE_DAYS} days — connect and sign in with your Login ID and PIN`, 0, 'GRACE_EXPIRED');
         }
         if (!can(fresh.permissions, 'useTerminal')) {
           throw new ApiError('Your ERP role no longer allows POS access', 403, 'FORBIDDEN');
@@ -146,7 +136,12 @@ export const useSession = create<SessionState>()(
               if (currentUserId === st.id) currentUserId = null;
               continue;
             }
-            profiles[st.id] = { ...p, permissions: st.permissions, roleName: st.roleName ?? p.roleName, name: st.fullName ?? p.name, lastVerifiedAt: new Date().toISOString() };
+            // A PIN changed or removed in the ERP stops the old one unlocking this phone.
+            const pinChanged = st.pinSetAt !== undefined && (st.pinSetAt ?? null) !== (p.pinSetAt ?? null);
+            profiles[st.id] = {
+              ...p, permissions: st.permissions, roleName: st.roleName ?? p.roleName, name: st.fullName ?? p.name, lastVerifiedAt: new Date().toISOString(),
+              ...(pinChanged ? { pinHash: null, pinSalt: null } : {}),
+            };
           }
           return { profiles, currentUserId };
         });
@@ -164,7 +159,7 @@ export const useSession = create<SessionState>()(
         const profile = get().profiles[userId];
         if (!profile?.pinHash || !profile.pinSalt) throw new ApiError('This approver has no PIN on this phone', 0, 'NO_PIN');
         if (profile.failedPins >= MAX_PIN_ATTEMPTS) {
-          throw new ApiError(`Too many wrong PINs for ${profile.name}; they must sign in with their ERP password`, 0, 'PIN_LOCKED');
+          throw new ApiError(`Too many wrong PINs for ${profile.name}; they must sign in again with their Login ID and PIN`, 0, 'PIN_LOCKED');
         }
         const hash = await hashPin(pin, profile.pinSalt);
         if (hash !== profile.pinHash) {

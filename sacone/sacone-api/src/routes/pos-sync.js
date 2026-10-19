@@ -1,3 +1,6 @@
+import { posPins } from '../services/pos-pins.js';
+import { authService } from '../services/index.js';
+import { AppError } from '../core/http.js';
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
 import { authenticate } from '../middleware/auth.js';
@@ -84,6 +87,19 @@ posSyncRouter.post('/products/ack', asyncHandler(async (req, res) => {
 /** No separate minimum prices: the selling price is the minimum. Older phones still ask, so answer with none. */
 posSyncRouter.get('/min-prices', asyncHandler(async (req, res) => {
   sendSuccess(res, { prices: {} });
+}));
+
+/**
+ * Staff sign-in on a paired terminal: Login ID or email + the PIN set in ERP → Users.
+ * Only staff who may open this terminal's firm and use the POS terminal get a session.
+ */
+posSyncRouter.post('/login', asyncHandler(async (req, res) => {
+  const { userRow, pinSetAt } = posPins.verify(req.body?.identifier, req.body?.pin);
+  const staff = posSyncService.staffStatus(req.device, { ids: userRow.id }).staff[0];
+  if (!staff?.isActive) throw new AppError('You do not have access to this firm in SACONE. Ask the owner to add it in Users → Edit.', 403, 'FIRM_FORBIDDEN');
+  if (!staff.permissions.includes('pos.terminal.view')) throw new AppError('Your ERP role does not allow POS access (needs "POS Terminal – view").', 403, 'FORBIDDEN');
+  const session = authService.openSession(userRow, req, { firmId: currentFirmId(), method: 'pos_pin' });
+  sendSuccess(res, { ...session, pinSetAt });
 }));
 
 /** Attendance from the terminal for the signed-in staff member: action 'in' | 'out' | 'status'. */

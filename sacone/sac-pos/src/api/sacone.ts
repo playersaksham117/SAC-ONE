@@ -74,9 +74,10 @@ export interface Page {
 
 export interface StaffStatus {
   id: string; exists: boolean; isActive: boolean; fullName?: string; email?: string; roleName?: string; permissions: string[];
+  /** When the ERP last set this person's SAC-POS PIN (null = no PIN): a change means sign in again. */
+  pinSetAt?: string | null;
 }
 
-/** Long-poll result: `changed` once data this terminal pulls was written on the server. */
 /** Today's attendance row for a staff member (times are ISO; inTime / outTime are IST 'HH:MM'). */
 export interface AttendanceToday {
   status: 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'week_off';
@@ -84,6 +85,7 @@ export interface AttendanceToday {
   minutes: number; late: boolean; source: string;
 }
 
+/** Long-poll result: `changed` once data this terminal pulls was written on the server. */
 export interface ChangeFeed {
   changed: boolean; seq: number; tables: string[]; reset?: boolean;
 }
@@ -95,12 +97,12 @@ const deviceHeaders = (c: DeviceConfig) => ({
   'X-Device-Platform': 'sac-pos',
 });
 
-export const auth = {
-  login: (baseUrl: string, email: string, password: string) =>
-    request<LoginResult>(baseUrl, '/api/auth/login', { method: 'POST', body: { email: email.trim(), password } }),
-};
 
 export const sync = {
+  /** Staff sign-in on this terminal: Login ID or email + the PIN set in ERP → Users. */
+  login: (c: DeviceConfig, identifier: string, pin: string) =>
+    request<LoginResult & { pinSetAt: string }>(c.baseUrl, '/api/v1/sync/login', { method: 'POST', body: { identifier: identifier.trim(), pin }, headers: deviceHeaders(c) }),
+
   ping: (c: DeviceConfig) => request<PingResult>(c.baseUrl, '/api/v1/sync/ping', { method: 'POST', body: {}, headers: deviceHeaders(c) }),
 
   staff: (c: DeviceConfig, ids: string[]) =>

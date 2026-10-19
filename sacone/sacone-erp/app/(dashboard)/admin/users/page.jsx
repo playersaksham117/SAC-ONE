@@ -14,7 +14,18 @@ const EMPTY_USER = {
   phone: '',
   roleId: '',
   isActive: true,
+  posLoginId: '',
+  posPin: '',
+  posClear: false,
 };
+
+/** Random 6-digit PIN that passes the server's rules (no repeats like 111111, no 123456). */
+function generatePin() {
+  for (;;) {
+    const pin = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    if (!/^(\d)\1+$/.test(pin) && pin !== '123456' && pin !== '654321') return pin;
+  }
+}
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString('en-IN') : '—');
 
@@ -82,6 +93,9 @@ export default function UsersPage() {
       phone: user.phone || '',
       roleId: user.roleId,
       isActive: user.isActive,
+      posLoginId: user.posLoginId || '',
+      posPin: '',
+      posClear: false,
     });
     setModalOpen(true);
     try {
@@ -89,6 +103,17 @@ export default function UsersPage() {
     } catch {
       /* the list row is enough to edit with */
     }
+  };
+
+  // SAC-POS Login ID / PIN: saved only when something changed.
+  const savePosLogin = async (userId, before) => {
+    const loginId = form.posLoginId.trim().toUpperCase();
+    const changed = loginId !== (before?.posLoginId || '') || form.posPin || form.posClear;
+    if (!changed) return;
+    await apiRequest(`/api/users/${userId}/pos-pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ loginId, pin: form.posClear ? undefined : form.posPin || undefined, clear: form.posClear || undefined }),
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -109,12 +134,14 @@ export default function UsersPage() {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
+        await savePosLogin(editing.id, editing);
       } else {
-        const { isActive, ...createPayload } = form;
-        await apiRequest('/api/users', {
+        const { isActive, posLoginId, posPin, posClear, ...createPayload } = form;
+        const created = await apiRequest('/api/users', {
           method: 'POST',
           body: JSON.stringify(createPayload),
         });
+        await savePosLogin(created.id, null);
       }
       setModalOpen(false);
       await loadData();
@@ -170,9 +197,14 @@ export default function UsersPage() {
                 <td className="px-4 py-3 text-slate-600">{user.email}</td>
                 <td className="px-4 py-3">{user.roleName}</td>
                 <td className="px-4 py-3">
-                  {posAccess(user)
-                    ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Can use</span>
-                    : <span className="text-xs text-slate-400">—</span>}
+                  {posAccess(user) ? (
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.posPinSet ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                        {user.posPinSet ? 'PIN set' : 'No PIN yet'}
+                      </span>
+                      {user.posLoginId && <span className="font-mono text-[11px] text-slate-500">ID {user.posLoginId}</span>}
+                    </div>
+                  ) : <span className="text-xs text-slate-400">—</span>}
                 </td>
                 <td className="px-4 py-3"><StatusBadge active={user.isActive} /></td>
                 <td className="px-4 py-3 text-slate-500">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : '—'}</td>
@@ -283,6 +315,37 @@ export default function UsersPage() {
               <button type="button" className="btn-secondary shrink-0" onClick={() => { setForm({ ...form, password: generatePassword() }); setShowPassword(true); }}>Generate</button>
             </div>
             {form.password && showPassword && <p className="mt-1 text-xs text-slate-500">Copy it now and give it to the user; it is not shown again after saving.</p>}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-semibold text-slate-900">SAC-POS sign-in</span>
+              <span className="text-xs text-slate-500">
+                {editing?.posPinSet ? `PIN set${editing.posPinSetAt ? ` on ${new Date(editing.posPinSetAt).toLocaleDateString('en-IN')}` : ''}` : 'No PIN yet'}
+              </span>
+            </div>
+            <p className="mb-3 mt-1 text-xs text-slate-500">On the phone, staff sign in with this Login ID (or their email) and PIN. The PIN is set only here, not on the phone.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm"><span className="label">Login ID (optional)</span>
+                <input className="input-field font-mono uppercase" maxLength={20} placeholder="e.g. 1001 or RAVI" value={form.posLoginId} onChange={(e) => setForm({ ...form, posLoginId: e.target.value })} />
+              </label>
+              <div className="text-sm">
+                <span className="label">{editing?.posPinSet ? 'New PIN (optional)' : 'PIN (4–6 digits)'}</span>
+                <div className="flex gap-2">
+                  <input className="input-field font-mono tracking-widest" inputMode="numeric" autoComplete="off" maxLength={6} pattern="\d{4,6}"
+                    disabled={form.posClear} placeholder={editing?.posPinSet ? 'Leave blank to keep' : '••••'} value={form.posPin}
+                    onChange={(e) => setForm({ ...form, posPin: e.target.value.replace(/\D/g, '') })} />
+                  <button type="button" className="btn-secondary shrink-0" disabled={form.posClear} onClick={() => setForm({ ...form, posPin: generatePin() })}>Generate</button>
+                </div>
+                {form.posPin && <p className="mt-1 text-xs text-slate-500">Tell the user this PIN now; it is not shown again after saving.</p>}
+              </div>
+            </div>
+            {editing?.posPinSet && (
+              <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                <input type="checkbox" checked={form.posClear} onChange={(e) => setForm({ ...form, posClear: e.target.checked, posPin: '' })} />
+                Remove the PIN (they cannot sign in to SAC-POS until a new one is set)
+              </label>
+            )}
           </div>
 
           {editing && detail && (
