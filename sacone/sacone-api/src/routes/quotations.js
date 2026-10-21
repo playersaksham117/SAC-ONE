@@ -69,6 +69,10 @@ documentNumberingRouter.put('/firm', asyncHandler(async (req, res) => {
   sendSuccess(res, documentNumberingService.updateFirmSettings(req.body, req.actor, req));
 }));
 
+documentNumberingRouter.put('/series/:documentType/next-number', asyncHandler(async (req, res) => {
+  sendSuccess(res, documentNumberingService.setNextNumber(req.params.documentType, req.body, req.actor, req));
+}));
+
 documentNumberingRouter.put('/series/:documentType', asyncHandler(async (req, res) => {
   sendSuccess(res, documentNumberingService.updateSeries(req.params.documentType, req.body, req.actor, req));
 }));

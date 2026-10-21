@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
-import { RequirePermission } from '../../../../lib/auth-context';
+import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState } from '../../../../components/ui';
+
+const LABELS = { tax_invoice: 'Invoice (cash & credit)' };
+const label = (type) => LABELS[type] || type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 export default function DocumentNumberingPage() {
   const [data, setData] = useState(null);
@@ -12,6 +15,11 @@ export default function DocumentNumberingPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [firmForm, setFirmForm] = useState({});
+  const [rows, setRows] = useState({});
+  const [savingRow, setSavingRow] = useState('');
+  const { session } = useAuth();
+  // Only the owner may change a series (format, opening / next number).
+  const isOwner = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -26,6 +34,10 @@ export default function DocumentNumberingPage() {
         fyResetNumbering: res.firm?.fyResetNumbering !== false,
         authorizedSignatory: res.firm?.authorizedSignatory || '',
       });
+      setRows(Object.fromEntries((res.series || []).map((s) => [s.documentType, {
+        formatTemplate: s.formatTemplate || '',
+        nextNumber: String(s.nextNumber),
+      }])));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -47,6 +59,27 @@ export default function DocumentNumberingPage() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveRow = async (s) => {
+    const row = rows[s.documentType] || {};
+    setSavingRow(s.documentType);
+    setError('');
+    setMessage('');
+    try {
+      if ((row.formatTemplate || '') !== (s.formatTemplate || '')) {
+        await apiRequest(`/api/document-numbering/series/${s.documentType}`, { method: 'PUT', body: JSON.stringify({ formatTemplate: row.formatTemplate.trim() }) });
+      }
+      if (Number(row.nextNumber) !== s.nextNumber) {
+        await apiRequest(`/api/document-numbering/series/${s.documentType}/next-number`, { method: 'PUT', body: JSON.stringify({ nextNumber: Number(row.nextNumber) }) });
+      }
+      setMessage(`${label(s.documentType)} series saved`);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingRow('');
     }
   };
 
@@ -90,27 +123,58 @@ export default function DocumentNumberingPage() {
         </form>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-3 font-semibold">Document series</h3>
+          <h3 className="font-semibold">Document series</h3>
+          <p className="mb-3 text-sm text-slate-500">
+            {isOwner
+              ? 'Set the format and the next (opening) number of each series, e.g. continue invoices from 0151. Cash and credit invoices share the invoice series. Numbers already on a bill are skipped.'
+              : 'Only the firm admin can change a series.'}
+          </p>
+          <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Prefix</th>
-                <th className="px-3 py-2">Current #</th>
-                <th className="px-3 py-2">Next #</th>
+                <th className="px-3 py-2">Format</th>
+                <th className="px-3 py-2">Last used</th>
+                <th className="px-3 py-2">Next number</th>
+                <th className="px-3 py-2">Next document</th>
+                {isOwner ? <th className="px-3 py-2" /> : null}
               </tr>
             </thead>
             <tbody>
-              {(data?.series || []).map((s) => (
-                <tr key={s.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2 capitalize">{s.documentType.replace(/_/g, ' ')}</td>
-                  <td className="px-3 py-2 font-mono">{s.docPrefix}</td>
-                  <td className="px-3 py-2">{s.currentNumber}</td>
-                  <td className="px-3 py-2 font-semibold">{String(s.nextNumber).padStart(data.firm?.numberPadding || 4, '0')}</td>
-                </tr>
-              ))}
+              {[...(data?.series || [])].sort((a, b) => (b.documentType === 'tax_invoice') - (a.documentType === 'tax_invoice')).map((s) => {
+                const row = rows[s.documentType] || {};
+                const changed = (row.formatTemplate || '') !== (s.formatTemplate || '') || Number(row.nextNumber) !== s.nextNumber;
+                return (
+                  <tr key={s.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2">{label(s.documentType)}</td>
+                    <td className="px-3 py-2">
+                      {isOwner ? (
+                        <input className="input-field w-48 font-mono text-xs" value={row.formatTemplate ?? ''} placeholder={data.firm?.documentNumberFormat}
+                          onChange={(e) => setRows((p) => ({ ...p, [s.documentType]: { ...row, formatTemplate: e.target.value } }))} />
+                      ) : <span className="font-mono text-xs">{s.formatTemplate || data.firm?.documentNumberFormat}</span>}
+                    </td>
+                    <td className="px-3 py-2">{s.currentNumber || '—'}</td>
+                    <td className="px-3 py-2">
+                      {isOwner ? (
+                        <input className="input-field w-24" type="number" min="1" value={row.nextNumber ?? ''}
+                          onChange={(e) => setRows((p) => ({ ...p, [s.documentType]: { ...row, nextNumber: e.target.value } }))} />
+                      ) : String(s.nextNumber).padStart(data.firm?.numberPadding || 4, '0')}
+                    </td>
+                    <td className="px-3 py-2 font-mono font-semibold">{s.nextPreview}</td>
+                    {isOwner ? (
+                      <td className="px-3 py-2">
+                        <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={!changed || savingRow === s.documentType || !(Number(row.nextNumber) >= 1)} onClick={() => saveRow(s)}>
+                          {savingRow === s.documentType ? 'Saving…' : 'Save'}
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </RequirePermission>

@@ -18,6 +18,25 @@ export const DOCUMENT_TYPES = {
   commission_payment: { docPrefix: 'CP', label: 'Commission Payment' },
 };
 
+/** Cash and credit invoices share one invoice series (one running number, no duplicates). */
+export const INVOICE_FORMAT = '{FIRM}/{NUMBER}/{FY}';
+const seriesTypeOf = (documentType) => (documentType === 'cash_invoice' ? 'tax_invoice' : documentType);
+
+/** Numbers already on a document are skipped, so a changed "next number" can never duplicate one. */
+const TAKEN = {
+  tax_invoice: 'SELECT 1 FROM pos_sales WHERE invoice_number = ?',
+};
+
+function formatNumber(firm, series, n, fy) {
+  const padded = String(n).padStart(firm.numberPadding || 4, '0');
+  const template = series.format_template || firm.documentNumberFormat || '{FIRM}/{DOC}/{NUMBER}/{FY}';
+  return template
+    .replace(/\{FIRM\}/g, firm.firmPrefix || 'CO')
+    .replace(/\{DOC\}/g, series.doc_prefix)
+    .replace(/\{NUMBER\}/g, padded)
+    .replace(/\{FY\}/g, fy);
+}
+
 function mapSeries(row) {
   if (!row) return null;
   return {
@@ -129,8 +148,8 @@ export class DocumentNumberingRepository {
         INSERT INTO document_series (
           id, firm_id, document_type, doc_prefix, format_template,
           starting_number, reset_each_fy, is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, NULL, 1, 1, 1, ?, ?)
-      `).run(generateId(), firm.id, type, meta.docPrefix, now, now);
+        ) VALUES (?, ?, ?, ?, ?, 1, 1, 1, ?, ?)
+      `).run(generateId(), firm.id, type, meta.docPrefix, type === 'tax_invoice' ? INVOICE_FORMAT : null, now, now);
     }
     return this.listSeries(firm.id);
   }
@@ -201,7 +220,7 @@ export class DocumentNumberingRepository {
     const tx = db.transaction(() => {
       const series = db.prepare(`
         SELECT * FROM document_series WHERE firm_id = ? AND document_type = ? AND is_active = 1
-      `).get(firm.id, documentType);
+      `).get(firm.id, seriesTypeOf(documentType));
       if (!series) throw new Error(`Document series not configured: ${documentType}`);
 
       const seqKey = series.reset_each_fy ? fy : 'ALL';
@@ -218,18 +237,16 @@ export class DocumentNumberingRepository {
         seq = db.prepare('SELECT * FROM document_sequences WHERE id = ?').get(seqId);
       }
 
-      const nextNum = seq.last_number + 1;
+      let nextNum = seq.last_number + 1;
+      let docNumber = formatNumber(firm, series, nextNum, fy);
+      const taken = TAKEN[series.document_type] && db.prepare(TAKEN[series.document_type]);
+      while (taken && taken.get(docNumber)) {
+        nextNum += 1;
+        docNumber = formatNumber(firm, series, nextNum, fy);
+      }
       db.prepare(`
         UPDATE document_sequences SET last_number = ? WHERE id = ?
       `).run(nextNum, seq.id);
-
-      const padded = String(nextNum).padStart(firm.numberPadding || 4, '0');
-      const template = series.format_template || firm.documentNumberFormat || '{FIRM}/{DOC}/{NUMBER}/{FY}';
-      const docNumber = template
-        .replace(/\{FIRM\}/g, firm.firmPrefix || 'CO')
-        .replace(/\{DOC\}/g, series.doc_prefix)
-        .replace(/\{NUMBER\}/g, padded)
-        .replace(/\{FY\}/g, fy);
 
       return {
         documentNumber: docNumber,
@@ -244,6 +261,31 @@ export class DocumentNumberingRepository {
     return tx();
   }
 
+  /**
+   * Opening / next number of a series for the current financial year (e.g. continue from 0151
+   * after the old software). Returns the number the next document will get.
+   */
+  setNextNumber(firmId, documentType, nextNumber) {
+    const db = getDatabase();
+    const firm = this.ensureFirmPrefix(firmId);
+    this.ensureDefaultSeries(firm.id);
+    const series = db.prepare('SELECT * FROM document_series WHERE firm_id = ? AND document_type = ?').get(firm.id, seriesTypeOf(documentType));
+    if (!series) throw new Error(`Document series not configured: ${documentType}`);
+    const fy = getFinancialYear();
+    const seqKey = series.reset_each_fy ? fy : 'ALL';
+    const docNumber = formatNumber(firm, series, nextNumber, fy);
+    if (TAKEN[series.document_type] && db.prepare(TAKEN[series.document_type]).get(docNumber)) {
+      return { taken: docNumber };
+    }
+    const seq = db.prepare('SELECT id FROM document_sequences WHERE series_id = ? AND financial_year = ?').get(series.id, seqKey);
+    if (seq) db.prepare('UPDATE document_sequences SET last_number = ? WHERE id = ?').run(nextNumber - 1, seq.id);
+    else {
+      db.prepare('INSERT INTO document_sequences (id, series_id, financial_year, last_number) VALUES (?, ?, ?, ?)')
+        .run(generateId(), series.id, seqKey, nextNumber - 1);
+    }
+    return { next: docNumber };
+  }
+
   getSequenceStatus(firmId) {
     const firm = this.ensureFirmPrefix(firmId);
     if (!firm) return { firm: null, series: [] };
@@ -253,7 +295,7 @@ export class DocumentNumberingRepository {
     return {
       firm,
       financialYear: fy,
-      series: series.map((s) => {
+      series: series.filter((s) => s.documentType !== 'cash_invoice').map((s) => {
         const seqKey = s.resetEachFy ? fy : 'ALL';
         const seq = db.prepare(`
           SELECT last_number FROM document_sequences WHERE series_id = ? AND financial_year = ?
@@ -262,6 +304,7 @@ export class DocumentNumberingRepository {
           ...s,
           currentNumber: seq?.last_number || 0,
           nextNumber: (seq?.last_number || 0) + 1,
+          nextPreview: formatNumber(firm, { format_template: s.formatTemplate, doc_prefix: s.docPrefix }, (seq?.last_number || 0) + 1, fy),
           financialYear: seqKey,
         };
       }),

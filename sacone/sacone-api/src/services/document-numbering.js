@@ -1,6 +1,6 @@
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { authService, isFirmAdmin } from './index.js';
 import { generateFirmPrefix } from '../core/firm-prefix.js';
 
 const numberingRepo = repos.documentNumbering;
@@ -58,8 +58,35 @@ export class DocumentNumberingService {
     return numberingRepo.getSequenceStatus(firm.id);
   }
 
-  updateSeries(documentType, data, actor, req) {
+  #assertAdmin(actor) {
     authService.checkPermission(actor.permissions, 'core.document_numbering.edit');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can change document series', 403, 'OWNER_ONLY');
+  }
+
+  /** Admin only: the number the next document of this series gets (opening number). */
+  setNextNumber(documentType, data, actor, req) {
+    this.#assertAdmin(actor);
+    const n = Number(data?.nextNumber);
+    if (!Number.isInteger(n) || n < 1 || n > 99999999) throw new AppError('Next number must be a whole number from 1', 400);
+    const firm = numberingRepo.getFirm();
+    if (!firm) throw new AppError('Company not configured', 400);
+    const res = numberingRepo.setNextNumber(firm.id, documentType, n);
+    if (res.taken) throw new AppError(`${res.taken} is already used by a bill. Choose a number after the bills already made.`, 409, 'NUMBER_TAKEN');
+    repos.auditLogs.create({
+      userId: actor.user.id,
+      userName: actor.user.fullName,
+      action: 'update',
+      module: 'core',
+      recordType: 'document_series',
+      recordId: documentType,
+      newValue: { nextNumber: n, next: res.next },
+      ...getRequestMeta(req),
+    });
+    return numberingRepo.getSequenceStatus(firm.id);
+  }
+
+  updateSeries(documentType, data, actor, req) {
+    this.#assertAdmin(actor);
     const firm = numberingRepo.getFirm();
     if (!firm) throw new AppError('Company not configured', 400);
     const series = numberingRepo.upsertSeries(firm.id, documentType, {
