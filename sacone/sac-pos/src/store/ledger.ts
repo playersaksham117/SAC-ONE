@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { PushResult } from '../api/sacone';
 import { dayKey, docNumber } from '../domain/numbering';
 import type { CustomerPayment, HeldBill, Quotation, Sale, SaleReturn, SyncMeta } from '../domain/types';
+import { sameDoc, withServerSale, type ServerSaleStatus } from '../domain/serverSale';
 import { jsonStorage } from './persist';
 
 type Prefix = 'S' | 'R' | 'P' | 'C' | 'Q';
@@ -25,6 +26,8 @@ interface LedgerState {
   removeHeld: (id: string) => void;
   applyPushResults: (kind: DocKind, refToId: Record<string, string>, res: PushResult) => void;
   retry: (kind: DocKind, id: string) => void;
+  /** Bring synced bills up to date with the ERP (an admin edited or cancelled them there). */
+  applyServerSales: (statuses: ServerSaleStatus[]) => number;
   prune: (keepDays: number) => void;
   /** Forget every local bill (only after all of them reached the ERP): the phone becomes another terminal. */
   clearForNewTerminal: () => void;
@@ -110,6 +113,21 @@ export const useLedger = create<LedgerState>()(
         set((s) => ({
           [kind]: ((s[kind] ?? []) as (SyncMeta & { id: string })[]).map((d) => (byId[d.id] ? { ...d, ...byId[d.id] } : d)),
         }) as Partial<LedgerState>);
+      },
+
+      applyServerSales(statuses) {
+        const byRef = new Map(statuses.map((st) => [st.ref, st]));
+        let changed = 0;
+        const sales = get().sales.map((sale) => {
+          const st = sale.sync === 'synced' ? byRef.get(sale.number) : undefined;
+          if (!st || st.status === 'unknown') return sale;
+          const next: Sale = st.status === 'current' ? withServerSale(sale, st.sale) : { ...sale, cancelledInErp: true };
+          if (sameDoc(next, sale)) return sale;
+          changed += 1;
+          return next;
+        });
+        if (changed) set({ sales });
+        return changed;
       },
 
       retry(kind, id) {

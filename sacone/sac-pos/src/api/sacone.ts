@@ -1,5 +1,6 @@
 import { request } from './client';
 import type { PayBank } from '../domain/upi';
+import type { ServerSaleStatus } from '../domain/serverSale';
 
 /** Typed calls to SACONE. Auth → ERP session; everything else → device sync key (/api/v1/sync). */
 
@@ -162,6 +163,12 @@ export const sync = {
   /** productId → minimum selling price (before GST, after discounts). Full list every sync. */
   minPrices: (c: DeviceConfig) =>
     request<{ prices: Record<string, number> }>(c.baseUrl, '/api/v1/sync/min-prices', { headers: deviceHeaders(c) }),
+
+  /** The ERP's current copy of bills this phone synced (refs = the phone's bill numbers). */
+  currentSales: (c: DeviceConfig, refs: string[]) =>
+    request<{ sales: ServerSaleStatus[] }>(c.baseUrl, '/api/v1/sync/sales/current', {
+      method: 'POST', body: { refs }, headers: deviceHeaders(c), timeoutMs: 60000,
+    }),
 
   /** Waits up to `wait` seconds for a catalogue / stock / customer / staff change. */
   changes: (c: DeviceConfig, since: number | undefined, wait = 25) =>

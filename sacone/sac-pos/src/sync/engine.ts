@@ -164,6 +164,18 @@ async function runCycle(): Promise<void> {
     const sentReturns = await pushDocs(cfg, 'returns', useLedger.getState().returns, returnPayload);
     const sentPayments = await pushDocs(cfg, 'payments', useLedger.getState().payments, paymentPayload);
 
+    // 3c. bills edited or cancelled in the ERP after they synced
+    let updatedBills = 0;
+    const syncedRefs = useLedger.getState().sales.filter((s) => s.sync === 'synced').map((s) => s.number);
+    try {
+      for (let i = 0; i < syncedRefs.length; i += 500) {
+        const res = await sync.currentSales(cfg, syncedRefs.slice(i, i + 500));
+        updatedBills += useLedger.getState().applyServerSales(res.sales);
+      }
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) throw e; // older server: bills are not refreshed
+    }
+
     // 4. pull catalogue + customers
     let pulledProducts = 0;
     let productCursor: string | undefined;
@@ -197,10 +209,11 @@ async function runCycle(): Promise<void> {
       sentPayments && `${sentPayments} payment(s)`,
       sentQuotes && `${sentQuotes} quotation(s)`,
     ].filter(Boolean);
+    const updatedNote = updatedBills ? `${updatedBills} bill(s) updated from ERP. ` : '';
     useSyncStatus.setState({
       status: 'idle',
       lastSyncAt: new Date().toISOString(),
-      lastSummary: `${parts.length ? `Sent ${parts.join(', ')}. ` : ''}${pulledProducts} product update(s).`,
+      lastSummary: `${parts.length ? `Sent ${parts.join(', ')}. ` : ''}${updatedNote}${pulledProducts} product update(s).`,
     });
   } catch (e) {
     const err = e as ApiError;

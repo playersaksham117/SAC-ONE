@@ -143,6 +143,8 @@ export interface Sale extends SyncMeta {
   transport?: Transport | null;
   shipTo?: ShipTo | null;
   returned: Record<string, number>;   // productId → qty returned
+  /** The bill was cancelled in the ERP after it synced. */
+  cancelledInErp?: boolean;
 }
 
 /** A quotation made on this phone (Sale / Quotation toggle); synced to SACONE quotations. */

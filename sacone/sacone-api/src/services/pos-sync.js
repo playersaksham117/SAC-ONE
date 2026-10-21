@@ -28,6 +28,7 @@ import { inventoryMovementService } from './inventory.js';
 import { customerReceiptService } from './customer-receipts.js';
 import { productService } from './products.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
+import { stateCodeOf } from '../core/gst-state.js';
 import { posPins } from './pos-pins.js';
 
 const deviceRepo = repos.posDevices;
@@ -112,6 +113,33 @@ function approvalNote(ret) {
   return allowed ? `Approved by ${name}` : `Approval by ${name} NOT verified (needs active user with pos.returns.approve)`;
 }
 const str = (v) => (v == null ? '' : String(v).trim());
+
+const period = (value, unit) => (value ? { value: Number(value), unit } : null);
+
+/** An ERP invoice in the shape SAC-POS keeps its bills in. */
+function phoneSale(s) {
+  const c = s.customerId && !s.customerIsWalkIn ? customerRepo.findById(s.customerId) : null;
+  return {
+    id: s.id,
+    number: s.invoiceNumber,
+    date: s.createdAt,
+    customer: c ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c) } : null,
+    items: (s.items || []).map((i) => ({
+      productId: i.productId, name: i.productName, sku: i.sku, hsn: i.hsnCode || null, unit: i.unit || 'pcs',
+      quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, gstRate: i.gstPercentage,
+      taxableAmount: i.taxableAmount, gstAmount: i.gstAmount, lineTotal: i.lineTotal, quantityReturned: i.quantityReturned,
+      warranty: period(i.warrantyValue, i.warrantyUnit), guarantee: period(i.guaranteeValue, i.guaranteeUnit),
+      serialNumbers: i.serialNumbers || [], shortDescription: i.shortDescription || null,
+    })),
+    subtotal: s.subtotal, itemDiscountTotal: s.itemDiscountTotal, invoiceDiscount: s.invoiceDiscount,
+    taxableAmount: s.taxableAmount, cgstAmount: s.cgstAmount, sgstAmount: s.sgstAmount, igstAmount: s.igstAmount,
+    gstAmount: s.gstAmount, grandTotal: s.grandTotal, amountPaid: s.amountPaid, amountDue: s.amountCredit,
+    payments: (s.payments || []).map((p) => ({ method: p.method, amount: p.amount, reference: p.reference || null })),
+    customerPo: s.customerPoNumber ? { number: s.customerPoNumber, date: s.customerPoDate || null } : null,
+    transport: s.transport || null,
+    shipTo: s.shipTo || null,
+  };
+}
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -647,6 +675,27 @@ export class PosSyncService {
     if (inbox?.status === 'applied' && inbox.resultId) return saleRepo.findById(inbox.resultId);
     const id = catalogRepo.findSaleByTerminalRef(`${device.code}-${ref}`) || catalogRepo.findSaleByInvoiceNumber(`${device.code}-${ref}`) || catalogRepo.findSaleByInvoiceNumber(ref);
     return id ? saleRepo.findById(id) : null;
+  }
+
+  /**
+   * The ERP's current copy of bills this phone synced (refs = the phone's own bill numbers), so
+   * an admin's Edit bill in the ERP reaches the phone. Only this device's bills are returned.
+   */
+  currentSales(device, body) {
+    const refs = [...new Set((Array.isArray(body?.refs) ? body.refs : []).map(str).filter(Boolean))].slice(0, 500);
+    return {
+      sales: refs.map((ref) => {
+        let id = catalogRepo.findSaleByTerminalRef(`${device.code}-${ref}`);
+        if (!id) {
+          const inbox = inboxRepo.find(device.id, 'sale', ref);
+          if (inbox?.status === 'applied' && inbox.resultId) id = inbox.resultId;
+        }
+        const sale = id ? saleRepo.findById(id) : null;
+        if (!sale) return { ref, status: 'unknown' };
+        if (sale.status === 'voided') return { ref, status: 'voided' };
+        return { ref, status: 'current', sale: phoneSale(sale) };
+      }),
+    };
   }
 
   #applyReturn(device, actor, req, ret) {

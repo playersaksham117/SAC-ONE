@@ -18,6 +18,8 @@ const POS_PULL_TABLES = new Set([
   'products', 'categories', 'brands', 'units', 'stock_levels', 'location_stock_levels',
   'customers', 'users', 'roles', 'role_permissions', 'pos_users', 'system_settings',
   'companies', 'warehouses', 'min_selling_prices',
+  // an Edit bill in the ERP: the phone refreshes its copy
+  'pos_sales',
 ]);
 
 /* ───────────── Terminal-facing: /api/v1/sync (device key auth) ───────────── */
@@ -51,6 +53,10 @@ posSyncRouter.post('/push/payments', asyncHandler(async (req, res) => {
 }));
 posSyncRouter.post('/push/quotations', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.pushQuotations(req.device, req.body || {}, req));
+}));
+/** The ERP's current copy of this phone's synced bills (edited / cancelled in the ERP). */
+posSyncRouter.post('/sales/current', asyncHandler(async (req, res) => {
+  sendSuccess(res, posSyncService.currentSales(req.device, req.body || {}));
 }));
 posSyncRouter.post('/push/customers', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.pushCustomers(req.device, req.body || {}, req));

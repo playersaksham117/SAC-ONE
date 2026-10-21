@@ -65,7 +65,7 @@ export default function Sales() {
           renderItem={({ item }) => (
             <Card style={{ marginBottom: space.sm, padding: space.md }} onPress={() => router.push({ pathname: '/sale/[id]', params: { id: item.id } })}>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: '800', color: colors.text }}>{item.number}</Text>
+                <Text style={{ fontWeight: '800', color: item.cancelledInErp ? colors.danger : colors.text }}>{item.serverNumber ?? item.number}{item.cancelledInErp ? ' · Cancelled' : ''}</Text>
                 <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(item.totals.grandTotal)}</Text>
               </Row>
               <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>

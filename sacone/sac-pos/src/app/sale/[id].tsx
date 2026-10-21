@@ -40,7 +40,7 @@ export default function SaleDetail() {
 
   const t = sale.totals;
   const saleReturns = returns.filter((r) => r.saleId === sale.id);
-  const returnable = t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
+  const returnable = !sale.cancelledInErp && t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
   const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const number = sale.serverNumber ?? sale.number;
   const run = async (fn: () => Promise<unknown>) => {
@@ -67,6 +67,11 @@ export default function SaleDetail() {
     <Screen padded={false} scroll>
       <Header title={done ? 'Sale complete' : 'Bill'} subtitle={sale.serverNumber ?? sale.number} onBack={() => router.back()} />
       <View style={{ paddingHorizontal: space.lg }}>
+        {sale.cancelledInErp ? (
+          <Card style={{ backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft, marginBottom: space.md }}>
+            <Text style={{ color: colors.danger, fontWeight: '800' }}>This bill was cancelled in SACONE ERP.</Text>
+          </Card>
+        ) : null}
         {done ? (
           <Card style={{ alignItems: 'center', backgroundColor: colors.successSoft, borderColor: colors.successSoft, marginBottom: space.md }}>
             <Ionicons name="checkmark-circle" size={48} color={colors.success} />
