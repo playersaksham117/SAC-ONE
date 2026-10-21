@@ -599,9 +599,11 @@ export class PosSyncService {
     }
 
     const completedAt = parseTerminalTime(sale.sale_date_utc || sale.sale_date || sale.created_at) || nowIso();
-    const invoiceNumber = `${device.code}-${ref}`;
-    if (catalogRepo.findSaleByInvoiceNumber(invoiceNumber)) {
-      throw syncError(`Invoice ${invoiceNumber} already exists in ERP`, 'DUPLICATE_INVOICE', 409);
+    // The phone's own reference; the ERP gives the bill the firm's invoice series number
+    // (e.g. SE/0005/26-27) for its date, and the phone shows that number once synced.
+    const terminalRef = `${device.code}-${ref}`;
+    if (catalogRepo.findSaleByTerminalRef(terminalRef) || catalogRepo.findSaleByInvoiceNumber(terminalRef)) {
+      throw syncError(`Bill ${terminalRef} already exists in ERP`, 'DUPLICATE_INVOICE', 409);
     }
 
     const created = posService.checkout({
@@ -610,7 +612,7 @@ export class PosSyncService {
       items: cart,
       invoiceDiscount,
       payments,
-      invoiceNumber,
+      terminalRef,
       defaultPaymentAccountId: device.paymentAccountId || null,
       // Customer's PO from the phone; a malformed date is dropped rather than failing the sale.
       customerPoNumber: str(sale.customer_po_number).slice(0, 60) || undefined,
@@ -643,7 +645,7 @@ export class PosSyncService {
     if (!ref) return null;
     const inbox = inboxRepo.find(device.id, 'sale', ref);
     if (inbox?.status === 'applied' && inbox.resultId) return saleRepo.findById(inbox.resultId);
-    const id = catalogRepo.findSaleByInvoiceNumber(`${device.code}-${ref}`) || catalogRepo.findSaleByInvoiceNumber(ref);
+    const id = catalogRepo.findSaleByTerminalRef(`${device.code}-${ref}`) || catalogRepo.findSaleByInvoiceNumber(`${device.code}-${ref}`) || catalogRepo.findSaleByInvoiceNumber(ref);
     return id ? saleRepo.findById(id) : null;
   }
 

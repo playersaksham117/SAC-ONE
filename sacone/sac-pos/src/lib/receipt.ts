@@ -369,7 +369,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     ${st.gstin ? `<div class="pline">GSTIN: ${esc(st.gstin)}</div>` : ''}
     <div class="pstate"><span>State : ${esc(st.state || GST_STATES[stCode] || '')}</span><span>State Code : ${esc(stCode)}</span></div>` : party(label));
   const tr = sale.transport || {};
-  const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
+  const cols = '<colgroup><col style="width:4%"><col style="width:17%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:7%"></colgroup>';
   const rows = lines.map((l, i) => `<tr>
       <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.shortDescription ? `<div style="font-weight:400;font-size:.9em">${esc(l.shortDescription)}</div>` : ''}${noteFor(sale, l) ? `<div style="font-weight:400;font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
       <td class="r">${l.quantity.toFixed(3)}</td><td>${esc(l.unit || '')}</td><td class="r b">${n2(l.unitPrice)}</td>

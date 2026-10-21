@@ -9,6 +9,7 @@ import { calculateCartTotals, posService } from './pos.js';
 import { buildQuotationDocument } from './document-template.js';
 import { documentShareService } from './document-share.js';
 import { signStampForPrint } from './pos.js';
+import { stateCodeOf } from '../core/gst-state.js';
 
 const quoteRepo = repos.quotations;
 const customerRepo = repos.customers;
@@ -86,8 +87,8 @@ export class QuotationService {
   #computeTotals(data, customer, items) {
     const company = companyRepo.get();
     return calculateCartTotals(items, data.invoiceDiscount || 0, {
-      companyStateCode: company?.gstStateCode,
-      customerStateCode: customer?.gstStateCode || data.customerSnapshot?.billingState,
+      companyStateCode: stateCodeOf(company),
+      customerStateCode: stateCodeOf(customer) || data.customerSnapshot?.billingState,
     });
   }
 

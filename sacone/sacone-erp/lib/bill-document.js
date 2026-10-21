@@ -561,7 +561,7 @@ function classicHtml(model, company, size, invoice = {}) {
     ${p.phone ? `<div class="pline">Mobile: ${esc(p.phone)}</div>` : ''}
     ${p.gstin ? `<div class="pline">GSTIN: ${esc(p.gstin)}</div>` : ''}
     <div class="pstate"><span>State : ${esc(p.state)}</span><span>State Code : ${esc(p.stateCode)}</span></div>`;
-  const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
+  const cols = '<colgroup><col style="width:4%"><col style="width:17%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:7%"></colgroup>';
   const rows = c.lines.map((l, i) => `<tr>
       <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.desc ? `<div style="font-weight:400;font-size:.9em">${esc(l.desc)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
       <td class="r">${Number(l.qty || 0).toFixed(3)}</td><td>${esc(l.uom)}</td><td class="r b">${n2(l.rate)}</td>
@@ -580,26 +580,28 @@ function classicHtml(model, company, size, invoice = {}) {
   @page{size:${size} portrait;margin:${page.m}mm}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;color:#000}
+  /* Explicit line heights: the PDF (html2canvas) misplaces text with line-height:normal. */
+  body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;line-height:1.3;color:#000}
   .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 1.5}mm;display:flex;flex-direction:column}
-  .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '1.5px 3px' : '3px 5px'}}
+  .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '2px 3px 3px' : '4px 6px 6px'}}
   .vr{border-right:1px solid #000}
   .b{font-weight:700} .c{text-align:center} .r{text-align:right} .u{text-decoration:underline}
   .head{position:relative;text-align:center;padding:${a5 ? '2px 4px 3px' : '4px 6px 6px'}!important;width:100%}
   .head .gst{position:absolute;left:${a5 ? 3 : 5}px;top:${a5 ? 2 : 4}px;text-align:left;font-weight:700}
   .head .mob{position:absolute;right:${a5 ? 3 : 5}px;top:${a5 ? 2 : 4}px;font-weight:700}
   .head .ttl{font-weight:700;font-size:${fs * 1.3}px}
-  .head .firm{font-family:'Times New Roman',Times,serif;font-weight:700;font-size:${a5 ? 18 : 30}px;letter-spacing:.5px;margin:${a5 ? 1 : 2}px 0}
+  .head .firm{font-family:'Times New Roman',Times,serif;font-weight:700;font-size:${a5 ? 18 : 30}px;line-height:1.15;letter-spacing:.5px;margin:${a5 ? 2 : 4}px 0 ${a5 ? 2 : 3}px}
   .plabel{text-align:center;font-weight:700;font-size:${fs * 1.1}px;margin:${a5 ? 2 : 4}px 0 1px}
   .pname{font-weight:700;font-size:${fs * 1.12}px} .pline{font-weight:700}
   .pstate{display:flex;gap:${a5 ? 14 : 30}px;font-weight:700;margin-top:${a5 ? 3 : 8}px}
   table{width:100%;border-collapse:collapse;table-layout:fixed}
-  .items th{font-weight:700;border:1px solid #000;border-top:0;padding:1px 2px;font-size:${fs * 0.95}px;vertical-align:middle}
-  .items td{border-left:1px solid #000;border-right:1px solid #000;padding:${a5 ? '1px 1.5px' : '2px 3px'};vertical-align:top;overflow:hidden;word-wrap:break-word}
+  .items th{font-weight:700;border:1px solid #000;border-top:0;padding:${a5 ? '2px 1px' : '3px 2px'};font-size:${fs * 0.95}px;line-height:1.25;vertical-align:middle}
+  .items th.grp{padding-top:${a5 ? 1 : 2}px;padding-bottom:${a5 ? 4 : 7}px}
+  .items td{border-left:1px solid #000;border-right:1px solid #000;padding:${a5 ? '1px 1.5px 2px' : '2px 3px 4px'};line-height:1.3;vertical-align:top;overflow:hidden;word-wrap:break-word}
   .items tr:first-child td{padding-top:${a5 ? 3 : 6}px}
   .grow{flex:1;display:flex;flex-direction:column} .grow table.fillt{flex:1;height:100%}
   .fillt td{border-left:1px solid #000;border-right:1px solid #000}
-  .tot td{border:1px solid #000;padding:1px 3px;font-weight:700}
+  .tot td{border:1px solid #000;padding:${a5 ? '2px 3px' : '3px 3px'};line-height:1.3;font-weight:700}
   .kv{display:grid;grid-template-columns:1fr 1fr;column-gap:8px;row-gap:1px}
   .lbl{font-weight:700}
   .net{font-size:${fs * 1.35}px;font-weight:700;display:flex;justify-content:space-between;border-top:1px solid #000;border-bottom:1px solid #000;padding:${a5 ? 2 : 4}px 3px}
@@ -642,7 +644,7 @@ function classicHtml(model, company, size, invoice = {}) {
     <th rowspan="2">Sr</th><th rowspan="2">Description of Goods</th><th rowspan="2">HSN/<br>SAC<br>code</th>
     <th rowspan="2">Qty.</th><th rowspan="2">UOM</th><th rowspan="2">Rate</th><th rowspan="2">Total<br>Amount</th>
     <th rowspan="2">Disc.</th><th rowspan="2">Taxable<br>Amount <sup>1</sup></th>
-    <th colspan="4">Within State Tax</th><th colspan="2">Central Tax</th></tr>
+    <th colspan="4" class="grp">Within State Tax</th><th colspan="2" class="grp">Central Tax</th></tr>
     <tr><th>Tax%</th><th>SGST <sup>2</sup></th><th>Tax%</th><th>CGST <sup>3</sup></th><th>Tax%</th><th>IGST <sup>4</sup></th></tr>
   </thead><tbody>${rows}</tbody></table>
   <div class="grow"><table class="items fillt">${cols}<tbody>${emptyRow}</tbody></table></div>

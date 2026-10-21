@@ -439,6 +439,11 @@ export class PosCatalogRepository {
     return getDatabase().prepare('SELECT id FROM pos_sales WHERE invoice_number = ?').get(invoiceNumber)?.id || null;
   }
 
+  /** A phone bill by its own reference (DEVICE-S261021-0001), whatever ERP number it was given. */
+  findSaleByTerminalRef(terminalRef) {
+    return getDatabase().prepare("SELECT id FROM pos_sales WHERE terminal_ref = ? AND status != 'voided' ORDER BY created_at DESC").get(terminalRef)?.id || null;
+  }
+
   /** Registered (non walk-in) customers changed since `since` — for terminal credit sales. */
   findChangedCustomers(since, { limit = 200, offset = 0 } = {}) {
     const db = getDatabase();

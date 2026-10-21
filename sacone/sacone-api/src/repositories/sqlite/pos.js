@@ -75,6 +75,8 @@ function mapSale(row) {
     dueAmount: Number(row.amount_credit || 0),
     notes: row.notes,
     customerPoNumber: row.customer_po_number || null,
+    /** The phone's own bill reference for SAC-POS bills (the invoice number is the firm's series). */
+    terminalRef: row.terminal_ref || null,
     customerPoDate: row.customer_po_date || null,
     transport: parseJsonObject(row.transport_details),
     shipTo: parseJsonObject(row.ship_to),
@@ -456,6 +458,10 @@ export class PosSaleRepository {
         short_description = (SELECT p.short_description FROM products p WHERE p.id = pos_sale_items.product_id)
       WHERE sale_id = ?
     `).run(saleId);
+  }
+
+  setTerminalRef(id, terminalRef) {
+    getDatabase().prepare('UPDATE pos_sales SET terminal_ref = ? WHERE id = ?').run(terminalRef, id);
   }
 
   setCustomerPo(id, { number, date }) {

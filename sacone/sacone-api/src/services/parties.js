@@ -2,6 +2,7 @@ import { AppError } from '../core/http.js';
 import { csvBool, csvNumber, parseCsv } from '../core/csv.js';
 import { repos } from '../repositories/index.js';
 import { isFirmAdmin, authService } from './index.js';
+import { stateCodeOf } from '../core/gst-state.js';
 
 const customerRepo = repos.customers;
 const supplierRepo = repos.suppliers;
@@ -153,7 +154,7 @@ export class CustomerService {
       phone: data.phone,
       email: data.email,
       gstNumber: data.gstNumber,
-      gstStateCode: data.gstStateCode,
+      gstStateCode: data.gstStateCode || stateCodeOf({ gstNumber: data.gstNumber }),
       address: data.address,
       city: data.city,
       state: data.state,
@@ -367,7 +368,7 @@ export class SupplierService {
       phone: data.phone,
       email: data.email,
       gstNumber: data.gstNumber,
-      gstStateCode: data.gstStateCode,
+      gstStateCode: data.gstStateCode || stateCodeOf({ gstNumber: data.gstNumber }),
       address: data.address,
       city: data.city,
       state: data.state,

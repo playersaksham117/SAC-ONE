@@ -9,6 +9,7 @@ import { inventoryMovementService } from './inventory.js';
 import { supplierService } from './parties.js';
 import { partyStatementService } from './party-statements.js';
 import { numberOldDebitNotes } from './notes.js';
+import { stateCodeOf } from '../core/gst-state.js';
 
 const purchaseRepo = repos.purchases;
 const productRepo = repos.products;
@@ -132,8 +133,8 @@ function buildPurchaseTotals(items, supplierId) {
   if (!supplier) throw new AppError('Supplier not found', 404);
 
   const totals = calculateCartTotals(items, 0, {
-    companyStateCode: company?.gstStateCode,
-    customerStateCode: supplier.gstStateCode,
+    companyStateCode: stateCodeOf(company),
+    customerStateCode: stateCodeOf(supplier),
   });
 
   const computedItems = totals.items.map((line, idx) => ({

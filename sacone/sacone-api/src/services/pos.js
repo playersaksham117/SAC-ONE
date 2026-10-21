@@ -15,6 +15,7 @@ import { numberOldCreditNotes } from './notes.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
 import { assertSerialsFree, cleanSerials, saveSaleSerials } from './warranty.js';
 import { isDate, istDate, istToIso } from '../core/ist.js';
+import { stateCodeOf } from '../core/gst-state.js';
 
 export { customerService };
 
@@ -349,8 +350,8 @@ export class PosService {
       : customerRepo.findWalkIn();
     const enriched = this.#enrichCartItems(data.items || []);
     return calculateCartTotals(enriched, data.invoiceDiscount || 0, {
-      companyStateCode: company?.gstStateCode,
-      customerStateCode: customer?.gstStateCode,
+      companyStateCode: stateCodeOf(company),
+      customerStateCode: stateCodeOf(customer),
     });
   }
 
@@ -503,8 +504,8 @@ export class PosService {
     const company = companyRepo.get();
     const enriched = this.#enrichCartItems(data.items || []);
     const totals = calculateCartTotals(enriched, data.invoiceDiscount || 0, {
-      companyStateCode: company?.gstStateCode,
-      customerStateCode: customer.gstStateCode,
+      companyStateCode: stateCodeOf(company),
+      customerStateCode: stateCodeOf(customer),
     });
     // Serial numbers of the units on each line (warranty claims). A serial already sold is refused,
     // except for sales synced from a phone (those happened already; they are stored as sold).
@@ -648,6 +649,7 @@ export class PosService {
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
     if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
     saleRepo.snapshotPeriods(sale.id);
+    if (data.terminalRef) saleRepo.setTerminalRef(sale.id, data.terminalRef);
     if (options.billDated) saleRepo.restoreOrigin(sale.id, { createdAt: options.completedAt, createdBy: actor.user.id });
     saveSaleSerials(sale.id, lineSerials.map((serials, i) => ({ itemId: itemIds[i], productId: totals.items[i].productId, serials })), actor.user.id);
 
@@ -832,6 +834,7 @@ export class PosService {
         notes: data.notes !== undefined ? data.notes : old.notes,
         // The customer's PO stays with the invoice unless the edit changes it.
         ...(() => { const po = customerPoFrom(data, old); return { customerPoNumber: po.number || '', customerPoDate: po.date || '' }; })(),
+        terminalRef: old.terminalRef || undefined,
         // A new bill date from the admin (checked in checkout).
         ...(data.billDate ? { billDate: data.billDate } : {}),
         // Transport and Ship-to stay with the invoice unless the edit sends new ones.
