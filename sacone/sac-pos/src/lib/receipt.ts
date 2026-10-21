@@ -110,10 +110,10 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   ${company?.phone ? `<div class="c muted">Ph ${esc(company.phone)}</div>` : ''}
   <hr><div class="c"><b>${docTitle(sale)}</b></div>
   <table><tr><td>${isQuote(sale) ? 'Quotation' : 'Bill'}</td><td class="r">${esc(billNumber(sale, deviceCode))}</td></tr>
+  ${sale.customerPo?.number ? `<tr><td>P.O. No.</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
   ${validRow(sale)}
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
-  ${sale.customerPo?.number ? `<tr><td>Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
   ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
   ${sale.shipTo ? `<tr><td>Ship to</td><td class="r">${shipToText(sale).map(esc).join('<br>')}</td></tr>` : ''}
   ${transportRows(sale).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}
@@ -185,10 +185,10 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
     <div class="r">
       <h2>${docTitle(sale)}</h2>
       <table class="meta"><tr><td class="muted">${isQuote(sale) ? 'Quotation' : 'Invoice'}</td><td class="b r">${esc(billNumber(sale, deviceCode))}</td></tr>
+      ${sale.customerPo?.number ? `<tr><td class="muted">P.O. No.</td><td class="b r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
       ${validRow(sale, ' class="muted"')}
       <tr><td class="muted">Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
       <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
-      ${sale.customerPo?.number ? `<tr><td class="muted">Your PO</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
       ${transportRows(sale).map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}</table>
     </div>
   </div>
@@ -421,6 +421,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div class="row">
     <div class="vr" style="width:50%">
       <div style="display:flex;justify-content:space-between"><span class="b">${isQuote(sale) ? 'Quotation No.' : 'Invoice No.'} ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
+      ${isQuote(sale) ? '' : `<div style="display:flex;justify-content:space-between"><span class="b">P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span class="b">Dated : ${esc(sale.customerPo?.number ? formatPoDate(sale.customerPo?.date) : '')}</span></div>`}
       <div class="b">E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}</div>
     </div>
     <div style="width:50%">
@@ -450,7 +451,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <div style="display:flex">
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000"><div class="vr" style="width:65%;padding:${pad}"><div class="kv">
-        <span>P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span>Dated : ${esc(formatPoDate(sale.customerPo?.date))}</span><span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span><span>GR/RR No. : ${esc(tr.lrNumber || '')}</span><span>Dated : ${esc(tr.lrNumber ? formatPoDate(tr.lrDate) : '')}</span>
+        <span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span><span>GR/RR No. : ${esc(tr.lrNumber || '')}</span><span>Dated : ${esc(tr.lrNumber ? formatPoDate(tr.lrDate) : '')}</span>
         <span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span><span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span>
       </div></div><div style="width:35%"></div></div>
       <div style="border-bottom:1px solid #000;padding:${pad}"><span class="b">Amount In Words :</span> <span class="b">${esc(amountInWords(t.grandTotal))}</span></div>

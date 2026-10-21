@@ -815,10 +815,13 @@ export class PosService {
       ];
     }
 
+    // A SAC-POS bill synced before phone bills took the firm series still carries the phone's
+    // number (DEVICE-S261021-0001): saving it gives it the firm's invoice number for its date.
+    const renumber = Boolean(old.terminalRef) && old.terminalRef === old.invoiceNumber;
     const updated = getDatabase().transaction(() => {
       this.#reverseSale(old, 'Edited invoice', actor, req);
       saleRepo.markVoided(id, {
-        note: `Edited by ${actor.user.fullName} on ${new Date().toLocaleString('en-IN')}; replaced by the corrected ${old.invoiceNumber}`,
+        note: `Edited by ${actor.user.fullName} on ${new Date().toLocaleString('en-IN')}; replaced by the corrected ${renumber ? 'invoice (firm series number)' : old.invoiceNumber}`,
         newInvoiceNumber: saleRepo.editedCopyNumber(old.invoiceNumber),
       });
       // Serial numbers stay with the edited lines unless the edit sends new ones.
@@ -829,7 +832,7 @@ export class PosService {
         items: (data.items || []).map((it) => (it.serialNumbers !== undefined || !oldSerials.has(it.productId) ? it : { ...it, serialNumbers: oldSerials.get(it.productId) })),
         invoiceDiscount,
         payments,
-        invoiceNumber: old.invoiceNumber,
+        ...(renumber ? {} : { invoiceNumber: old.invoiceNumber }),
         salesAgentId: data.salesAgentId !== undefined ? data.salesAgentId : old.salesAgentId,
         notes: data.notes !== undefined ? data.notes : old.notes,
         // The customer's PO stays with the invoice unless the edit changes it.

@@ -160,8 +160,9 @@ export function saleDocument(sale, customer) {
     number: sale.invoiceNumber,
     date: when(sale.createdAt),
     meta: [
-      ['Invoice', sale.invoiceNumber], ['Date', when(sale.createdAt)],
-      ...(sale.customerPoNumber ? [['Your PO', againstRef(sale.customerPoNumber, sale.customerPoDate)]] : []),
+      ['Invoice', sale.invoiceNumber],
+      ...(sale.customerPoNumber ? [['P.O. No.', againstRef(sale.customerPoNumber, sale.customerPoDate)]] : []),
+      ['Date', when(sale.createdAt)],
       ...transportMeta(sale.transport),
       ...(sale.shipTo?.name ? [['Ship to', [sale.shipTo.name, sale.shipTo.city, sale.shipTo.gstin && `GSTIN ${sale.shipTo.gstin}`].filter(Boolean).join(', ')]] : []),
       ...(sale.createdByName ? [['Cashier', sale.createdByName]] : []),
@@ -295,10 +296,11 @@ const billRef = (doc) => [againstRef(doc.billNumber, doc.billDate), doc.supplier
 /** Purchase order / bill / return (GET /api/purchases/{orders|bills|returns}/:id) + supplier record. */
 export function purchaseDocument(kind, doc, supplier) {
   const spec = PURCHASE[kind];
-  const meta = [[kind === 'order' ? 'PO' : kind === 'bill' ? 'Bill' : 'Debit Note', docNumber(kind, doc)], ['Date', dateOnly(doc[spec.dateKey])]];
+  const meta = [[kind === 'order' ? 'PO' : kind === 'bill' ? 'Bill' : 'Debit Note', docNumber(kind, doc)]];
+  if (kind === 'bill' && doc.poNumber) meta.push(['P.O. No.', doc.poNumber]);
+  meta.push(['Date', dateOnly(doc[spec.dateKey])]);
   if (kind === 'order' && doc.expectedDate) meta.push(['Expected', dateOnly(doc.expectedDate)]);
   if (kind === 'bill' && doc.supplierInvoiceNumber) meta.push(['Supplier inv.', doc.supplierInvoiceNumber]);
-  if (kind === 'bill' && doc.poNumber) meta.push(['PO', doc.poNumber]);
   if (kind === 'return' && doc.billNumber) meta.push(['Against bill', billRef(doc)]);
   if (doc.warehouseName) meta.push(['Warehouse', doc.warehouseName]);
 
@@ -350,6 +352,7 @@ function purchaseClassic(kind, spec, doc, supplier) {
     numberLabel: kind === 'order' ? 'PO No.' : kind === 'bill' ? 'Bill No.' : 'Debit Note No.',
     number: docNumber(kind, doc),
     date: ddmmyyyy(doc[spec.dateKey]),
+    poNumber: kind === 'bill' ? doc.poNumber || '' : '',
     extraRef: kind === 'bill' && doc.supplierInvoiceNumber ? ['Supplier Inv. No.', doc.supplierInvoiceNumber]
       : kind === 'return' && doc.billNumber ? ['Against Bill', billRef(doc)]
         : kind === 'order' && doc.expectedDate ? ['Expected', dateOnly(doc.expectedDate)] : null,
@@ -624,6 +627,7 @@ function classicHtml(model, company, size, invoice = {}) {
   <div class="row">
     <div class="vr" style="width:50%">
       <div style="display:flex;justify-content:space-between"><span class="b">${esc(c.numberLabel)} ${esc(c.number)}</span><span class="b">Dated : ${esc(c.date)}</span></div>
+      ${c.kind === 'sale' || c.poNumber ? `<div style="display:flex;justify-content:space-between"><span class="b">P.O. No. : ${esc(c.poNumber || '')}</span><span class="b">Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span></div>` : ''}
       <div class="b">${c.kind === 'sale' ? `E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}` : '&nbsp;'}</div>
     </div>
     <div style="width:50%">
@@ -656,7 +660,7 @@ function classicHtml(model, company, size, invoice = {}) {
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000">
         <div class="vr" style="width:65%;padding:${a5 ? '1px 3px' : '2px 5px'}">
-          <div class="kv"><span>P.O. No. : ${esc(c.poNumber || '')}</span><span>Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span><span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span>
+          <div class="kv"><span>Transport : ${esc(tr.transporter || '')}</span><span>Pvt.Mark :</span>
           <span>GR/RR No. : ${esc(tr.lrNumber || '')}</span><span>Dated : ${esc(tr.lrNumber ? ddmmyyyy(tr.lrDate) : '')}</span><span>Bags : &nbsp; Case : &nbsp; Cartn. :</span><span>Packages. :</span>
           <span>Weight : &nbsp; Loose :</span><span>Freight to Pay :</span></div>
         </div><div style="width:35%"></div>
