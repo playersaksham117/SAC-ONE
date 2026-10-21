@@ -1,6 +1,7 @@
 import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
+import { periodFrom, periodText } from '../core/warranty.js';
 import {
   generateSku,
   ensureUniqueSku,
@@ -337,6 +338,21 @@ function resolveBrandForSku(brandId) {
   return { brandName: brand.name, brandCode };
 }
 
+/**
+ * Warranty / guarantee from the form ({ warrantyValue, warrantyUnit, … }) or a CSV
+ * ("1 year" in warranty / guarantee). Only the periods that were sent are returned.
+ */
+function periodsFrom(data) {
+  const out = {};
+  if (data.warrantyValue !== undefined || data.warranty !== undefined) {
+    out.warranty = periodFrom(data.warrantyValue ?? data.warranty, data.warrantyUnit, 'Warranty');
+  }
+  if (data.guaranteeValue !== undefined || data.guarantee !== undefined) {
+    out.guarantee = periodFrom(data.guaranteeValue ?? data.guarantee, data.guaranteeUnit, 'Guarantee');
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export class ProductService {
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'products.products.view');
@@ -492,10 +508,12 @@ export class ProductService {
 
     validateProductRefs(input);
 
-    const product = productRepo.create({
+    const periods = periodsFrom(data);
+    let product = productRepo.create({
       ...input,
       createdBy: actor.user.id,
     });
+    if (periods) product = productRepo.setPeriods(product.id, periods);
     skuEngineRepo.recordBarcodeUsed(product.barcode);
 
     auditRepo.create({
@@ -543,7 +561,9 @@ export class ProductService {
 
     validateProductRefs(input);
 
-    const updated = productRepo.update(id, input);
+    const periods = periodsFrom(data);
+    let updated = productRepo.update(id, input);
+    if (periods) updated = productRepo.setPeriods(id, periods);
     skuEngineRepo.recordBarcodeUsed(updated?.barcode);
 
     auditRepo.create({
@@ -697,7 +717,7 @@ export class ProductService {
     const headers = [
       'sku', 'name', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
       'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
-      'image_url', 'description', 'is_active', 'web_store_published', 'item_type',
+      'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee',
     ];
 
     const escape = (value) => {
@@ -712,6 +732,7 @@ export class ProductService {
       p.hsnCode || '', p.gstPercentage, p.mrp, p.sellingPrice, p.purchasePrice,
       p.reorderLevel, p.minimumStock, p.imageUrl || '', p.description || '',
       p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0, p.itemType === 'service' ? 'service' : 'product',
+      periodText(p.warrantyValue, p.warrantyUnit).toLowerCase(), periodText(p.guaranteeValue, p.guaranteeUnit).toLowerCase(),
     ].map(escape).join(','));
 
     return `${headers.join(',')}\n${rows.join('\n')}`;
@@ -804,6 +825,9 @@ export class ProductService {
           description: row.description || null,
           isActive: row.is_active === undefined || row.is_active === '' ? true : !['0', 'false', 'no'].includes(String(row.is_active).toLowerCase()),
           webStorePublished: ['1', 'true', 'yes'].includes(String(row.web_store_published || '').toLowerCase()),
+          // "1 year", "18 months", "90 days" (a missing column leaves the product's period unchanged)
+          ...(row.warranty !== undefined ? { warranty: row.warranty } : {}),
+          ...(row.guarantee !== undefined ? { guarantee: row.guarantee } : {}),
         };
 
         const existing = productRepo.findBySku(payload.sku);

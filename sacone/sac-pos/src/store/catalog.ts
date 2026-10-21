@@ -4,6 +4,7 @@ import type { ServerCustomer, ServerProduct } from '../api/sacone';
 import type { Customer, Product, SyncState } from '../domain/types';
 import { normalizePhone } from '../domain/validation';
 import { jsonStorage } from './persist';
+import { periodOf } from '../domain/warranty';
 
 export const EPOCH = '1970-01-01T00:00:00.000Z';
 
@@ -47,6 +48,8 @@ export function mapServerProduct(p: ServerProduct): Product {
     mrp: Number(p.mrp || 0),
     price: Number(p.selling_price || 0),
     itemType: p.item_type === 'service' ? 'service' : 'goods',
+    warranty: periodOf(p.warranty_value, p.warranty_unit),
+    guarantee: periodOf(p.guarantee_value, p.guarantee_unit),
     onHand: Number(p.current_stock || 0),
     available: Number(p.available_stock ?? p.current_stock ?? 0),
     isActive: p.is_active !== false && p.approval_status !== 'rejected',

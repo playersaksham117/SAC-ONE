@@ -52,6 +52,11 @@ function mapProduct(row) {
     purchasePrice: Number(row.purchase_price || 0),
     reorderLevel: Number(row.reorder_level || 0),
     minimumStock: Number(row.minimum_stock || 0),
+    // Warranty / guarantee from the invoice date: a number of days, months or years (null = none).
+    warrantyValue: row.warranty_value || null,
+    warrantyUnit: row.warranty_value ? row.warranty_unit : null,
+    guaranteeValue: row.guarantee_value || null,
+    guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     imageUrl: row.image_url,
     description: row.description,
     isActive: Boolean(row.is_active),
@@ -375,6 +380,14 @@ export class ProductRepository {
       data.itemType === 'service' ? 'service' : 'goods'
     );
 
+    return this.findById(id);
+  }
+
+  /** Warranty / guarantee periods ({ value, unit } each; a missing one is left as it is). */
+  setPeriods(id, { warranty, guarantee }) {
+    const db = getDatabase();
+    if (warranty) db.prepare('UPDATE products SET warranty_value = ?, warranty_unit = ? WHERE id = ?').run(warranty.value, warranty.unit, id);
+    if (guarantee) db.prepare('UPDATE products SET guarantee_value = ?, guarantee_unit = ? WHERE id = ?').run(guarantee.value, guarantee.unit, id);
     return this.findById(id);
   }
 

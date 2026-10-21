@@ -1,4 +1,5 @@
 import type { ShipTo, Transport } from './dispatch';
+import type { Period } from './warranty';
 /** Core SAC-POS domain types (pure — no React Native imports). */
 
 export type PaymentMethod = 'cash' | 'upi' | 'bank' | 'credit';
@@ -18,6 +19,9 @@ export interface Product {
   mrp: number;
   price: number;         // selling price, GST-exclusive
   itemType?: 'goods' | 'service'; // services have no stock (never blocked, not on the stock screen)
+  /** Warranty / guarantee from the invoice date (ERP product master). */
+  warranty?: Period | null;
+  guarantee?: Period | null;
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;
@@ -56,6 +60,9 @@ export interface CartLine {
   listPrice: number;     // catalog price when added (to detect overrides)
   discountAmount: number;
   gstRate: number;
+  /** Copied from the product when added, printed on the bill with the date it runs till. */
+  warranty?: Period | null;
+  guarantee?: Period | null;
 }
 
 export interface ComputedLine extends CartLine {

@@ -796,6 +796,11 @@ export class PosSyncService {
       mrp: Number(r.mrp || 0),
       selling_price: Number(r.selling_price || 0),
       item_type: r.item_type === 'service' ? 'service' : 'goods',
+      // Warranty / guarantee from the invoice date (printed on the phone's bills).
+      warranty_value: r.warranty_value || null,
+      warranty_unit: r.warranty_value ? r.warranty_unit : null,
+      guarantee_value: r.guarantee_value || null,
+      guarantee_unit: r.guarantee_value ? r.guarantee_unit : null,
       wholesale_price: Number(r.purchase_price || 0) > 0 ? Number(r.selling_price || 0) : 0,
       current_stock: Number(r.quantity_on_hand || 0),
       reserved_stock: Number(r.quantity_reserved || 0),

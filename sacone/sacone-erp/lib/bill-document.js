@@ -12,6 +12,7 @@
  */
 
 import { qrSvg, upiPayUrl } from './upi-qr';
+import { periodNote } from './warranty';
 
 export const PRINT_SIZES = [
   { value: '58mm', label: '58 mm' },
@@ -92,7 +93,7 @@ const r2 = (n) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
 const ddmmyyyy = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
 
 /** Classic grid rows: gross, discount, taxable and the SGST/CGST/IGST split of each line. */
-function classicLines(items, interState) {
+function classicLines(items, interState, startDate = null) {
   return items.map((l) => {
     const gross = r2(Number(l.quantity) * Number(l.unitPrice));
     const taxable = l.taxableAmount != null ? Number(l.taxableAmount) : gross;
@@ -100,6 +101,7 @@ function classicLines(items, interState) {
     const half = r2(gst / 2);
     return {
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, uom: l.unit || '', rate: l.unitPrice,
+      note: startDate ? periodNote(l, startDate) : '',
       gross, disc: r2(gross - taxable), taxable, gstRate: Number(l.gstPercentage || 0),
       sgst: interState ? 0 : half, cgst: interState ? 0 : r2(gst - half), igst: interState ? r2(gst) : 0,
     };
@@ -163,6 +165,7 @@ export function saleDocument(sale, customer) {
     sideBox: { label: 'Payment', rows: payments },
     items: (sale.items || []).map((l) => ({
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice,
+      note: periodNote(l, sale.createdAt),
       discount: l.discountAmount ? money(l.discountAmount) : null,
       taxable: l.taxableAmount, gstRate: l.gstPercentage, amount: l.lineTotal,
     })),
@@ -183,7 +186,7 @@ export function saleDocument(sale, customer) {
 
 function saleClassic(sale, customer) {
   const interState = Number(sale.igstAmount || 0) > 0;
-  const lines = classicLines(sale.items || [], interState);
+  const lines = classicLines(sale.items || [], interState, sale.createdAt);
   const walkIn = sale.customerIsWalkIn || !sale.customerName;
   const billTo = walkIn
     ? classicParty('Detail of Receiver (Billed To)', 'CASH', null, '')
@@ -407,7 +410,7 @@ function amountCell(value) {
 function thermalHtml(model, company, size, invoice = {}) {
   const narrow = size === '58mm';
   const rows = model.items.map((l) => `
-    <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}</td></tr>
+    <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td></tr>
     <tr><td>${qty(l.qty)} × ${money(l.rate)}${l.discount ? ` −${esc(l.discount)}` : ''}</td>
         <td class="muted">${l.gstRate ?? 0}%</td><td class="r">${money(l.amount)}</td></tr>`).join('');
   const party = model.party
@@ -447,7 +450,7 @@ function sheetHtml(model, company, size, invoice = {}) {
   const rows = items.map((l, i) => `
     <tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(l.name)}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}</td>
+      <td>${esc(l.name)}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td>
       <td class="r">${qty(l.qty)}</td>
       <td class="r">${money(l.rate)}</td>
       ${anyDiscount ? `<td class="r">${l.discount ? esc(l.discount) : '—'}</td>` : ''}
@@ -552,7 +555,7 @@ function classicHtml(model, company, size, invoice = {}) {
     <div class="pstate"><span>State : ${esc(p.state)}</span><span>State Code : ${esc(p.stateCode)}</span></div>`;
   const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
   const rows = c.lines.map((l, i) => `<tr>
-      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}</td><td>${esc(l.hsn || '')}</td>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
       <td class="r">${Number(l.qty || 0).toFixed(3)}</td><td>${esc(l.uom)}</td><td class="r b">${n2(l.rate)}</td>
       <td class="r b">${n2(l.gross)}</td><td class="r">${blankIfZero(l.disc)}</td><td class="r b">${n2(l.taxable)}</td>
       <td class="r">${l.sgst ? `${l.gstRate / 2}` : ''}</td><td class="r">${blankIfZero(l.sgst)}</td>

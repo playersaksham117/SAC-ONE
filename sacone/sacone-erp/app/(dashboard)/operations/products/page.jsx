@@ -7,6 +7,7 @@ import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
 import ProductCsvImport from '../../../../components/products/ProductCsvImport';
 import LabelPrintDialog from '../../../../components/products/LabelPrintDialog';
+import { periodOf, periodText } from '../../../../lib/warranty';
 
 const EMPTY_PRODUCT = {
   name: '',
@@ -24,6 +25,10 @@ const EMPTY_PRODUCT = {
   reorderLevel: 0,
   minimumStock: 0,
   itemType: 'goods',
+  warrantyValue: '',
+  warrantyUnit: 'years',
+  guaranteeValue: '',
+  guaranteeUnit: 'months',
   imageUrl: '',
   description: '',
   isActive: true,
@@ -395,6 +400,10 @@ export default function ProductsPage() {
         reorderLevel: full.reorderLevel || 0,
         minimumStock: full.minimumStock || 0,
         itemType: full.itemType || 'goods',
+        warrantyValue: full.warrantyValue || '',
+        warrantyUnit: full.warrantyUnit || 'years',
+        guaranteeValue: full.guaranteeValue || '',
+        guaranteeUnit: full.guaranteeUnit || 'months',
         imageUrl: full.imageUrl || '',
         description: full.description || '',
         isActive: full.isActive,
@@ -814,6 +823,12 @@ export default function ProductsPage() {
                               {product.modelVariant ? `${product.modelVariant} · ` : ''}
                               {product.barcode || 'No barcode'}
                             </div>
+                            {(product.warrantyValue || product.guaranteeValue) && (
+                              <div className="text-xs text-emerald-700">
+                                {[product.warrantyValue && `🛡 ${periodText(periodOf(product.warrantyValue, product.warrantyUnit))} warranty`,
+                                  product.guaranteeValue && `${periodText(periodOf(product.guaranteeValue, product.guaranteeUnit))} guarantee`].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
                           </button>
                         </td>
                         <td className="px-4 py-3 text-slate-600">{product.categoryName || '—'}</td>
@@ -1056,6 +1071,26 @@ export default function ProductsPage() {
                     </div>
                   </>
                 )}
+                <div className="md:col-span-2 rounded-xl border border-slate-200 p-3">
+                  <div className="mb-2 text-sm font-semibold text-slate-800">Warranty &amp; guarantee <span className="font-normal text-slate-500">· counted from the invoice date, printed on the bill</span></div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[['warranty', 'Warranty'], ['guarantee', 'Guarantee']].map(([key, label]) => (
+                      <div key={key}>
+                        <label className="label">{label}</label>
+                        <div className="flex gap-2">
+                          <input type="number" min="0" max="999" step="1" className="input-field w-24" placeholder="None"
+                            value={form[`${key}Value`]} onChange={(e) => setForm({ ...form, [`${key}Value`]: e.target.value })} />
+                          <select className="input-field" value={form[`${key}Unit`]} onChange={(e) => setForm({ ...form, [`${key}Unit`]: e.target.value })}>
+                            <option value="days">Days</option>
+                            <option value="months">Months</option>
+                            <option value="years">Years</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Leave blank for none. Example: a fan with 2 years warranty sold on 21/10/2026 prints “Warranty 2 Years (till 20/10/2028)”.</p>
+                </div>
                 <div className="md:col-span-2">
                   <label className="label">Product Image URL</label>
                   <input className="input-field" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://..." />

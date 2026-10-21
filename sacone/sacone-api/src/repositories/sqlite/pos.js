@@ -110,6 +110,10 @@ function mapSaleItem(row) {
     gstAmount: Number(row.gst_amount || 0),
     lineTotal: Number(row.line_total || 0),
     quantityReturned: Number(row.quantity_returned || 0),
+    warrantyValue: row.warranty_value || null,
+    warrantyUnit: row.warranty_value ? row.warranty_unit : null,
+    guaranteeValue: row.guarantee_value || null,
+    guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     movementId: row.movement_id,
     sortOrder: row.sort_order,
   };
@@ -434,6 +438,18 @@ export class PosSaleRepository {
   setDispatch(id, { transport, shipTo }) {
     getDatabase().prepare('UPDATE pos_sales SET transport_details = ?, ship_to = ? WHERE id = ?')
       .run(transport ? JSON.stringify(transport) : null, shipTo ? JSON.stringify(shipTo) : null, id);
+  }
+
+  /** Copy each line's product warranty / guarantee onto the invoice (kept even if the product changes). */
+  snapshotPeriods(saleId) {
+    getDatabase().prepare(`
+      UPDATE pos_sale_items SET
+        warranty_value = (SELECT p.warranty_value FROM products p WHERE p.id = pos_sale_items.product_id),
+        warranty_unit = (SELECT p.warranty_unit FROM products p WHERE p.id = pos_sale_items.product_id),
+        guarantee_value = (SELECT p.guarantee_value FROM products p WHERE p.id = pos_sale_items.product_id),
+        guarantee_unit = (SELECT p.guarantee_unit FROM products p WHERE p.id = pos_sale_items.product_id)
+      WHERE sale_id = ?
+    `).run(saleId);
   }
 
   setCustomerPo(id, { number, date }) {

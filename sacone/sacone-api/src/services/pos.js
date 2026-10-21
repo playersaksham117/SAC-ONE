@@ -612,6 +612,7 @@ export class PosService {
     });
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
     if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
+    saleRepo.snapshotPeriods(sale.id);
 
     // Inventory movements (POS sale) — never direct stock write
     for (let i = 0; i < sale.items.length; i++) {

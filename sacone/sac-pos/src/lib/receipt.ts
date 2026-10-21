@@ -10,6 +10,7 @@ import { invoiceShareMessage, shareFileName } from '../domain/share';
 import type { Quotation, Sale } from '../domain/types';
 import { DocumentShareService } from '../services/documentShare';
 import { signStampImages } from '../store/signStamp';
+import { periodNote } from '../domain/warranty';
 
 /**
  * Bill documents in four paper sizes.
@@ -86,7 +87,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const t = sale.totals;
   const narrow = size === '58mm';
   const rows = t.lines.map((l) => `
-    <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}</td></tr>
+    <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}${periodNote(l, sale.createdAt) ? `<div class="muted" style="font-size:.85em">${esc(periodNote(l, sale.createdAt))}</div>` : ''}</td></tr>
     <tr><td>${formatQty(l.quantity)} × ${formatMoney(l.unitPrice)}${l.discountAmount ? ` −${formatMoney(l.discountAmount)}` : ''}</td>
         <td class="muted">${l.gstRate}%</td><td class="r">${formatMoney(l.lineTotal)}</td></tr>`).join('');
 
@@ -141,7 +142,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   const rows = t.lines.map((l, i) => `
     <tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(l.name)}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}</td>
+      <td>${esc(l.name)}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}${periodNote(l, sale.createdAt) ? `<div class="muted" style="font-size:.85em">${esc(periodNote(l, sale.createdAt))}</div>` : ''}</td>
       <td class="r">${formatQty(l.quantity)} ${esc(l.unit || '')}</td>
       <td class="r">${formatMoney(l.unitPrice)}</td>
       ${anyDiscount ? `<td class="r">${l.discountAmount ? formatMoney(l.discountAmount) : '—'}</td>` : ''}
@@ -365,7 +366,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const tr = sale.transport || {};
   const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
   const rows = lines.map((l, i) => `<tr>
-      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}</td><td>${esc(l.hsn || '')}</td>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${periodNote(l, sale.createdAt) ? `<div style="font-weight:400;font-size:.85em">${esc(periodNote(l, sale.createdAt))}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
       <td class="r">${l.quantity.toFixed(3)}</td><td>${esc(l.unit || '')}</td><td class="r b">${n2(l.unitPrice)}</td>
       <td class="r b">${n2(l.gross)}</td><td class="r">${blank(l.disc)}</td><td class="r b">${n2(l.taxableAmount)}</td>
       <td class="r">${l.sgst ? l.gstRate / 2 : ''}</td><td class="r">${blank(l.sgst)}</td>
