@@ -11,6 +11,7 @@ import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
 import PartyCsvImport from '../../../../components/parties/PartyCsvImport';
 import CustomerActivity from '../../../../components/crm/CustomerActivity';
+import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -32,6 +33,9 @@ export default function PartiesPage() {
   const canApproveCredit = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug) && checkPermission('parties.customers.edit');
   const [creditFilter, setCreditFilter] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+  // Edit bill: firm admin / group owner only (the server checks too).
+  const isAdmin = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
+  const [editSaleId, setEditSaleId] = useState(null);
   const canViewCustomers = checkPermission('parties.customers.view');
   const canViewSuppliers = checkPermission('parties.suppliers.view');
   const canCreateCustomer = checkPermission('parties.customers.create');
@@ -347,6 +351,13 @@ export default function PartiesPage() {
 
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
+      {editSaleId && (
+        <EditInvoiceDialog
+          saleId={editSaleId}
+          onClose={() => setEditSaleId(null)}
+          onSaved={(saved) => { setEditSaleId(null); setMessage(`Bill ${saved.invoiceNumber} updated; stock adjusted.`); loadDetail(detailTab); loadList(true); }}
+        />
+      )}
       {importOpen && (
         <PartyCsvImport
           kind={tab}
@@ -640,7 +651,12 @@ export default function PartiesPage() {
                         <tr key={row.id} className="border-t border-slate-100">
                           {tab === 'customers' && detailTab !== 'payments' && detailTab !== 'returns' && (
                             <>
-                              <td className="px-2 py-1 font-mono">{row.invoiceNumber}</td>
+                              <td className="whitespace-nowrap px-2 py-1 font-mono">
+                                {row.invoiceNumber}
+                                {isAdmin && row.status === 'completed' && (
+                                  <button type="button" className="ml-1 text-brand-600 hover:underline" title="Edit bill (admin only)" onClick={() => setEditSaleId(row.id)}>✏</button>
+                                )}
+                              </td>
                               <td className="px-2 py-1">{row.customerPoNumber ? `${row.customerPoNumber}${row.customerPoDate ? ` · ${new Date(row.customerPoDate).toLocaleDateString('en-IN')}` : ''}` : '—'}</td>
                               <td className="px-2 py-1">{money(row.grandTotal)}</td>
                               <td className="px-2 py-1">{money(row.amountPaid)}</td>

@@ -5,6 +5,7 @@ import { apiRequest } from '../../../../lib/api';
 import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import PageHeader, { Alert, Modal } from '../../../../components/ui';
 import { EmptyPanel, SectionCard } from '../../../../components/module-ui';
+import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
 
 const ddmmyyyy = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 
@@ -45,8 +46,10 @@ function SerialsModal({ result, line, onClose, onSaved }) {
 }
 
 export default function WarrantyCheckPage() {
-  const { checkPermission } = useAuth();
+  const { checkPermission, session } = useAuth();
   const canEditSerials = checkPermission('pos.sales.create');
+  const isAdmin = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
+  const [editSaleId, setEditSaleId] = useState(null);
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -76,6 +79,7 @@ export default function WarrantyCheckPage() {
         {data?.results.map((r) => (
           <SectionCard key={r.saleId}
             title={<span>Invoice {r.invoiceNumber}{r.status === 'cancelled' ? <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">Cancelled</span> : null}</span>}
+            action={isAdmin && r.status === 'completed' && <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={() => setEditSaleId(r.saleId)}>✏ Edit bill</button>}
             subtitle={`${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · ${r.customerName ? `${r.customerName}${r.customerPhone ? ` · ${r.customerPhone}` : ''}` : 'Walk-in customer'}${r.matchedSerial ? ` · serial ${r.matchedSerial}` : ''}`}
             noPadding>
             <div className="divide-y divide-slate-100">
@@ -104,6 +108,7 @@ export default function WarrantyCheckPage() {
           </SectionCard>
         ))}
       </div>
+      {editSaleId && <EditInvoiceDialog saleId={editSaleId} onClose={() => setEditSaleId(null)} onSaved={() => { setEditSaleId(null); search(); }} />}
       {editing && <SerialsModal result={editing.result} line={editing.line} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); search(); }} />}
     </RequirePermission>
   );

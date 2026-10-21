@@ -7,10 +7,16 @@ import { accountLabel, defaultAccountFor } from '../../lib/accounts';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const METHODS = [['cash', 'Cash'], ['upi', 'UPI'], ['bank', 'Bank'], ['credit', 'Credit (on account)']];
+const MODES = ['By Road', 'By Hand', 'Courier', 'Rail', 'Air'];
+const EMPTY_TRANSPORT = { mode: '', transporter: '', vehicleNumber: '', lrNumber: '', lrDate: '', ewayBillNumber: '' };
+const EMPTY_SHIP = { name: '', address: '', city: '', state: '', gstin: '', phone: '' };
+const blank = (o) => Object.values(o).every((v) => !String(v || '').trim());
 
 /**
- * Owner-only invoice edit. Saving puts the old quantities back in stock and posts the corrected
- * invoice under the same number and date (stock, minimum price and credit rules apply again).
+ * Edit bill (firm admin / group owner only). Saving puts the old quantities back in stock and
+ * posts the corrected invoice under the same number and date (stock, minimum price and credit
+ * rules apply again); the old version is kept voided for audit. Covers items and prices,
+ * customer, payment, PO, transport, Ship To, serial numbers and notes.
  */
 export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const [sale, setSale] = useState(null);
@@ -48,7 +54,11 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             discountAmount: i.discountAmount || 0,
+            serials: (i.serialNumbers || []).join('\n'),
           })),
+          transport: { ...EMPTY_TRANSPORT, ...(s.transport || {}) },
+          shipTo: { ...EMPTY_SHIP, ...(s.shipTo || {}) },
+          shipOn: Boolean(s.shipTo?.name),
           invoiceDiscount: s.invoiceDiscount || 0,
           paymentMethod: paid ? paid.method : 'credit',
           amountReceived: s.amountPaid,
@@ -90,7 +100,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const addItem = () => {
     const p = products.find((x) => x.id === pick);
     if (!p) return;
-    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0 }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0, serials: '' }] }));
     setPick('');
   };
 
@@ -105,6 +115,10 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
         method: 'PUT',
         body: JSON.stringify({
           ...cart,
+          // Serial numbers as typed for each line (blank clears them).
+          items: cart.items.map((it, i) => ({ ...it, serialNumbers: form.items[i].serials })),
+          transport: blank(form.transport) ? null : form.transport,
+          shipTo: form.shipOn && !blank(form.shipTo) ? form.shipTo : null,
           paymentMethod: form.paymentMethod,
           amountReceived: form.paymentMethod === 'credit' ? 0 : Number(form.amountReceived || 0),
           paymentAccountId: ['upi', 'bank'].includes(form.paymentMethod) ? form.paymentAccountId || undefined : undefined,
@@ -125,7 +139,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
     <Modal
       open
       size="xl"
-      title={sale ? `Edit invoice ${sale.invoiceNumber}` : 'Edit invoice'}
+      title={sale ? `✏ Edit bill ${sale.invoiceNumber}` : 'Edit bill'}
       onClose={onClose}
       footer={form && (
         <>
@@ -160,7 +174,11 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
               <tbody className="divide-y divide-slate-100">
                 {form.items.map((it, idx) => (
                   <tr key={`${it.productId}-${idx}`}>
-                    <td className="px-3 py-2">{it.name}<div className="text-xs text-slate-400">{it.sku}</div></td>
+                    <td className="px-3 py-2">
+                      {it.name}<div className="text-xs text-slate-400">{it.sku}</div>
+                      <textarea className="input-field mt-1 !min-h-0 font-mono text-xs" rows={1} placeholder="Serial no(s), one per line"
+                        value={it.serials} onChange={(e) => setItem(idx, { serials: e.target.value })} />
+                    </td>
                     <td className="px-3 py-2"><input type="number" min="0" step="any" className="input-field" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} /></td>
                     <td className="px-3 py-2"><input type="number" min="0" step="0.01" className="input-field" value={it.unitPrice} onChange={(e) => setItem(idx, { unitPrice: e.target.value })} /></td>
                     <td className="px-3 py-2"><input type="number" min="0" step="0.01" className="input-field" value={it.discountAmount} onChange={(e) => setItem(idx, { discountAmount: e.target.value })} /></td>
@@ -209,6 +227,42 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
               <input className="input-field" type="date" disabled={!form.customerPoNumber.trim()} value={form.customerPoDate} onChange={(e) => setForm({ ...form, customerPoDate: e.target.value })} />
             </label>
           </div>
+          <details className="rounded-xl border border-slate-200 p-3" open={!blank(form.transport)}>
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800">Transport</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="block text-sm"><span className="label">Mode</span>
+                <select className="input-field" value={form.transport.mode} onChange={(e) => setForm({ ...form, transport: { ...form.transport, mode: e.target.value } })}>
+                  <option value="">—</option>
+                  {MODES.map((m) => <option key={m}>{m}</option>)}
+                </select>
+              </label>
+              {[['transporter', 'Transporter'], ['vehicleNumber', 'Vehicle no.'], ['lrNumber', 'LR / GR no.'], ['ewayBillNumber', 'E-way bill no.']].map(([k, l]) => (
+                <label key={k} className="block text-sm"><span className="label">{l}</span>
+                  <input className="input-field" value={form.transport[k]} onChange={(e) => setForm({ ...form, transport: { ...form.transport, [k]: e.target.value } })} />
+                </label>
+              ))}
+              <label className="block text-sm"><span className="label">LR date</span>
+                <input type="date" className="input-field" value={form.transport.lrDate} onChange={(e) => setForm({ ...form, transport: { ...form.transport, lrDate: e.target.value } })} />
+              </label>
+            </div>
+          </details>
+
+          <div className="rounded-xl border border-slate-200 p-3">
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <input type="checkbox" checked={form.shipOn} onChange={(e) => setForm({ ...form, shipOn: e.target.checked })} />
+              Ship To a different address (consignee)
+            </label>
+            {form.shipOn && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {[['name', 'Name *'], ['phone', 'Phone'], ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['gstin', 'GSTIN']].map(([k, l]) => (
+                  <label key={k} className={`block text-sm ${k === 'address' ? 'sm:col-span-2' : ''}`}><span className="label">{l}</span>
+                    <input className="input-field" value={form.shipTo[k] || ''} onChange={(e) => setForm({ ...form, shipTo: { ...form.shipTo, [k]: e.target.value } })} />
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           <label className="block text-sm"><span className="label">Notes</span>
             <input className="input-field" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </label>

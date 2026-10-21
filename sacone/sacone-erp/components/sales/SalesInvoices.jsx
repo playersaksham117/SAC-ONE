@@ -188,7 +188,7 @@ Reason (optional):`);
                       )}
                       {isOwner && s.status === 'completed' && (
                         <>
-                          <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(s.id); }}>Edit</button>
+                          <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" title="Admin only" onClick={() => { setMessage(''); setEditId(s.id); }}>✏ Edit bill</button>
                           <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1.5 text-xs !text-red-600" onClick={() => deleteInvoice(s)}>Delete</button>
                         </>
                       )}
@@ -211,7 +211,16 @@ Reason (optional):`);
           onSaved={(saved) => { setEditId(null); setMessage(`Invoice ${saved.invoiceNumber} updated; stock adjusted.`); load(true); }}
         />
       )}
-      {openId && <DocumentDialog title="Invoice" load={() => loadInvoice(openId)} onClose={() => setOpenId(null)} />}
+      {openId && (
+        <DocumentDialog
+          title="Invoice"
+          load={() => loadInvoice(openId)}
+          onClose={() => setOpenId(null)}
+          action={isOwner && rows.find((r) => r.id === openId)?.status === 'completed' && (
+            <button type="button" className="btn-secondary text-sm" onClick={() => { setEditId(openId); setOpenId(null); setMessage(''); }}>✏ Edit bill</button>
+          )}
+        />
+      )}
       {returnId && (
         <CreditNoteDialog
           saleId={returnId}

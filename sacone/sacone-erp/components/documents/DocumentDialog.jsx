@@ -43,7 +43,7 @@ export const ITEM_CSV_COLUMNS = [
  *   share: { number, amount, links? } adds the Share invoice section (see ShareSection).
  * A5 / A4 come in two layouts: 1 · GST classic (boxed tax-invoice grid) and 2 · Modern.
  */
-export default function DocumentDialog({ title, load, onClose, documentLabel = 'invoice' }) {
+export default function DocumentDialog({ title, load, onClose, documentLabel = 'invoice', action = null }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState('');
   const [printSize, setPrintSize] = useStoredChoice('sacone.printSize', 'A4', PRINT_SIZES.map((p) => p.value));
@@ -70,6 +70,7 @@ export default function DocumentDialog({ title, load, onClose, documentLabel = '
       <Alert message={error} />
       {!doc ? (!error && <LoadingState />) : (
         <div className="space-y-5">
+          {action && <div className="flex justify-end">{action}</div>}
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             {doc.summary.map(([label, value]) => (
               <div key={label}><div className="text-xs text-slate-500">{label}</div><div className="font-medium">{value}</div></div>
