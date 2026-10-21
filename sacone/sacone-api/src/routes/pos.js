@@ -158,6 +158,10 @@ settingsRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, settingsService.list(req.actor));
 }));
 
+settingsRouter.get('/labels', asyncHandler(async (req, res) => {
+  sendSuccess(res, settingsService.getLabelSettings());
+}));
+
 settingsRouter.get('/invoice', asyncHandler(async (req, res) => {
   sendSuccess(res, settingsService.getInvoiceSettings());
 }));

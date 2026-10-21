@@ -200,6 +200,17 @@ export function signStampForPrint({ withImage = true } = {}) {
   };
 }
 
+/** Barcode label defaults (Settings → Barcode labels), for anyone printing labels in the ERP or on SAC-POS. */
+export function labelPrintSettings() {
+  const company = companyRepo.get();
+  return {
+    size: settingsRepo.get('label.size')?.value || null,
+    fields: settingsRepo.get('label.fields')?.value || null,
+    footer: settingsRepo.get('label.footer')?.value || '',
+    businessName: company?.businessName || '',
+  };
+}
+
 export function invoicePrintSettings({ withImage = true } = {}) {
   const get = (key, fallback = '') => {
     const value = settingsRepo.get(key)?.value;
@@ -246,6 +257,11 @@ export class SettingsService {
     }
     if (data.print !== undefined) settingsRepo.upsert('invoice.print_sign_stamp', data.print ? 'true' : 'false', 'Print signature and stamp on bills', actor.user.id);
     return signStampForPrint();
+  }
+
+  /** Barcode label defaults: any signed-in user can print labels. */
+  getLabelSettings() {
+    return labelPrintSettings();
   }
 
   /** Invoice print settings (any signed-in user prints invoices; editing needs system settings). */

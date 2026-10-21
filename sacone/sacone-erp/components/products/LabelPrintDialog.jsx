@@ -6,28 +6,59 @@ import { printHtml } from '../../lib/bill-document';
 import { barcodeValue, LABEL_FIELDS, LABEL_SIZES, labelSettingsFrom, labelsHtml } from '../../lib/labels';
 import { Alert, LoadingState, Modal } from '../ui';
 
-/** Print barcode labels for the selected products: size, copies per product, details (from Settings). */
-export default function LabelPrintDialog({ products, onClose }) {
+/**
+ * Print barcode labels: start from the chosen products (or none) and add any product by
+ * barcode, SKU or name. Size and details default from Settings → Barcode labels.
+ */
+export default function LabelPrintDialog({ products: initial = [], onClose }) {
+  const [products, setProducts] = useState(initial);
   const [settings, setSettings] = useState(null);
   const [company, setCompany] = useState(null);
   const [size, setSize] = useState('50x25');
   const [fields, setFields] = useState([]);
-  const [copies, setCopies] = useState(() => Object.fromEntries(products.map((p) => [p.id, 1])));
+  const [copies, setCopies] = useState(() => Object.fromEntries(initial.map((p) => [p.id, 1])));
   const [all, setAll] = useState('1');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [found, setFound] = useState([]);
 
   useEffect(() => {
-    Promise.all([
-      apiRequest('/api/settings').catch(() => []),
-      apiRequest('/api/company').catch(() => null),
-    ]).then(([list, comp]) => {
-      const s = labelSettingsFrom(Array.isArray(list) ? list : []);
+    // Any signed-in user may print labels: the defaults come from a read-only endpoint.
+    apiRequest('/api/settings/labels').catch(() => ({})).then((l) => {
+      const s = labelSettingsFrom([{ key: 'label.size', value: l.size }, { key: 'label.fields', value: l.fields }, { key: 'label.footer', value: l.footer }]);
       setSettings(s);
       setSize(s.size);
       setFields(s.fields);
-      setCompany(comp);
+      setCompany({ businessName: l.businessName || '' });
     });
   }, []);
+
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setFound([]); return undefined; }
+    const t = setTimeout(() => {
+      apiRequest(`/api/products?search=${encodeURIComponent(q)}&limit=8&isActive=1`)
+        .then((r) => setFound((r.items || []).filter((p) => p.itemType !== 'service')))
+        .catch(() => setFound([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const add = (p, n = 1) => {
+    setProducts((list) => (list.some((x) => x.id === p.id) ? list : [...list, p]));
+    setCopies((c) => ({ ...c, [p.id]: (Number(c[p.id]) || 0) + n }));
+    setSearch('');
+    setFound([]);
+  };
+  const remove = (id) => setProducts((list) => list.filter((p) => p.id !== id));
+  // Scanner / Enter: an exact barcode or SKU match is added straight away.
+  const onSearchKey = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = search.trim().toLowerCase();
+    const exact = found.find((p) => String(p.barcode || '').toLowerCase() === q || String(p.sku || '').toLowerCase() === q);
+    if (exact || found.length === 1) add(exact || found[0]);
+  };
 
   const items = products.map((p) => ({ product: p, copies: Number(copies[p.id]) || 0 }));
   const total = items.reduce((s, i) => s + i.copies, 0);
@@ -36,7 +67,7 @@ export default function LabelPrintDialog({ products, onClose }) {
   const html = useMemo(
     () => (settings ? labelsHtml(items, { size, fields, company, footer: settings.footer }) : ''),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [settings, size, fields, company, JSON.stringify(copies)],
+    [settings, size, fields, company, products, JSON.stringify(copies)],
   );
   // One label at actual size: the print HTML without its page rules / sheet layout.
   const previewDoc = settings && products[0]
@@ -55,7 +86,7 @@ export default function LabelPrintDialog({ products, onClose }) {
     <Modal
       open
       size="xl"
-      title={`Print barcode labels · ${products.length} product${products.length === 1 ? '' : 's'}`}
+      title={`Print barcode labels${products.length ? ` · ${products.length} product${products.length === 1 ? '' : 's'}` : ''}`}
       onClose={onClose}
       footer={(
         <>
@@ -99,6 +130,20 @@ export default function LabelPrintDialog({ products, onClose }) {
                   <button type="button" className="btn-secondary !min-h-0 !px-2 !py-1 text-xs" onClick={() => setCopies(Object.fromEntries(products.map((p) => [p.id, Number(all) || 0])))}>Set</button>
                 </span>
               </div>
+              <div className="relative mb-2">
+                <input className="input-field" placeholder="Add product: scan barcode, type SKU or name…" value={search}
+                  onChange={(e) => setSearch(e.target.value)} onKeyDown={onSearchKey} autoFocus={!initial.length} />
+                {found.length > 0 && (
+                  <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                    {found.map((p) => (
+                      <button key={p.id} type="button" onClick={() => add(p)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50">
+                        <span className="min-w-0 truncate">{p.name}{p.modelVariant ? <span className="text-slate-500"> · {p.modelVariant}</span> : null}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-slate-500">{barcodeValue(p)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="max-h-56 divide-y divide-slate-100 overflow-auto rounded-lg border border-slate-200">
                 {products.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
@@ -106,14 +151,18 @@ export default function LabelPrintDialog({ products, onClose }) {
                       <div className="truncate font-medium">{p.name}</div>
                       <div className="font-mono text-[11px] text-slate-500">{barcodeValue(p) || 'no barcode / SKU'}</div>
                     </div>
-                    <input
-                      type="number" min="0" max="500"
-                      className="input-field !min-h-0 w-20 !py-1 text-right"
-                      value={copies[p.id] ?? 0}
-                      onChange={(e) => setCopies({ ...copies, [p.id]: e.target.value })}
-                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" min="0" max="500"
+                        className="input-field !min-h-0 w-20 !py-1 text-right"
+                        value={copies[p.id] ?? 0}
+                        onChange={(e) => setCopies({ ...copies, [p.id]: e.target.value })}
+                      />
+                      <button type="button" className="px-1 text-slate-400 hover:text-rose-600" title="Remove" onClick={() => remove(p.id)}>✕</button>
+                    </div>
                   </div>
                 ))}
+                {!products.length && <div className="px-3 py-6 text-center text-sm text-slate-400">Scan or search above to add products</div>}
               </div>
               {noCode.length > 0 && <p className="mt-1 text-xs text-amber-700">{noCode.length} product(s) have no barcode or SKU, so no bars print for them.</p>}
             </div>

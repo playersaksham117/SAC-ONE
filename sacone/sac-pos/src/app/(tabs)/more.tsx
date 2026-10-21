@@ -94,6 +94,8 @@ export default function More() {
         </Card>
         <AttendanceCard />
 
+        <Button title="Print barcode labels" icon="pricetags-outline" variant="secondary" onPress={() => router.push('/labels')} style={{ marginTop: space.sm }} testID="open-labels" />
+
         <SectionTitle>Today on this phone</SectionTitle>
         <Row gap={space.sm}>
           <StatTile label="Bills" value={String(summary.billCount)} icon="receipt-outline" tone="primary" />

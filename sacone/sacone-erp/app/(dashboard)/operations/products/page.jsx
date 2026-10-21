@@ -236,6 +236,8 @@ export default function ProductsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelProducts, setLabelProducts] = useState([]);
+  const openLabels = (list) => { setLabelProducts(list); setLabelsOpen(true); };
   const [viewOpen, setViewOpen] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState({
@@ -646,6 +648,7 @@ export default function ProductsPage() {
             )}
             {tab === 'products' && (
               <>
+                <button type="button" className="btn-secondary" onClick={() => openLabels(selectedProducts)}>🏷 Print labels</button>
                 <button type="button" className="btn-secondary" onClick={handleExport}>Export CSV</button>
                 {canCreate && (
                   <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>Import CSV</button>
@@ -742,7 +745,7 @@ export default function ProductsPage() {
                         {selectedIds.length === 1 ? 'Edit' : 'Bulk Edit'}
                       </button>
                     )}
-                    <button type="button" className="btn-secondary" onClick={() => setLabelsOpen(true)}>🏷 Print labels</button>
+                    <button type="button" className="btn-secondary" onClick={() => openLabels(selectedProducts)}>🏷 Print labels</button>
                     {canDelete && (
                       <button type="button" className="btn-danger" onClick={handleBulkDelete} disabled={saving}>
                         Delete
@@ -772,9 +775,7 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left font-medium text-slate-600">GST%</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Status</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Web</th>
-                    {(canEdit || canDelete) && (
-                      <th className="px-4 py-3 text-right font-medium text-slate-600">Actions</th>
-                    )}
+                    <th className="px-4 py-3 text-right font-medium text-slate-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -824,9 +825,11 @@ export default function ProductsPage() {
                         <td className="px-4 py-3">
                           <StatusBadge active={product.webStorePublished} labelActive="Published" labelInactive="Draft" />
                         </td>
-                        {(canEdit || canDelete) && (
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2">
+                              {product.itemType !== 'service' && (
+                                <button type="button" className="btn-secondary" title="Print barcode labels" onClick={() => openLabels([product])}>🏷</button>
+                              )}
                               <button
                                 type="button"
                                 className="btn-secondary"
@@ -854,7 +857,6 @@ export default function ProductsPage() {
                               )}
                             </div>
                           </td>
-                        )}
                       </tr>
                     );
                   })}
@@ -1259,8 +1261,8 @@ export default function ProductsPage() {
         </ul>
       </Modal>
 
-      {labelsOpen && selectedProducts.length > 0 && (
-        <LabelPrintDialog products={selectedProducts} onClose={() => setLabelsOpen(false)} />
+      {labelsOpen && (
+        <LabelPrintDialog products={labelProducts} onClose={() => setLabelsOpen(false)} />
       )}
       {importOpen && (
         <ProductCsvImport

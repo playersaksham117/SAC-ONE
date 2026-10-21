@@ -24,6 +24,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="cart" options={{ presentation: 'modal' }} />
           <Stack.Screen name="checkout" />
+          <Stack.Screen name="labels" />
           <Stack.Screen name="scan" options={{ presentation: 'fullScreenModal' }} />
           <Stack.Screen name="customer-picker" options={{ presentation: 'modal' }} />
         </Stack>

@@ -141,8 +141,10 @@ export function Field({ label, error, hint, style, ...input }: TextInputProps & 
   );
 }
 
-export function SearchBar({ value, onChangeText, placeholder, right, autoFocus }: {
+export function SearchBar({ value, onChangeText, placeholder, right, autoFocus, onSubmitEditing }: {
   value: string; onChangeText: (v: string) => void; placeholder: string; right?: ReactNode; autoFocus?: boolean;
+  /** Enter / a hardware scanner's carriage return. */
+  onSubmitEditing?: () => void;
 }) {
   return (
     <View style={styles.search}>
@@ -157,6 +159,7 @@ export function SearchBar({ value, onChangeText, placeholder, right, autoFocus }
         autoCapitalize="none"
         autoFocus={autoFocus}
         returnKeyType="search"
+        onSubmitEditing={onSubmitEditing}
       />
       {value ? <IconButton icon="close-circle" label="Clear" onPress={() => onChangeText('')} size={18} /> : null}
       {right}

@@ -39,6 +39,8 @@ export interface PingResult {
       /** Signature & stamp: whether to print them and the version of the images (fetched separately). */
       signStamp?: { print?: boolean; hasSign?: boolean; hasStamp?: boolean; version?: string | null };
     };
+    /** ERP → Settings → Barcode labels (default size, details on each label, footer). */
+    labels?: { size?: string | null; fields?: string | null; footer?: string | null; businessName?: string };
   };
 }
 

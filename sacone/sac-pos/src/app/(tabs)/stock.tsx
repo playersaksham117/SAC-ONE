@@ -4,7 +4,8 @@ import { formatMoney, formatQty } from '../../domain/money';
 import { usePendingQty } from '../../lib/useSyncInfo';
 import { searchProducts, useCatalog } from '../../store/catalog';
 import { useDevice } from '../../store/device';
-import { Badge, Card, Chip, Empty, Header, Row, Screen, SearchBar, StatTile, colors, font, space } from '../../ui/components';
+import { Badge, Card, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, StatTile, colors, font, space } from '../../ui/components';
+import { router } from 'expo-router';
 
 type Filter = 'all' | 'low' | 'out';
 
@@ -58,6 +59,7 @@ export default function Stock() {
                 <Text style={{ fontSize: font.xl, fontWeight: '800', color: avail <= 0 ? colors.danger : avail <= 5 ? colors.warning : colors.text }}>{formatQty(avail)}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{p.unit}</Text>
                 {pending[p.id] ? <Badge tone="warning" label={`${formatQty(pending[p.id])} unsynced`} /> : null}
+                <IconButton icon="pricetags-outline" label={`Print labels for ${p.name}`} tone="primary" onPress={() => router.push({ pathname: '/labels', params: { productId: p.id } })} />
               </View>
             </Row>
           </Card>

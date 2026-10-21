@@ -21,7 +21,7 @@ import { generateApiKeySecret, hashApiKey } from '../repositories/sqlite/webstor
 import { authService } from './index.js';
 import { firmService } from './firms.js';
 import { currentFirmId } from '../database/context.js';
-import { posService, bankForPrint, invoicePrintSettings } from './pos.js';
+import { posService, bankForPrint, invoicePrintSettings, labelPrintSettings } from './pos.js';
 import { quotationService } from './quotations.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
@@ -240,6 +240,8 @@ export class PosSyncService {
             ? { bank: bankForPrint(repos.financeAccounts.findById(device.paymentAccountId), { withImage: false }) || invoicePrintSettings({ withImage: false }).bank }
             : {}),
         },
+        // Barcode label defaults (Settings → Barcode labels) for printing labels on the phone.
+        labels: labelPrintSettings(),
       },
     };
   }
