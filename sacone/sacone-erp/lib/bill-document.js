@@ -108,6 +108,7 @@ function classicLines(items, interState, startDate = null) {
     return {
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, uom: l.unit || '', rate: l.unitPrice,
       note: startDate ? lineNote(l, startDate) : '',
+      desc: l.shortDescription || '',
       gross, disc: r2(gross - taxable), taxable, gstRate: Number(l.gstPercentage || 0),
       sgst: interState ? 0 : half, cgst: interState ? 0 : r2(gst - half), igst: interState ? r2(gst) : 0,
     };
@@ -172,6 +173,7 @@ export function saleDocument(sale, customer) {
     items: (sale.items || []).map((l) => ({
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice,
       note: lineNote(l, sale.createdAt),
+      desc: l.shortDescription || '',
       discount: l.discountAmount ? money(l.discountAmount) : null,
       taxable: l.taxableAmount, gstRate: l.gstPercentage, amount: l.lineTotal,
     })),
@@ -456,7 +458,7 @@ function sheetHtml(model, company, size, invoice = {}) {
   const rows = items.map((l, i) => `
     <tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(l.name)}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td>
+      <td>${esc(l.name)}${l.desc ? `<div style="font-weight:400;font-size:.9em">${esc(l.desc)}</div>` : ''}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td>
       <td class="r">${qty(l.qty)}</td>
       <td class="r">${money(l.rate)}</td>
       ${anyDiscount ? `<td class="r">${l.discount ? esc(l.discount) : '—'}</td>` : ''}
@@ -561,7 +563,7 @@ function classicHtml(model, company, size, invoice = {}) {
     <div class="pstate"><span>State : ${esc(p.state)}</span><span>State Code : ${esc(p.stateCode)}</span></div>`;
   const cols = '<colgroup><col style="width:4%"><col style="width:18%"><col style="width:7%"><col style="width:7%"><col style="width:5%"><col style="width:8%"><col style="width:8%"><col style="width:6%"><col style="width:8%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:6.5%"><col style="width:3.5%"><col style="width:5.5%"></colgroup>';
   const rows = c.lines.map((l, i) => `<tr>
-      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.desc ? `<div style="font-weight:400;font-size:.9em">${esc(l.desc)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
       <td class="r">${Number(l.qty || 0).toFixed(3)}</td><td>${esc(l.uom)}</td><td class="r b">${n2(l.rate)}</td>
       <td class="r b">${n2(l.gross)}</td><td class="r">${blankIfZero(l.disc)}</td><td class="r b">${n2(l.taxable)}</td>
       <td class="r">${l.sgst ? `${l.gstRate / 2}` : ''}</td><td class="r">${blankIfZero(l.sgst)}</td>

@@ -798,6 +798,7 @@ export class PosSyncService {
       selling_price: Number(r.selling_price || 0),
       item_type: r.item_type === 'service' ? 'service' : 'goods',
       // Warranty / guarantee from the invoice date (printed on the phone's bills).
+      short_description: r.short_description || null,
       warranty_value: r.warranty_value || null,
       warranty_unit: r.warranty_value ? r.warranty_unit : null,
       guarantee_value: r.guarantee_value || null,

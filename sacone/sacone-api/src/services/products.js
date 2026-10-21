@@ -353,6 +353,15 @@ function periodsFrom(data) {
   return Object.keys(out).length ? out : null;
 }
 
+/** Short description (one line, ≤ 150 characters); undefined when not sent. */
+function shortDescriptionFrom(data) {
+  const raw = data.shortDescription ?? data.short_description;
+  if (raw === undefined) return undefined;
+  const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  if (text.length > 150) throw new AppError('Short description: keep it to one line (150 characters)', 400);
+  return text || null;
+}
+
 export class ProductService {
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'products.products.view');
@@ -514,6 +523,8 @@ export class ProductService {
       createdBy: actor.user.id,
     });
     if (periods) product = productRepo.setPeriods(product.id, periods);
+    const shortDesc = shortDescriptionFrom(data);
+    if (shortDesc !== undefined) product = productRepo.setShortDescription(product.id, shortDesc);
     skuEngineRepo.recordBarcodeUsed(product.barcode);
 
     auditRepo.create({
@@ -564,6 +575,8 @@ export class ProductService {
     const periods = periodsFrom(data);
     let updated = productRepo.update(id, input);
     if (periods) updated = productRepo.setPeriods(id, periods);
+    const shortDesc = shortDescriptionFrom(data);
+    if (shortDesc !== undefined) updated = productRepo.setShortDescription(id, shortDesc);
     skuEngineRepo.recordBarcodeUsed(updated?.barcode);
 
     auditRepo.create({
@@ -717,7 +730,7 @@ export class ProductService {
     const headers = [
       'sku', 'name', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
       'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
-      'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee',
+      'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee', 'short_description',
     ];
 
     const escape = (value) => {
@@ -733,6 +746,7 @@ export class ProductService {
       p.reorderLevel, p.minimumStock, p.imageUrl || '', p.description || '',
       p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0, p.itemType === 'service' ? 'service' : 'product',
       periodText(p.warrantyValue, p.warrantyUnit).toLowerCase(), periodText(p.guaranteeValue, p.guaranteeUnit).toLowerCase(),
+      p.shortDescription || '',
     ].map(escape).join(','));
 
     return `${headers.join(',')}\n${rows.join('\n')}`;
@@ -828,6 +842,7 @@ export class ProductService {
           // "1 year", "18 months", "90 days" (a missing column leaves the product's period unchanged)
           ...(row.warranty !== undefined ? { warranty: row.warranty } : {}),
           ...(row.guarantee !== undefined ? { guarantee: row.guarantee } : {}),
+          ...(row.short_description !== undefined ? { shortDescription: row.short_description } : {}),
         };
 
         const existing = productRepo.findBySku(payload.sku);

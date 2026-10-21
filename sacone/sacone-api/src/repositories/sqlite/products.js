@@ -52,6 +52,8 @@ function mapProduct(row) {
     purchasePrice: Number(row.purchase_price || 0),
     reorderLevel: Number(row.reorder_level || 0),
     minimumStock: Number(row.minimum_stock || 0),
+    /** One line of specs printed under the item on A4 / A5 invoices and quotations. */
+    shortDescription: row.short_description || null,
     // Warranty / guarantee from the invoice date: a number of days, months or years (null = none).
     warrantyValue: row.warranty_value || null,
     warrantyUnit: row.warranty_value ? row.warranty_unit : null,
@@ -380,6 +382,11 @@ export class ProductRepository {
       data.itemType === 'service' ? 'service' : 'goods'
     );
 
+    return this.findById(id);
+  }
+
+  setShortDescription(id, text) {
+    getDatabase().prepare('UPDATE products SET short_description = ? WHERE id = ?').run(text, id);
     return this.findById(id);
   }
 

@@ -72,6 +72,11 @@ function mapItem(row) {
     taxableAmount: Number(row.taxable_amount || 0),
     gstAmount: Number(row.gst_amount || 0),
     lineTotal: Number(row.line_total || 0),
+    shortDescription: row.short_description || null,
+    warrantyValue: row.warranty_value || null,
+    warrantyUnit: row.warranty_value ? row.warranty_unit : null,
+    guaranteeValue: row.guarantee_value || null,
+    guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     sortOrder: row.sort_order,
   };
 }
@@ -99,6 +104,17 @@ export class QuotationRepository {
     const row = getDatabase().prepare(`${QUOTE_SELECT} WHERE q.quotation_number = ?`).get(number);
     if (!row) return null;
     return this.findById(row.id);
+  }
+
+  /** Copy each line's product short description and warranty / guarantee onto the quotation. */
+  #snapshotLines(quotationId) {
+    const col = (c) => `(SELECT p.${c} FROM products p WHERE p.id = pos_quotation_items.product_id)`;
+    getDatabase().prepare(`
+      UPDATE pos_quotation_items SET short_description = ${col('short_description')},
+        warranty_value = ${col('warranty_value')}, warranty_unit = ${col('warranty_unit')},
+        guarantee_value = ${col('guarantee_value')}, guarantee_unit = ${col('guarantee_unit')}
+      WHERE quotation_id = ?
+    `).run(quotationId);
   }
 
   listItems(quotationId) {
@@ -230,6 +246,7 @@ export class QuotationRepository {
     });
 
     tx();
+    this.#snapshotLines(id);
     return this.findById(id);
   }
 
@@ -327,6 +344,7 @@ export class QuotationRepository {
     });
 
     tx();
+    this.#snapshotLines(id);
     return this.findById(id);
   }
 

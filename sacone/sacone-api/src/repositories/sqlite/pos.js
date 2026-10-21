@@ -114,6 +114,7 @@ function mapSaleItem(row) {
     warrantyUnit: row.warranty_value ? row.warranty_unit : null,
     guaranteeValue: row.guarantee_value || null,
     guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
+    shortDescription: row.short_description || null,
     movementId: row.movement_id,
     sortOrder: row.sort_order,
   };
@@ -451,7 +452,8 @@ export class PosSaleRepository {
         warranty_value = (SELECT p.warranty_value FROM products p WHERE p.id = pos_sale_items.product_id),
         warranty_unit = (SELECT p.warranty_unit FROM products p WHERE p.id = pos_sale_items.product_id),
         guarantee_value = (SELECT p.guarantee_value FROM products p WHERE p.id = pos_sale_items.product_id),
-        guarantee_unit = (SELECT p.guarantee_unit FROM products p WHERE p.id = pos_sale_items.product_id)
+        guarantee_unit = (SELECT p.guarantee_unit FROM products p WHERE p.id = pos_sale_items.product_id),
+        short_description = (SELECT p.short_description FROM products p WHERE p.id = pos_sale_items.product_id)
       WHERE sale_id = ?
     `).run(saleId);
   }

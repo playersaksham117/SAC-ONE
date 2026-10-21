@@ -22,6 +22,8 @@ export interface Product {
   /** Warranty / guarantee from the invoice date (ERP product master). */
   warranty?: Period | null;
   guarantee?: Period | null;
+  /** One line of specs, printed under the item on A4 / A5 bills and quotations. */
+  shortDescription?: string | null;
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;
@@ -65,6 +67,7 @@ export interface CartLine {
   guarantee?: Period | null;
   /** Serial numbers of the units sold (warranty claims), printed on the bill and synced. */
   serialNumbers?: string[];
+  shortDescription?: string | null;
 }
 
 export interface ComputedLine extends CartLine {

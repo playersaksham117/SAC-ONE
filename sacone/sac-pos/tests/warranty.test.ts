@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lineNote, periodEnd, periodNote, periodOf, periodText } from '../src/domain/warranty';
+import { lineNote, periodEnd, periodNote, periodOf, periodText, quoteNote } from '../src/domain/warranty';
 import { parseSerials } from '../src/domain/serials';
 import * as erp from '../../sacone-erp/lib/warranty.js';
 
@@ -46,5 +46,12 @@ describe('serial numbers', () => {
   it('prints serials with the warranty on the bill', () => {
     expect(lineNote({ serialNumbers: ['SN-1'], warranty: { value: 1, unit: 'years' } }, '2026-10-21T04:30:00.000Z'))
       .toBe('S/N SN-1 · Warranty 1 Year (till 20/10/2027)');
+  });
+});
+
+describe('quotations', () => {
+  it('show periods without end dates (not sold yet)', () => {
+    expect(quoteNote({ warranty: { value: 2, unit: 'years' }, guarantee: { value: 6, unit: 'months' } })).toBe('Warranty 2 Years · Guarantee 6 Months (from invoice date)');
+    expect(quoteNote({})).toBe('');
   });
 });

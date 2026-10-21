@@ -31,6 +31,12 @@ export function periodEnd(startIso: string, p?: Period | null): string | null {
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+/** On a quotation (not sold yet): "Warranty 1 Year · Guarantee 6 Months (from invoice date)", or ''. */
+export function quoteNote(line: { warranty?: Period | null; guarantee?: Period | null }): string {
+  const parts = [line.warranty ? `Warranty ${periodText(line.warranty)}` : '', line.guarantee ? `Guarantee ${periodText(line.guarantee)}` : ''].filter(Boolean);
+  return parts.length ? `${parts.join(' · ')} (from invoice date)` : '';
+}
+
 /** Under an item on the bill: its serial numbers and warranty / guarantee. */
 export function lineNote(line: { warranty?: Period | null; guarantee?: Period | null; serialNumbers?: string[] }, startIso: string): string {
   return [line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '', periodNote(line, startIso)].filter(Boolean).join(' · ');

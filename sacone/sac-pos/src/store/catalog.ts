@@ -50,6 +50,7 @@ export function mapServerProduct(p: ServerProduct): Product {
     itemType: p.item_type === 'service' ? 'service' : 'goods',
     warranty: periodOf(p.warranty_value, p.warranty_unit),
     guarantee: periodOf(p.guarantee_value, p.guarantee_unit),
+    shortDescription: p.short_description || null,
     onHand: Number(p.current_stock || 0),
     available: Number(p.available_stock ?? p.current_stock ?? 0),
     isActive: p.is_active !== false && p.approval_status !== 'rejected',

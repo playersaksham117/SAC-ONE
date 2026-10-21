@@ -1,4 +1,5 @@
 import { amountInWords } from '../core/amount-words.js';
+import { periodText } from '../core/warranty.js';
 
 function money(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -21,6 +22,15 @@ function sameAddress(bill, ship) {
   const b = [bill.address, bill.city, bill.state, bill.postal].join('|').toLowerCase();
   const s = [ship.address, ship.city, ship.state, ship.postal].join('|').toLowerCase();
   return b && b === s;
+}
+
+/** "Warranty 1 Year · Guarantee 6 Months (from invoice date)" for a quotation line, or ''. */
+function quotePeriods(item) {
+  const parts = [
+    item.warrantyValue ? `Warranty ${periodText(item.warrantyValue, item.warrantyUnit)}` : '',
+    item.guaranteeValue ? `Guarantee ${periodText(item.guaranteeValue, item.guaranteeUnit)}` : '',
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(' · ')} (from invoice date)` : '';
 }
 
 export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION', signStamp = null }) {
@@ -53,7 +63,7 @@ export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION', s
   const itemRows = (quotation.items || []).map((item, i) => `
     <tr>
       <td class="c">${i + 1}</td>
-      <td>${esc(item.productName)}${item.sku ? `<div class="muted mono">${esc(item.sku)}</div>` : ''}</td>
+      <td>${esc(item.productName)}${item.shortDescription ? `<div style="font-size:11px">${esc(item.shortDescription)}</div>` : ''}${item.sku ? `<div class="muted mono">${esc(item.sku)}</div>` : ''}${quotePeriods(item) ? `<div class="muted" style="font-size:11px">${esc(quotePeriods(item))}</div>` : ''}</td>
       <td class="c mono">${esc(item.hsnCode || '—')}</td>
       <td class="r">${item.quantity}</td>
       <td class="c">${esc(item.unitAbbreviation || '—')}</td>
