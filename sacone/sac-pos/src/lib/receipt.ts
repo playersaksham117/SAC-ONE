@@ -9,6 +9,7 @@ import { formatMoney, formatQty } from '../domain/money';
 import { invoiceShareMessage, shareFileName } from '../domain/share';
 import type { Quotation, Sale } from '../domain/types';
 import { DocumentShareService } from '../services/documentShare';
+import { signStampImages } from '../store/signStamp';
 
 /**
  * Bill documents in four paper sizes.
@@ -222,7 +223,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   </div>` : ''}
   <div class="foot">
     <div class="muted">Thank you for your business. This is a computer-generated invoice.</div>
-    <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}<br><br>Authorised signatory</div>
+    <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}${signStampHtml(invoice, size === 'A5' ? 12 : 16) || '<br><br>'}Authorised signatory</div>
   </div>
 </body></html>`;
 }
@@ -247,6 +248,16 @@ export interface InvoiceSettings {
   printUpiQr?: boolean;
   posUpiQr?: boolean;
   upiQrSource?: 'generated' | 'uploaded';
+  signStamp?: { print?: boolean; version?: string | null };
+}
+
+/** The firm's stamp and signature above "Authorised Signatory" ('' when off or none uploaded). */
+function signStampHtml(invoice: InvoiceSettings, heightMm: number) {
+  const { sign, stamp } = signStampImages(invoice.signStamp?.print);
+  if (!sign && !stamp) return '';
+  return `<div style="display:flex;align-items:center;justify-content:flex-end;gap:2mm;margin:1mm 0">${
+    stamp ? `<img src="${stamp}" alt="Stamp" style="height:${heightMm}mm;max-width:45%;object-fit:contain;opacity:.9">` : ''}${
+    sign ? `<img src="${sign}" alt="Signature" style="height:${(heightMm * 0.8).toFixed(1)}mm;max-width:55%;object-fit:contain">` : ''}</div>`;
 }
 
 /** UPI pay QR for this bill (balance due, else payer types the amount), or '' when off / no UPI ID. */
@@ -458,7 +469,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
       <div style="flex:1"></div>
       <div class="net"><span>NET AMOUNT :</span><span>${n2(t.grandTotal)}</span></div>
       <div style="flex:1;min-height:${a5 ? 14 : 26}mm;padding:${a5 ? '2px 3px' : '4px 5px'};display:flex;flex-direction:column;justify-content:space-between;text-align:right;font-weight:700">
-        <div>For ${esc(company?.businessName || 'SACONE')}</div><div>Auth.Signatory</div>
+        <div>For ${esc(company?.businessName || 'SACONE')}</div>${signStampHtml(invoice, a5 ? 11 : 17)}<div>Auth.Signatory</div>
       </div>
     </div>
   </div>

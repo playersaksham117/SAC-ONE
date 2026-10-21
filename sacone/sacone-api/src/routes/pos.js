@@ -162,6 +162,10 @@ settingsRouter.get('/invoice', asyncHandler(async (req, res) => {
   sendSuccess(res, settingsService.getInvoiceSettings());
 }));
 
+settingsRouter.put('/invoice/sign-stamp', asyncHandler(async (req, res) => {
+  sendSuccess(res, settingsService.saveSignStamp(req.body || {}, req.actor, req));
+}));
+
 settingsRouter.put('/:key', asyncHandler(async (req, res) => {
   sendSuccess(res, settingsService.update(req.params.key, req.body?.value, req.actor, req));
 }));

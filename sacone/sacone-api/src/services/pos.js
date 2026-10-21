@@ -176,6 +176,30 @@ export function bankForPrint(acct, { withImage = true } = {}) {
   };
 }
 
+/** The firm's signature and stamp images (Settings → Signature & stamp), kept as firm settings. */
+export const SIGN_KEYS = { sign: 'invoice.sign_image', stamp: 'invoice.stamp_image' };
+const IMAGE_SETTING_KEYS = new Set(Object.values(SIGN_KEYS));
+const imageVersion = (...images) => {
+  const present = images.filter(Boolean);
+  return present.length ? crypto.createHash('sha1').update(present.join('|')).digest('hex').slice(0, 12) : null;
+};
+
+/**
+ * What prints in the "For <firm> / Authorised Signatory" box. withImage: include the images;
+ * phones get only the version and fetch the images once (GET /api/v1/sync/sign-stamp).
+ */
+export function signStampForPrint({ withImage = true } = {}) {
+  const sign = settingsRepo.get(SIGN_KEYS.sign)?.value || null;
+  const stamp = settingsRepo.get(SIGN_KEYS.stamp)?.value || null;
+  return {
+    print: settingsRepo.getBoolean('invoice.print_sign_stamp', true),
+    hasSign: Boolean(sign),
+    hasStamp: Boolean(stamp),
+    version: imageVersion(sign, stamp),
+    ...(withImage ? { signImage: sign, stampImage: stamp } : {}),
+  };
+}
+
 export function invoicePrintSettings({ withImage = true } = {}) {
   const get = (key, fallback = '') => {
     const value = settingsRepo.get(key)?.value;
@@ -193,13 +217,35 @@ export function invoicePrintSettings({ withImage = true } = {}) {
     posUpiQr: settingsRepo.getBoolean('pos.upi_qr_screen', true),
     terms: get('invoice.terms'),
     declaration: get('invoice.declaration', 'Certified that the particulars given above are true and correct.'),
+    signStamp: signStampForPrint({ withImage }),
   };
 }
 
 export class SettingsService {
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.system_settings.view');
-    return settingsRepo.getAll();
+    // Images are large; they come from GET /api/settings/invoice instead.
+    return settingsRepo.getAll().filter((s) => !IMAGE_SETTING_KEYS.has(s.key));
+  }
+
+  /** Upload / remove the firm's signature and stamp, and switch printing them on bills. */
+  saveSignStamp(data, actor, req) {
+    authService.checkPermission(actor.permissions, 'core.system_settings.edit');
+    for (const [field, key, label] of [['signImage', SIGN_KEYS.sign, 'signature'], ['stampImage', SIGN_KEYS.stamp, 'stamp']]) {
+      if (data[field] === undefined) continue;
+      const image = String(data[field] ?? '').trim();
+      if (image && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+        throw new AppError(`Upload the ${label} as a PNG, JPG or WebP image`, 400);
+      }
+      if (image.length > 700000) throw new AppError(`The ${label} image is too large (keep it under 500 KB)`, 400);
+      settingsRepo.upsert(key, image, `Firm ${label} printed on bills`, actor.user.id);
+      auditRepo.create({
+        userId: actor.user.id, userName: actor.user.fullName, action: image ? 'update' : 'delete', module: 'core',
+        recordType: 'system_setting', recordId: key, newValue: { key, uploaded: Boolean(image) }, ...getRequestMeta(req),
+      });
+    }
+    if (data.print !== undefined) settingsRepo.upsert('invoice.print_sign_stamp', data.print ? 'true' : 'false', 'Print signature and stamp on bills', actor.user.id);
+    return signStampForPrint();
   }
 
   /** Invoice print settings (any signed-in user prints invoices; editing needs system settings). */
@@ -215,6 +261,7 @@ export class SettingsService {
 
   update(key, value, actor, req) {
     authService.checkPermission(actor.permissions, 'core.system_settings.edit');
+    if (IMAGE_SETTING_KEYS.has(key)) throw new AppError('Upload the signature or stamp from Settings → Signature & stamp', 400);
     const updated = settingsRepo.upsert(key, value, null, actor.user.id);
     auditRepo.create({
       userId: actor.user.id,

@@ -1,3 +1,4 @@
+import { signStampForPrint } from '../services/pos.js';
 import { posPins } from '../services/pos-pins.js';
 import { authService } from '../services/index.js';
 import { AppError } from '../core/http.js';
@@ -27,6 +28,10 @@ const ping = asyncHandler(async (req, res) => sendSuccess(res, posSyncService.pi
 posSyncRouter.get('/ping', ping);
 posSyncRouter.post('/ping', ping);
 posSyncRouter.get('/bootstrap', ping);
+/** The firm's signature and stamp images, fetched by phones only when their version changes. */
+posSyncRouter.get('/sign-stamp', asyncHandler(async (req, res) => {
+  sendSuccess(res, signStampForPrint());
+}));
 posSyncRouter.get('/upi-qr', asyncHandler(async (req, res) => {
   sendSuccess(res, posSyncService.upiQrImage(req.device));
 }));

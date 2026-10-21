@@ -8,6 +8,7 @@ import { authService } from './index.js';
 import { calculateCartTotals, posService } from './pos.js';
 import { buildQuotationDocument } from './document-template.js';
 import { documentShareService } from './document-share.js';
+import { signStampForPrint } from './pos.js';
 
 const quoteRepo = repos.quotations;
 const customerRepo = repos.customers;
@@ -265,7 +266,7 @@ export class QuotationService {
     const quote = quoteRepo.findById(id);
     if (!quote) throw new AppError('Quotation not found', 404);
     const firm = numberingRepo.getFirm(quote.firmId);
-    return buildQuotationDocument({ firm, quotation: quote });
+    return buildQuotationDocument({ firm, quotation: quote, signStamp: signStampForPrint() });
   }
 
   recordPrint(id, actor, req) {

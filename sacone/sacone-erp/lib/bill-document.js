@@ -323,6 +323,7 @@ export function purchaseDocument(kind, doc, supplier) {
     ],
     footer: kind === 'return' && doc.reason ? `Reason: ${doc.reason}. ${spec.footer}` : spec.footer,
     thanks: '',
+    signed: kind !== 'bill',
     classic: purchaseClassic(kind, spec, doc, supplier),
   };
 }
@@ -381,6 +382,20 @@ function upiQr(model, invoice, company, px) {
   const url = upiPayUrl({ upiId, payee: invoice.bank.accountHolder || company?.businessName, amount: model.pay.amount, note: model.pay.note });
   const caption = model.pay.amount > 0 ? `Scan to pay ${money(model.pay.amount)}` : 'Scan to pay by UPI';
   return `<div class="upi">${qrSvg(url, px)}<div>${esc(caption)}</div></div>`;
+}
+
+/**
+ * The firm's stamp and authorised signature (Settings → Signature & stamp), drawn above
+ * "Authorised Signatory". '' when switched off, none uploaded, or on a supplier's bill.
+ */
+function signStamp(model, invoice, heightMm) {
+  const st = invoice?.signStamp;
+  if (!st || st.print === false || model.signed === false) return '';
+  const ok = (img) => img && /^data:image\/(png|jpeg|webp);base64,/.test(img);
+  const stamp = ok(st.stampImage) ? `<img src="${esc(st.stampImage)}" alt="Stamp" style="height:${heightMm}mm;max-width:45%;object-fit:contain;opacity:.9">` : '';
+  const sign = ok(st.signImage) ? `<img src="${esc(st.signImage)}" alt="Signature" style="height:${(heightMm * 0.8).toFixed(1)}mm;max-width:55%;object-fit:contain">` : '';
+  if (!stamp && !sign) return '';
+  return `<div class="signimg" style="display:flex;align-items:center;justify-content:flex-end;gap:2mm;margin:1mm 0">${stamp}${sign}</div>`;
 }
 
 /* ───────────── layouts ───────────── */
@@ -503,7 +518,7 @@ function sheetHtml(model, company, size, invoice = {}) {
   </div>` : ''}
   <div class="foot">
     <div class="muted">${esc(model.footer)}</div>
-    <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}<br><br>Authorised signatory</div>
+    <div class="sign muted">For ${esc(company?.businessName || 'SACONE')}${signStamp(model, invoice, a5 ? 12 : 16) || '<br><br>'}Authorised signatory</div>
   </div>
 </body></html>`;
 }
@@ -657,7 +672,7 @@ function classicHtml(model, company, size, invoice = {}) {
       <div style="flex:1"></div>
       <div class="net"><span>NET AMOUNT :</span><span>${n2(t.net)}</span></div>
       <div class="sign" style="flex:1;min-height:${a5 ? 14 : 26}mm;padding:${a5 ? '2px 3px' : '4px 5px'}">
-        <div>For ${esc(signName)}</div><div>Auth.Signatory</div>
+        <div>For ${esc(signName)}</div>${signStamp(model, invoice, a5 ? 11 : 17)}<div>Auth.Signatory</div>
       </div>
     </div>
   </div>

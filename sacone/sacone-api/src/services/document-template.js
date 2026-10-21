@@ -23,7 +23,11 @@ function sameAddress(bill, ship) {
   return b && b === s;
 }
 
-export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION' }) {
+export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION', signStamp = null }) {
+  const ok = (img) => img && /^data:image\/(png|jpeg|webp);base64,/.test(img);
+  const printSign = signStamp && signStamp.print !== false;
+  const stampImg = printSign && ok(signStamp.stampImage) ? signStamp.stampImage : firm.documentStampUrl;
+  const signImg = printSign && ok(signStamp.signImage) ? signStamp.signImage : null;
   const snap = quotation.customerSnapshot || {};
   const displayName = snap.businessName || snap.name || 'Customer';
   const bill = {
@@ -174,9 +178,12 @@ export function buildQuotationDocument({ firm, quotation, title = 'QUOTATION' })
   ${quotation.termsConditions ? `<div class="footer"><strong>Terms &amp; Conditions:</strong><br/>${esc(quotation.termsConditions).replace(/\n/g, '<br/>')}</div>` : ''}
 
   <div class="sign">
-    ${firm.documentStampUrl ? `<img src="${esc(firm.documentStampUrl)}" alt="Stamp" style="max-height:60px;margin-bottom:8px"/>` : ''}
     <div>For ${esc(firm.businessName)}</div>
-    <div style="margin-top:32px;border-top:1px solid #94a3b8;width:180px;margin-left:auto;padding-top:4px">
+    ${stampImg || signImg ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:6px">
+      ${stampImg ? `<img src="${esc(stampImg)}" alt="Stamp" style="max-height:60px"/>` : ''}
+      ${signImg ? `<img src="${esc(signImg)}" alt="Signature" style="max-height:48px"/>` : ''}
+    </div>` : ''}
+    <div style="margin-top:${stampImg || signImg ? 4 : 32}px;border-top:1px solid #94a3b8;width:180px;margin-left:auto;padding-top:4px">
       ${esc(firm.authorizedSignatory || 'Authorized Signatory')}
     </div>
   </div>

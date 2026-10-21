@@ -10,6 +10,7 @@ import { useLedger } from '../store/ledger';
 import { useUpiQr } from '../store/upiQr';
 import { currentUser, useSession } from '../store/session';
 import { serverUrlCandidates } from '../lib/serverDiscovery';
+import { useSignStamp } from '../store/signStamp';
 
 /**
  * Offline-first sync cycle (all calls use the device key):
@@ -115,6 +116,19 @@ async function runCycle(): Promise<void> {
           const qr = await sync.upiQr(cfg);
           useUpiQr.getState().set(qr.version, qr.image);
         } catch { /* keep the old image; retry next sync */ }
+      }
+    }
+
+    // 1c. the firm's signature & stamp images, only when the ERP has new ones
+    const ss = useDevice.getState().info?.settings?.invoice?.signStamp;
+    const wantSign = ss?.version ?? null;
+    if (wantSign !== useSignStamp.getState().version) {
+      if (!wantSign) useSignStamp.getState().set(null, null, null);
+      else {
+        try {
+          const got = await sync.signStamp(cfg);
+          useSignStamp.getState().set(got.version, got.signImage, got.stampImage);
+        } catch { /* keep the old images; retry next sync */ }
       }
     }
 

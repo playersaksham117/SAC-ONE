@@ -36,6 +36,8 @@ export interface PingResult {
       posUpiQr?: boolean;
       /** 'uploaded' = show the firm's own QR image; 'generated' = QR from the UPI ID. */
       upiQrSource?: 'generated' | 'uploaded';
+      /** Signature & stamp: whether to print them and the version of the images (fetched separately). */
+      signStamp?: { print?: boolean; hasSign?: boolean; hasStamp?: boolean; version?: string | null };
     };
   };
 }
@@ -132,6 +134,10 @@ export const sync = {
     request<{ today: AttendanceToday | null; date: string }>(c.baseUrl, '/api/v1/sync/attendance', {
       method: 'POST', body: { userId, action }, headers: deviceHeaders(c),
     }),
+
+  /** The firm's signature and stamp images (only fetched when their version changes). */
+  signStamp: (c: DeviceConfig) =>
+    request<{ version: string | null; signImage: string | null; stampImage: string | null }>(c.baseUrl, '/api/v1/sync/sign-stamp', { headers: deviceHeaders(c), timeoutMs: 30000 }),
 
   /** productId → minimum selling price (before GST, after discounts). Full list every sync. */
   minPrices: (c: DeviceConfig) =>
