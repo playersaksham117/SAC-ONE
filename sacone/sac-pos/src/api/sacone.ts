@@ -83,6 +83,16 @@ export interface StaffStatus {
   pinSetAt?: string | null;
 }
 
+/** Warranty Check result (SACONE ERP invoices). */
+export interface WarrantyPeriod { period: string; till: string; daysLeft: number; active: boolean }
+export interface WarrantyCheck {
+  query: string; today: string;
+  results: {
+    saleId: string; invoiceNumber: string; date: string; status: string; customerName: string | null; customerPhone: string | null; matchedSerial: string | null;
+    lines: { itemId: string; productName: string; sku: string; quantity: number; quantityReturned: number; serials: string[]; warranty: WarrantyPeriod | null; guarantee: WarrantyPeriod | null }[];
+  }[];
+}
+
 /** Today's attendance row for a staff member (times are ISO; inTime / outTime are IST 'HH:MM'). */
 export interface AttendanceToday {
   status: 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'week_off';
@@ -137,6 +147,10 @@ export const sync = {
     request<{ today: AttendanceToday | null; date: string }>(c.baseUrl, '/api/v1/sync/attendance', {
       method: 'POST', body: { userId, action }, headers: deviceHeaders(c),
     }),
+
+  /** Warranty Check: invoice number or a unit's serial number. */
+  warranty: (c: DeviceConfig, q: string) =>
+    request<WarrantyCheck>(c.baseUrl, '/api/v1/sync/warranty', { query: { q }, headers: deviceHeaders(c) }),
 
   /** The firm's signature and stamp images (only fetched when their version changes). */
   signStamp: (c: DeviceConfig) =>

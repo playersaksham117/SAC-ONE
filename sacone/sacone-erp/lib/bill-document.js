@@ -93,6 +93,12 @@ const r2 = (n) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
 const ddmmyyyy = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
 
 /** Classic grid rows: gross, discount, taxable and the SGST/CGST/IGST split of each line. */
+/** Under an item: its serial numbers and warranty / guarantee ("S/N A1, A2 · Warranty 1 Year (till …)"). */
+const lineNote = (l, startDate) => [
+  l.serialNumbers?.length ? `S/N ${l.serialNumbers.join(', ')}` : '',
+  periodNote(l, startDate),
+].filter(Boolean).join(' · ');
+
 function classicLines(items, interState, startDate = null) {
   return items.map((l) => {
     const gross = r2(Number(l.quantity) * Number(l.unitPrice));
@@ -101,7 +107,7 @@ function classicLines(items, interState, startDate = null) {
     const half = r2(gst / 2);
     return {
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, uom: l.unit || '', rate: l.unitPrice,
-      note: startDate ? periodNote(l, startDate) : '',
+      note: startDate ? lineNote(l, startDate) : '',
       gross, disc: r2(gross - taxable), taxable, gstRate: Number(l.gstPercentage || 0),
       sgst: interState ? 0 : half, cgst: interState ? 0 : r2(gst - half), igst: interState ? r2(gst) : 0,
     };
@@ -165,7 +171,7 @@ export function saleDocument(sale, customer) {
     sideBox: { label: 'Payment', rows: payments },
     items: (sale.items || []).map((l) => ({
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice,
-      note: periodNote(l, sale.createdAt),
+      note: lineNote(l, sale.createdAt),
       discount: l.discountAmount ? money(l.discountAmount) : null,
       taxable: l.taxableAmount, gstRate: l.gstPercentage, amount: l.lineTotal,
     })),

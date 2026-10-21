@@ -31,6 +31,11 @@ export function periodEnd(startIso: string, p?: Period | null): string | null {
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+/** Under an item on the bill: its serial numbers and warranty / guarantee. */
+export function lineNote(line: { warranty?: Period | null; guarantee?: Period | null; serialNumbers?: string[] }, startIso: string): string {
+  return [line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '', periodNote(line, startIso)].filter(Boolean).join(' · ');
+}
+
 /** "Warranty 1 Year (till 20/10/2027) · Guarantee 6 Months (till 20/04/2027)" for a bill line, or ''. */
 export function periodNote(line: { warranty?: Period | null; guarantee?: Period | null }, startIso: string): string {
   return [['Warranty', line.warranty], ['Guarantee', line.guarantee]]

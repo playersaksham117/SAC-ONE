@@ -63,6 +63,8 @@ export interface CartLine {
   /** Copied from the product when added, printed on the bill with the date it runs till. */
   warranty?: Period | null;
   guarantee?: Period | null;
+  /** Serial numbers of the units sold (warranty claims), printed on the bill and synced. */
+  serialNumbers?: string[];
 }
 
 export interface ComputedLine extends CartLine {

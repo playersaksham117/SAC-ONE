@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { periodEnd, periodNote, periodOf, periodText } from '../src/domain/warranty';
+import { lineNote, periodEnd, periodNote, periodOf, periodText } from '../src/domain/warranty';
+import { parseSerials } from '../src/domain/serials';
 import * as erp from '../../sacone-erp/lib/warranty.js';
 
 // 21 Oct 2026, 10:00 IST
@@ -30,5 +31,20 @@ describe('warranty / guarantee periods', () => {
     expect(note).toBe('Warranty 2 Years (till 20/10/2028) · Guarantee 6 Months (till 20/04/2027)');
     expect(erp.periodNote({ warrantyValue: 2, warrantyUnit: 'years', guaranteeValue: 6, guaranteeUnit: 'months' }, sold)).toBe(note);
     expect(periodNote({}, sold)).toBe('');
+  });
+});
+
+
+describe('serial numbers', () => {
+  it('splits by new line or comma, trims, keeps order', () => {
+    expect(parseSerials(' SN-001 \nSN-002, SN-003 ', 3)).toEqual({ serials: ['SN-001', 'SN-002', 'SN-003'], error: null });
+  });
+  it('refuses repeats and more serials than units', () => {
+    expect(parseSerials('A1\na1', 2).error).toMatch(/twice/);
+    expect(parseSerials('A1,A2,A3', 2).error).toMatch(/3 serials for 2 units/);
+  });
+  it('prints serials with the warranty on the bill', () => {
+    expect(lineNote({ serialNumbers: ['SN-1'], warranty: { value: 1, unit: 'years' } }, '2026-10-21T04:30:00.000Z'))
+      .toBe('S/N SN-1 · Warranty 1 Year (till 20/10/2027)');
   });
 });

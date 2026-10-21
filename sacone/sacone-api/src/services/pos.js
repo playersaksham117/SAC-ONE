@@ -13,6 +13,7 @@ import { customerService } from './parties.js';
 import { commissionService } from './commissions.js';
 import { numberOldCreditNotes } from './notes.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
+import { assertSerialsFree, cleanSerials, saveSaleSerials } from './warranty.js';
 
 export { customerService };
 
@@ -485,6 +486,20 @@ export class PosService {
       companyStateCode: company?.gstStateCode,
       customerStateCode: customer.gstStateCode,
     });
+    // Serial numbers of the units on each line (warranty claims). A serial already sold is refused,
+    // except for sales synced from a phone (those happened already; they are stored as sold).
+    const lineSerials = (data.items || []).map((it, i) => {
+      if (it.serialNumbers === undefined) return [];
+      try {
+        return cleanSerials(it.serialNumbers, it.quantity, totals.items[i]?.productName);
+      } catch (err) {
+        if (options.offlineSync) return [];
+        throw err;
+      }
+    });
+    if (!options.offlineSync) {
+      lineSerials.forEach((serials, i) => assertSerialsFree(totals.items[i].productId, serials, totals.items[i].productName));
+    }
 
     const belowMin = commissionService.belowMinPrice(totals.items);
     if (belowMin.length) {
@@ -613,6 +628,7 @@ export class PosService {
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
     if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
     saleRepo.snapshotPeriods(sale.id);
+    saveSaleSerials(sale.id, lineSerials.map((serials, i) => ({ itemId: itemIds[i], productId: totals.items[i].productId, serials })), actor.user.id);
 
     // Inventory movements (POS sale) — never direct stock write
     for (let i = 0; i < sale.items.length; i++) {
@@ -782,10 +798,12 @@ export class PosService {
         note: `Edited by ${actor.user.fullName} on ${new Date().toLocaleString('en-IN')}; replaced by the corrected ${old.invoiceNumber}`,
         newInvoiceNumber: saleRepo.editedCopyNumber(old.invoiceNumber),
       });
+      // Serial numbers stay with the edited lines unless the edit sends new ones.
+      const oldSerials = new Map((old.items || []).filter((i) => i.serialNumbers?.length).map((i) => [i.productId, i.serialNumbers]));
       const created = this.checkout({
         warehouseId: old.warehouseId,
         customerId,
-        items: data.items,
+        items: (data.items || []).map((it) => (it.serialNumbers !== undefined || !oldSerials.has(it.productId) ? it : { ...it, serialNumbers: oldSerials.get(it.productId) })),
         invoiceDiscount,
         payments,
         invoiceNumber: old.invoiceNumber,

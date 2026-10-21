@@ -57,6 +57,16 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
+    id: 'warranty',
+    section: 'operations',
+    label: 'Warranty Check',
+    description: 'Warranty / guarantee by invoice or serial number',
+    href: '/operations/warranty',
+    permission: 'pos.sales.view',
+    icon: '🛡️',
+    placeholder: false,
+  },
+  {
     id: 'purchases',
     section: 'operations',
     label: 'Purchases',

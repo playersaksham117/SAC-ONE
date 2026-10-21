@@ -27,6 +27,7 @@ export default function QuickBillPanel({
   const [customer, setCustomer] = useState(null);
   const [salesAgentId, setSalesAgentId] = useState('');
   const [line, setLine] = useState(null);
+  const [serials, setSerials] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [discountPercent, setDiscountPercent] = useState('');
   const [payMode, setPayMode] = useState('cash');
@@ -103,7 +104,9 @@ export default function QuickBillPanel({
       gstPercentage: product.gstPercentage,
       hsnCode: product.hsnCode,
       stockHint: product.quantityAvailable,
+      hasWarranty: Boolean(product.warrantyValue || product.guaranteeValue),
     });
+    setSerials('');
     setQuantity('1');
     setSearch('');
     setResults([]);
@@ -139,6 +142,7 @@ export default function QuickBillPanel({
 
   const resetLine = () => {
     setLine(null);
+    setSerials('');
     setQuantity('1');
     setDiscountPercent('');
     setTotals(null);
@@ -163,7 +167,8 @@ export default function QuickBillPanel({
           salesAgentId: salesAgentId || undefined,
           invoiceDiscount: 0,
           notes: 'Quick Bill',
-          items: cartItems,
+          // Serial numbers of the units sold (one per line or comma separated), for warranty claims.
+          items: cartItems.map((i) => (serials.trim() ? { ...i, serialNumbers: serials } : i)),
           payments: [{
             method: payMode,
             amount: totals.grandTotal,
@@ -319,6 +324,14 @@ export default function QuickBillPanel({
               />
             </label>
           </div>
+
+          <label className="block text-sm">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Serial number(s) {line.hasWarranty ? '· for warranty' : '(optional)'}
+            </span>
+            <textarea className="input-field mt-1 font-mono" rows={Math.min(4, Math.max(1, Math.ceil(Number(quantity) || 1)))}
+              placeholder="Scan or type; one per unit (new line or comma)" value={serials} onChange={(e) => setSerials(e.target.value)} />
+          </label>
 
           {totals && (
             <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">

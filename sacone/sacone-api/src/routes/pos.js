@@ -6,6 +6,7 @@ import { documentLinkService } from '../services/document-links.js';
 import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
 import { partyStatementService } from '../services/party-statements.js';
+import { warrantyService } from '../services/warranty.js';
 
 export const customerRouter = Router();
 customerRouter.use(authenticate());
@@ -174,6 +175,13 @@ settingsRouter.put('/:key', asyncHandler(async (req, res) => {
   sendSuccess(res, settingsService.update(req.params.key, req.body?.value, req.actor, req));
 }));
 
+/** Warranty Check: an invoice number or a unit's serial number → warranty / guarantee status. */
+export const warrantyRouter = Router();
+warrantyRouter.use(authenticate());
+warrantyRouter.get('/check', asyncHandler(async (req, res) => {
+  sendSuccess(res, warrantyService.check(req.query.q, req.actor));
+}));
+
 export const posRouter = Router();
 posRouter.use(authenticate());
 
@@ -216,6 +224,11 @@ posRouter.delete('/sales/:id/share-links', shareLinkLimit, noStore, asyncHandler
 }));
 
 // Owner only: edit or delete (void) an invoice; products go back to stock.
+// Serial numbers of one invoice line, added or corrected later (Warranty Check).
+posRouter.put('/sales/:id/items/:itemId/serials', asyncHandler(async (req, res) => {
+  sendSuccess(res, warrantyService.setSerials(req.params.id, req.params.itemId, req.body?.serialNumbers, req.actor));
+}));
+
 posRouter.put('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.editSale(req.params.id, req.body || {}, req.actor, req));
 }));

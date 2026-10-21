@@ -549,6 +549,7 @@ export class PosSyncService {
         unitPrice: num(item.unit_price, product.sellingPrice),
         discountAmount: num(item.discount_amount, 0),
       };
+      if (Array.isArray(item.serial_numbers) && item.serial_numbers.length) line.serialNumbers = item.serial_numbers;
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
       return line;
     });

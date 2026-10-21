@@ -1,3 +1,4 @@
+import { warrantyService } from '../services/warranty.js';
 import { signStampForPrint } from '../services/pos.js';
 import { posPins } from '../services/pos-pins.js';
 import { authService } from '../services/index.js';
@@ -105,6 +106,11 @@ posSyncRouter.post('/login', asyncHandler(async (req, res) => {
   if (!staff.permissions.includes('pos.terminal.view')) throw new AppError('Your ERP role does not allow POS access (needs "POS Terminal – view").', 403, 'FORBIDDEN');
   const session = authService.openSession(userRow, req, { firmId: currentFirmId(), method: 'pos_pin' });
   sendSuccess(res, { ...session, pinSetAt });
+}));
+
+/** Warranty Check from the terminal: invoice number or serial number. */
+posSyncRouter.get('/warranty', asyncHandler(async (req, res) => {
+  sendSuccess(res, warrantyService.lookup(req.query.q));
 }));
 
 /** Attendance from the terminal for the signed-in staff member: action 'in' | 'out' | 'status'. */

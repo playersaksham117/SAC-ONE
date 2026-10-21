@@ -7,7 +7,7 @@ import { categoryRouter, brandRouter, unitRouter, productRouter } from './produc
 import { inventoryRouter } from './inventory.js';
 import { warehouseRouter } from './warehouse.js';
 import { noteRouter } from './notes.js';
-import { posRouter, customerRouter, settingsRouter, supplierRouter } from './pos.js';
+import { posRouter, customerRouter, settingsRouter, supplierRouter, warrantyRouter } from './pos.js';
 import { ceoDashboardRouter } from './ceo-dashboard.js';
 import { webstorePublicRouter, webstoreAdminRouter } from './webstore.js';
 import { exportRouter } from './export.js';
@@ -50,6 +50,7 @@ export const ROUTES = [
   // Sales & POS (quotations must mount before /api/pos)
   ['/api/pos/quotations', quotationRouter],
   ['/api/pos', posRouter],
+  ['/api/warranty', warrantyRouter],
   ['/api/pos-devices', posDeviceAdminRouter],
   ['/api/sales-agents', salesAgentRouter],
   ['/api/commissions', commissionRouter],

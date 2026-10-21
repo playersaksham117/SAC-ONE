@@ -40,6 +40,7 @@ export function salePayload(sale: Sale, userId: string) {
       discount_amount: l.discountAmount,
       tax_rate: l.gstRate,
       total_amount: l.lineTotal,
+      serial_numbers: l.serialNumbers?.length ? l.serialNumbers : undefined,
     })),
   };
 }

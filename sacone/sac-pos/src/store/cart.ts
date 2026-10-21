@@ -26,7 +26,7 @@ interface CartState {
   loadQuotation: (q: Quotation) => void;
   add: (p: Product, qty?: number) => void;
   setQty: (productId: string, qty: number) => void;
-  updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount'>>) => void;
+  updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers'>>) => void;
   remove: (productId: string) => void;
   setCustomer: (id: string | null) => void;
   setInvoiceDiscount: (amount: number) => void;

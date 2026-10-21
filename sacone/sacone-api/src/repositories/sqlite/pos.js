@@ -232,10 +232,14 @@ export class PosSaleRepository {
   }
 
   listItems(saleId) {
+    const serials = {};
+    for (const r of getDatabase().prepare('SELECT sale_item_id, serial_number FROM sale_item_serials WHERE sale_id = ? ORDER BY created_at, serial_number').all(saleId)) {
+      (serials[r.sale_item_id] ||= []).push(r.serial_number);
+    }
     return getDatabase().prepare(`
       SELECT i.*, u.abbreviation AS unit_abbreviation FROM pos_sale_items i LEFT JOIN products p ON p.id = i.product_id LEFT JOIN units u ON u.id = p.unit_id
       WHERE i.sale_id = ? ORDER BY i.sort_order ASC, i.product_name ASC
-    `).all(saleId).map(mapSaleItem);
+    `).all(saleId).map((row) => ({ ...mapSaleItem(row), serialNumbers: serials[row.id] || [] }));
   }
 
   /** Customer receipts already allocated against this invoice. */

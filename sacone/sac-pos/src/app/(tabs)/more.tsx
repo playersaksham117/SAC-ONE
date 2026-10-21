@@ -94,7 +94,10 @@ export default function More() {
         </Card>
         <AttendanceCard />
 
-        <Button title="Print barcode labels" icon="pricetags-outline" variant="secondary" onPress={() => router.push('/labels')} style={{ marginTop: space.sm }} testID="open-labels" />
+        <Row style={{ marginTop: space.sm }} gap={space.sm}>
+          <Button title="Barcode labels" icon="pricetags-outline" variant="secondary" onPress={() => router.push('/labels')} style={{ flex: 1 }} testID="open-labels" />
+          <Button title="Warranty check" icon="shield-checkmark-outline" variant="secondary" onPress={() => router.push('/warranty')} style={{ flex: 1 }} testID="open-warranty" />
+        </Row>
 
         <SectionTitle>Today on this phone</SectionTitle>
         <Row gap={space.sm}>

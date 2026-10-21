@@ -11,6 +11,7 @@ import { useCart } from '../store/cart';
 import { ExchangeNotice } from '../ui/ExchangeNotice';
 import { useCan } from '../store/session';
 import { confirm, notify } from '../ui/dialogs';
+import { parseSerials } from '../domain/serials';
 import {
   Badge, Banner, Button, Card, Chip, Divider, Empty, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper,
   colors, font, radius, space,
@@ -37,6 +38,10 @@ function NumberInput({ value, onCommit, label, testID }: { value: number; onComm
 function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }) {
   const { setQty, updateLine } = useCart.getState();
   const [open, setOpen] = useState(false);
+  const [serialOpen, setSerialOpen] = useState(Boolean(line.serialNumbers?.length));
+  const [serialText, setSerialText] = useState((line.serialNumbers || []).join('\n'));
+  const serialCheck = parseSerials(serialText, line.quantity);
+  const hasWarranty = Boolean(line.warranty || line.guarantee);
   const issues = validateLine(line, { canOverridePrice: canOverride });
   const lineGross = line.unitPrice * line.quantity - line.discountAmount;
   return (
@@ -54,6 +59,14 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
       </Row>
       <Row style={{ marginTop: space.sm, justifyContent: 'space-between' }}>
         <Stepper value={line.quantity} onChange={(v) => setQty(line.productId, v)} />
+        <Pressable onPress={() => setSerialOpen(!serialOpen)} hitSlop={8}>
+          <Row gap={4}>
+            <Ionicons name="barcode-outline" size={16} color={hasWarranty ? colors.primary : colors.textMuted} />
+            <Text style={{ color: hasWarranty ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>
+              Serial no.{line.serialNumbers?.length ? ` (${line.serialNumbers.length})` : ''}
+            </Text>
+          </Row>
+        </Pressable>
         {canOverride ? (
           <Pressable onPress={() => setOpen(!open)} hitSlop={8}>
             <Row gap={4}>
@@ -68,6 +81,26 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
           <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} />
           <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} />
         </Row>
+      ) : null}
+      {serialOpen ? (
+        <View style={{ marginTop: space.sm }}>
+          <TextInput
+            value={serialText}
+            onChangeText={(t) => {
+              setSerialText(t);
+              const next = parseSerials(t, line.quantity);
+              if (!next.error) updateLine(line.productId, { serialNumbers: next.serials });
+            }}
+            placeholder={`Serial number${line.quantity > 1 ? 's, one per line' : ''}${hasWarranty ? ' (for warranty)' : ''}`}
+            placeholderTextColor={colors.textFaint}
+            multiline
+            autoCapitalize="characters"
+            autoCorrect={false}
+            style={{ borderWidth: 1, borderColor: serialCheck.error ? colors.danger : colors.border, borderRadius: 10, padding: space.sm, color: colors.text, fontFamily: 'monospace', minHeight: 44 }}
+            testID={`serials-${line.productId}`}
+          />
+          {serialCheck.error ? <Text style={{ color: colors.danger, fontSize: font.xs, marginTop: 2 }}>{serialCheck.error}</Text> : null}
+        </View>
       ) : null}
       {issues.length ? <View style={{ marginTop: space.sm }}><Banner tone="danger" messages={issues.map((i) => i.message)} /></View> : null}
     </Card>
