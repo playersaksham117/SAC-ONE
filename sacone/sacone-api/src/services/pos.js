@@ -14,6 +14,7 @@ import { commissionService } from './commissions.js';
 import { numberOldCreditNotes } from './notes.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
 import { assertSerialsFree, cleanSerials, saveSaleSerials } from './warranty.js';
+import { isDate, istDate, istToIso } from '../core/ist.js';
 
 export { customerService };
 
@@ -442,7 +443,26 @@ export class PosService {
    *   returned instead), and the terminal's own sale time is preserved.
    * @param {string}  [options.completedAt] ISO timestamp of the original sale.
    */
+  /**
+   * Bill date chosen by the firm admin / group owner (YYYY-MM-DD): 12:00 noon IST on that day, so
+   * the day is the same in every report (some read the UTC date). Everyone else always bills
+   * today; a date in the future is refused.
+   */
+  #billDateIso(billDate, actor) {
+    if (!isDate(billDate)) throw new AppError('Bill date is not a valid date', 400);
+    const today = istDate();
+    if (billDate === today) return null;
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can change the bill date', 403, 'OWNER_ONLY');
+    if (billDate > today) throw new AppError('The bill date cannot be in the future', 400);
+    return istToIso(billDate, '12:00');
+  }
+
   checkout(data, actor, req, options = {}) {
+    // Admin date control: the bill is dated (and numbered in the financial year of) the chosen day.
+    if (data.billDate) {
+      const at = this.#billDateIso(String(data.billDate), actor);
+      if (at) options = { ...options, completedAt: at, billDated: true };
+    }
     authService.checkPermission(actor.permissions, 'pos.sales.create');
     const offlineSync = Boolean(options.offlineSync);
     const warnings = [];
@@ -628,6 +648,7 @@ export class PosService {
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
     if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
     saleRepo.snapshotPeriods(sale.id);
+    if (options.billDated) saleRepo.restoreOrigin(sale.id, { createdAt: options.completedAt, createdBy: actor.user.id });
     saveSaleSerials(sale.id, lineSerials.map((serials, i) => ({ itemId: itemIds[i], productId: totals.items[i].productId, serials })), actor.user.id);
 
     // Inventory movements (POS sale) — never direct stock write
@@ -811,11 +832,14 @@ export class PosService {
         notes: data.notes !== undefined ? data.notes : old.notes,
         // The customer's PO stays with the invoice unless the edit changes it.
         ...(() => { const po = customerPoFrom(data, old); return { customerPoNumber: po.number || '', customerPoDate: po.date || '' }; })(),
+        // A new bill date from the admin (checked in checkout).
+        ...(data.billDate ? { billDate: data.billDate } : {}),
         // Transport and Ship-to stay with the invoice unless the edit sends new ones.
         transport: data.transport !== undefined ? data.transport : old.transport,
         shipTo: data.shipTo !== undefined ? data.shipTo : old.shipTo,
       }, actor, req, { completedAt: old.completedAt || old.createdAt });
-      saleRepo.restoreOrigin(created.id, { createdAt: old.createdAt, createdBy: old.createdBy });
+      // A new bill date (admin) moves the invoice; otherwise it keeps its original date.
+      saleRepo.restoreOrigin(created.id, { createdAt: data.billDate && created.completedAt.slice(0, 10) !== String(old.completedAt || old.createdAt).slice(0, 10) ? created.completedAt : old.createdAt, createdBy: old.createdBy });
       return created;
     })();
 

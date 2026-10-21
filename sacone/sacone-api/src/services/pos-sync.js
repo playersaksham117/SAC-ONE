@@ -242,6 +242,8 @@ export class PosSyncService {
         },
         // Barcode label defaults (Settings → Barcode labels) for printing labels on the phone.
         labels: labelPrintSettings(),
+        // Registered firms' addresses for the Ship To picker at checkout.
+        shipToAddresses: firmService.shipToAddresses(),
       },
     };
   }

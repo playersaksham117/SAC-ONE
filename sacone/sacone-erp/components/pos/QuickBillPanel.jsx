@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Alert, Modal } from '../ui';
+import { useAuth } from '../../lib/auth-context';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -28,6 +29,11 @@ export default function QuickBillPanel({
   const [salesAgentId, setSalesAgentId] = useState('');
   const [line, setLine] = useState(null);
   const [serials, setSerials] = useState('');
+  // Bill date: the firm admin / group owner may date a bill in the past (the server checks too).
+  const { session } = useAuth();
+  const isAdmin = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
+  const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  const [billDate, setBillDate] = useState(today);
   const [quantity, setQuantity] = useState('1');
   const [discountPercent, setDiscountPercent] = useState('');
   const [payMode, setPayMode] = useState('cash');
@@ -167,6 +173,7 @@ export default function QuickBillPanel({
           salesAgentId: salesAgentId || undefined,
           invoiceDiscount: 0,
           notes: 'Quick Bill',
+          ...(isAdmin && billDate && billDate !== today ? { billDate } : {}),
           // Serial numbers of the units sold (one per line or comma separated), for warranty claims.
           items: cartItems.map((i) => (serials.trim() ? { ...i, serialNumbers: serials } : i)),
           payments: [{
@@ -341,6 +348,13 @@ export default function QuickBillPanel({
                 <span>Total</span><span>{money(totals.grandTotal)}</span>
               </div>
             </div>
+          )}
+
+          {isAdmin && (
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm">
+              <span className="text-xs font-semibold uppercase text-slate-500">Bill date <span className="normal-case text-slate-400">(admin)</span></span>
+              <input type="date" className={`input-field !min-h-0 w-auto !py-1 ${billDate !== today ? 'border-amber-400 bg-amber-50' : ''}`} max={today} value={billDate} onChange={(e) => setBillDate(e.target.value || today)} />
+            </label>
           )}
 
           <div>

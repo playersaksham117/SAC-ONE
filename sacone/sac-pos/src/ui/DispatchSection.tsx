@@ -9,9 +9,11 @@ import { Button, Card, Chip, Field, Row, SectionTitle, colors, font, space } fro
  */
 export function DispatchSection({
   billToName, transportOn, setTransportOn, transport, setTransport, transportError,
-  shipOn, setShipOn, shipTo, setShipTo, shipError,
+  shipOn, setShipOn, shipTo, setShipTo, shipError, addressChoices = [],
 }: {
   billToName: string | null;
+  /** Registered addresses to fill Ship To from (our firms, the Bill To customer). */
+  addressChoices?: { key: string; label: string; sub: string; value: Omit<ShipToDraft, never> }[];
   transportOn: boolean; setTransportOn: (v: boolean) => void;
   transport: TransportDraft; setTransport: (v: TransportDraft) => void; transportError: string | null;
   shipOn: boolean; setShipOn: (v: boolean) => void;
@@ -31,6 +33,14 @@ export function DispatchSection({
           {shipOn ? (
             <>
               <Text style={{ color: colors.textMuted, fontSize: font.xs, marginBottom: space.xs }}>Ship To (consignee)</Text>
+              {addressChoices.length ? (
+                <Row style={{ flexWrap: 'wrap', marginBottom: space.sm }}>
+                  {addressChoices.map((c) => (
+                    <Chip key={c.key} label={`${c.label} · ${c.sub}`} icon="business-outline" active={shipTo.name === c.value.name && shipTo.city === c.value.city}
+                      onPress={() => setShipTo({ ...shipTo, ...c.value })} />
+                  ))}
+                </Row>
+              ) : null}
               <Field label="Name" value={shipTo.name} onChangeText={sSet('name')} placeholder="Consignee / site name" testID="ship-name" />
               <Field label="Address" value={shipTo.address} onChangeText={sSet('address')} placeholder="Delivery address" multiline testID="ship-address" />
               <Row>

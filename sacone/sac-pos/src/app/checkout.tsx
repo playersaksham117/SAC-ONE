@@ -12,9 +12,12 @@ import type { Payment, PaymentMethod } from '../domain/types';
 import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
 import { useCart } from '../store/cart';
-import { Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
+import { Badge, Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
 import { emptyShipTo, emptyTransport, readShipTo, readTransport } from '../domain/dispatch';
 import { DispatchSection } from '../ui/DispatchSection';
+import { billTimestamp, daysAgo, isAdminRole, istToday } from '../domain/billDate';
+import { parsePoDate } from '../domain/po';
+import { useCurrentUser } from '../store/session';
 
 const METHODS: { method: PaymentMethod; label: string; icon: 'cash-outline' | 'qr-code-outline' | 'card-outline' | 'time-outline' }[] = [
   { method: 'cash', label: 'Cash', icon: 'cash-outline' },
@@ -86,6 +89,12 @@ export default function Checkout() {
   const [poNumber, setPoNumber] = useState('');
   const [poDate, setPoDate] = useState('');
   const poCheck = poOn ? readCustomerPo(poNumber, poDate) : { po: null, error: null };
+  // Admin date control: the firm admin / group owner may date this bill in the past.
+  const user = useCurrentUser();
+  const isAdmin = isAdminRole(user?.roleSlug);
+  const [billDateText, setBillDateText] = useState('');
+  const billDate = billDateText.trim() ? parsePoDate(billDateText) : null;
+  const billDateError = billDateText.trim() && !billDate ? 'Bill date: use DD/MM/YYYY' : billTimestamp(billDate).error;
   // GST-registered firms: Bill To / Ship To and transport details on the bill.
   const gstFirm = Boolean(deviceInfo?.company?.gstNumber);
   const [transportOn, setTransportOn] = useState(false);
@@ -122,7 +131,7 @@ export default function Checkout() {
     else if (changeNotes !== changeNeeded) drawerErrors.push(`Change notes add up to ${formatMoney(changeNotes)}; give ${formatMoney(changeNeeded)}`);
   }
   const blocked = check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error)
-    || Boolean(transportCheck.error) || Boolean(shipCheck.error);
+    || Boolean(transportCheck.error) || Boolean(shipCheck.error) || Boolean(isAdmin && billDateError);
 
   const choose = (method: PaymentMethod) => {
     setSplit(false);
@@ -143,6 +152,7 @@ export default function Checkout() {
         customerPo: poCheck.po,
         transport: transportCheck.value,
         shipTo: shipCheck.value,
+        billDate: isAdmin ? billDate : null,
       });
       if (router.canDismiss()) router.dismissAll();
       router.push({ pathname: '/sale/[id]', params: { id: sale.id, done: '1' } });
@@ -343,11 +353,33 @@ export default function Checkout() {
         {gstFirm ? (
           <DispatchSection
             billToName={customer?.name ?? null}
+            addressChoices={[
+              ...(deviceInfo?.settings?.shipToAddresses || []).map((f) => ({ key: `firm-${f.firmId}`, label: f.name, sub: 'Our firm', value: { name: f.name, address: f.address, city: f.city, state: f.state, gstin: f.gstin, phone: f.phone } })),
+              ...(customer && 'address' in customer && (customer.address || customer.city)
+                ? [{ key: 'cust', label: customer.name, sub: 'Bill To address', value: { name: customer.name, address: customer.address || '', city: customer.city || '', state: customer.state || '', gstin: customer.gstin || '', phone: customer.phone || '' } }]
+                : []),
+            ]}
             transportOn={transportOn} setTransportOn={setTransportOn}
             transport={transportDraft} setTransport={setTransportDraft} transportError={transportCheck.error}
             shipOn={shipOn} setShipOn={setShipOn}
             shipTo={shipDraft} setShipTo={setShipDraft} shipError={shipCheck.error}
           />
+        ) : null}
+
+        {isAdmin ? (
+          <View style={{ marginTop: space.md }}>
+            <SectionTitle right={<Badge tone={billDate && billDate !== istToday() ? 'warning' : 'neutral'} label={billDate && billDate !== istToday() ? `Dated ${billDateText}` : 'Today'} />}>
+              Bill date (admin)
+            </SectionTitle>
+            <Card>
+              <Row style={{ flexWrap: 'wrap', marginBottom: space.sm }}>
+                <Chip label="Today" active={!billDateText.trim()} onPress={() => setBillDateText('')} />
+                <Chip label="Yesterday" active={billDate === daysAgo(1)} onPress={() => setBillDateText(daysAgo(1).split('-').reverse().join('/'))} />
+              </Row>
+              <Field label="Or date (DD/MM/YYYY)" value={billDateText} onChangeText={setBillDateText} placeholder="Today" keyboardType="numbers-and-punctuation" style={{ marginBottom: 0 }} testID="bill-date" />
+              {isAdmin && billDateError ? <Text style={{ color: colors.danger, marginTop: space.xs }}>{billDateError}</Text> : null}
+            </Card>
+          </View>
         ) : null}
 
         <View style={{ marginTop: space.md }}>

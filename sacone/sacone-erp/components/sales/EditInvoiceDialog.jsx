@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Alert, LoadingState, Modal } from '../ui';
 import { accountLabel, defaultAccountFor } from '../../lib/accounts';
+import ShipToPicker from './ShipToPicker';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const METHODS = [['cash', 'Cash'], ['upi', 'UPI'], ['bank', 'Bank'], ['credit', 'Credit (on account)']];
@@ -11,6 +12,8 @@ const MODES = ['By Road', 'By Hand', 'Courier', 'Rail', 'Air'];
 const EMPTY_TRANSPORT = { mode: '', transporter: '', vehicleNumber: '', lrNumber: '', lrDate: '', ewayBillNumber: '' };
 const EMPTY_SHIP = { name: '', address: '', city: '', state: '', gstin: '', phone: '' };
 const blank = (o) => Object.values(o).every((v) => !String(v || '').trim());
+/** 'YYYY-MM-DD' (IST) of a timestamp. */
+const istDay = (iso) => new Date(new Date(iso || Date.now()).getTime() + 330 * 60000).toISOString().slice(0, 10);
 
 /**
  * Edit bill (firm admin / group owner only). Saving puts the old quantities back in stock and
@@ -28,6 +31,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [banks, setBanks] = useState([]);
+  const [shipChoices, setShipChoices] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -38,6 +42,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           apiRequest('/api/customers?limit=500').catch(() => ({ items: [] })),
           apiRequest('/api/finance/accounts').catch(() => []),
         ]);
+        apiRequest('/api/firms/addresses').then((a) => setShipChoices(Array.isArray(a) ? a : [])).catch(() => {});
         const bankList = (Array.isArray(accts) ? accts : accts.items || []).filter((a) => a.accountType === 'bank' || a.accountType === 'upi');
         setBanks(bankList);
         setSale(s);
@@ -59,9 +64,13 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           transport: { ...EMPTY_TRANSPORT, ...(s.transport || {}) },
           shipTo: { ...EMPTY_SHIP, ...(s.shipTo || {}) },
           shipOn: Boolean(s.shipTo?.name),
+          billDate: istDay(s.completedAt || s.createdAt),
+          originalDate: istDay(s.completedAt || s.createdAt),
           invoiceDiscount: s.invoiceDiscount || 0,
           paymentMethod: paid ? paid.method : 'credit',
           amountReceived: s.amountPaid,
+          // A fully paid bill stays fully paid when the total changes (unless the amount is typed).
+          followTotal: Number(s.amountCredit || 0) <= 0.009,
           notes: s.notes || '',
           paymentAccountId: paid?.paymentAccountId || '',
           customerPoNumber: s.customerPoNumber || '',
@@ -105,7 +114,9 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   };
 
   const total = preview?.grandTotal;
-  const credit = form?.paymentMethod === 'credit' ? total : Math.max(0, (total || 0) - Number(form?.amountReceived || 0));
+  const received = form?.followTotal && total != null ? total : Number(form?.amountReceived || 0);
+  const credit = form?.paymentMethod === 'credit' ? total : Math.max(0, (total || 0) - received);
+  const walkIn = customers.find((c) => c.id === form?.customerId)?.isWalkIn ?? sale?.customerIsWalkIn;
 
   const save = async () => {
     setSaving(true);
@@ -119,8 +130,9 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           items: cart.items.map((it, i) => ({ ...it, serialNumbers: form.items[i].serials })),
           transport: blank(form.transport) ? null : form.transport,
           shipTo: form.shipOn && !blank(form.shipTo) ? form.shipTo : null,
+          ...(form.billDate && form.billDate !== form.originalDate ? { billDate: form.billDate } : {}),
           paymentMethod: form.paymentMethod,
-          amountReceived: form.paymentMethod === 'credit' ? 0 : Number(form.amountReceived || 0),
+          amountReceived: form.paymentMethod === 'credit' ? 0 : received,
           paymentAccountId: ['upi', 'bank'].includes(form.paymentMethod) ? form.paymentAccountId || undefined : undefined,
           notes: form.notes,
           customerPoNumber: form.customerPoNumber.trim(),
@@ -143,6 +155,10 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
       onClose={onClose}
       footer={form && (
         <>
+          {error && <span className="mr-auto max-w-md text-sm font-medium text-red-600">{error}</span>}
+          {!error && walkIn && total != null && credit > 0.009 && (
+            <span className="mr-auto max-w-md text-sm text-amber-700">Walk-in customers cannot take credit: receive the full {money(total)} or choose a customer.</span>
+          )}
           <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
           <button type="button" className="btn-primary" onClick={save} disabled={saving || !form.items.length || !preview}>{saving ? 'Saving…' : 'Save changes'}</button>
         </>
@@ -154,6 +170,12 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Saving returns the original quantities to stock and re-bills the invoice with the same number and date.
           </p>
+          <label className="flex items-center gap-3 text-sm">
+            <span className="label !mb-0">Bill date</span>
+            <input type="date" className={`input-field !min-h-0 w-auto !py-1 ${form.billDate !== form.originalDate ? 'border-amber-400 bg-amber-50' : ''}`}
+              max={istDay()} value={form.billDate} onChange={(e) => setForm({ ...form, billDate: e.target.value || form.originalDate })} />
+            {form.billDate !== form.originalDate && <span className="text-xs text-amber-700">was {form.originalDate.split('-').reverse().join('/')}</span>}
+          </label>
           <label className="block text-sm"><span className="label">Customer</span>
             <select className="input-field" value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
@@ -215,7 +237,9 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
             )}
             {form.paymentMethod !== 'credit' && (
               <label className="block text-sm"><span className="label">Amount received ₹</span>
-                <input type="number" min="0" step="0.01" className="input-field" value={form.amountReceived} onChange={(e) => setForm({ ...form, amountReceived: e.target.value })} />
+                <input type="number" min="0" step="0.01" className="input-field" value={form.followTotal && total != null ? total : form.amountReceived}
+                  onChange={(e) => setForm({ ...form, amountReceived: e.target.value, followTotal: false })} />
+                {form.followTotal && <span className="mt-1 block text-xs text-slate-500">Follows the new total (fully paid)</span>}
               </label>
             )}
           </div>
@@ -252,6 +276,13 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
               <input type="checkbox" checked={form.shipOn} onChange={(e) => setForm({ ...form, shipOn: e.target.checked })} />
               Ship To a different address (consignee)
             </label>
+            {form.shipOn && (
+              <ShipToPicker
+                firms={shipChoices}
+                customers={customers}
+                onPick={(a) => setForm({ ...form, shipTo: { ...EMPTY_SHIP, ...a } })}
+              />
+            )}
             {form.shipOn && (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {[['name', 'Name *'], ['phone', 'Phone'], ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['gstin', 'GSTIN']].map(([k, l]) => (

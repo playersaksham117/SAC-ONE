@@ -14,6 +14,7 @@ import { useDevice } from '../store/device';
 import { pendingQty, useLedger } from '../store/ledger';
 import { currentUser } from '../store/session';
 import { syncNow } from '../sync/engine';
+import { billTimestamp, isAdminRole, istToday } from '../domain/billDate';
 
 /**
  * POS use-cases. Every action re-checks the user's ERP permissions (not just the UI)
@@ -86,9 +87,11 @@ export function checkCheckout(payments: Payment[]): CheckResult {
 
 export function completeSale(
   customerPayments: Payment[],
-  { tendered, cashDrawer, customerPo, transport, shipTo }: {
+  { tendered, cashDrawer, customerPo, transport, shipTo, billDate }: {
     tendered?: number; cashDrawer?: CashDrawer | null; customerPo?: Sale['customerPo'];
     transport?: Sale['transport']; shipTo?: Sale['shipTo'];
+    /** 'YYYY-MM-DD' chosen by an admin; anyone else always bills today. */
+    billDate?: string | null;
   } = {},
 ): Sale {
   const user = requireUser('sell');
@@ -99,6 +102,11 @@ export function completeSale(
   if (check.errors.length) throw new ValidationError(check);
 
   const customer = cartCustomer();
+  if (billDate && billDate !== istToday() && !isAdminRole(user.roleSlug)) {
+    throw new ValidationError({ errors: [{ field: 'billDate', message: 'Only the firm admin can change the bill date' }], warnings: [] });
+  }
+  const dated = billTimestamp(billDate);
+  if (dated.error) throw new ValidationError({ errors: [{ field: 'billDate', message: dated.error }], warnings: [] });
   const amountDue = round2(payments.filter((p) => p.method === 'credit').reduce((s, p) => s + p.amount, 0));
   // Change is worked out against the cash the customer hands over (not the exchange credit).
   const cashPaid = round2(customerPayments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0));
@@ -106,7 +114,7 @@ export function completeSale(
   const sale: Sale = {
     id: Crypto.randomUUID(),
     number: useLedger.getState().nextNumber('S'),
-    createdAt: new Date().toISOString(),
+    createdAt: dated.iso,
     userId: user.userId,
     userName: user.name,
     customer: customer ? { id: customer.id, name: customer.name, phone: customer.phone, gstin: customer.gstin, gstStateCode: customer.gstStateCode } : null,

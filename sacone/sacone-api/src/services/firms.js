@@ -133,6 +133,26 @@ function profileOf(firm) {
 }
 
 export const firmService = {
+  /**
+   * Every active firm's registered address, for choosing a Ship To (consignee) on a bill:
+   * goods sent to the group's own shop / branch / godown.
+   */
+  shipToAddresses() {
+    return firmRepo.findAll().filter((f) => f.isActive).map((firm) => runWithFirm({ firmId: firm.id }, () => {
+      const c = repos.company.get() || {};
+      return {
+        firmId: firm.id,
+        name: c.businessName || firm.name,
+        address: [c.addressLine1, c.addressLine2].filter(Boolean).join(', '),
+        city: c.city || '',
+        state: c.state || '',
+        stateCode: c.gstStateCode || (c.gstNumber ? c.gstNumber.slice(0, 2) : ''),
+        gstin: c.gstNumber || '',
+        phone: c.phone || '',
+      };
+    }));
+  },
+
   /** Ids of every active firm, first firm first (for key lookups by POS phones and the web store). */
   activeFirmIds() {
     ensurePrimaryFirm();

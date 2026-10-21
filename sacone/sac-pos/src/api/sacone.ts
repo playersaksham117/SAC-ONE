@@ -39,6 +39,8 @@ export interface PingResult {
       /** Signature & stamp: whether to print them and the version of the images (fetched separately). */
       signStamp?: { print?: boolean; hasSign?: boolean; hasStamp?: boolean; version?: string | null };
     };
+    /** Registered firms' addresses (the group's own shops / branches) for the Ship To picker. */
+    shipToAddresses?: { firmId: string; name: string; address: string; city: string; state: string; stateCode: string; gstin: string; phone: string }[];
     /** ERP → Settings → Barcode labels (default size, details on each label, footer). */
     labels?: { size?: string | null; fields?: string | null; footer?: string | null; businessName?: string };
   };

@@ -100,6 +100,10 @@ firmRouter.get('/current', authenticate(), asyncHandler(async (req, res) => {
 firmRouter.put('/current', authenticate(), asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.updateCurrent(req.body || {}, req.actor, req));
 }));
+// Registered firms' addresses, for the Ship To picker on bills (any signed-in user).
+firmRouter.get('/addresses', asyncHandler(async (req, res) => {
+  sendSuccess(res, firmService.shipToAddresses());
+}));
 firmRouter.get('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, firmService.get(req.params.id, req.actor));
 }));

@@ -16,6 +16,8 @@ export interface Profile {
   name: string;
   email: string;
   roleName: string;
+  /** ERP role slug (owner_admin / firm_admin = admin: may change the bill date). */
+  roleSlug?: string;
   permissions: string[];
   /** Salted hash of the ERP-set PIN, kept for offline unlock. */
   pinHash: string | null;
@@ -70,6 +72,7 @@ export const useSession = create<SessionState>()(
           name: res.user.fullName,
           email: res.user.email,
           roleName: res.user.roleName,
+          roleSlug: res.user.roleSlug,
           permissions: res.permissions,
           pinHash: await hashPin(pin, salt),
           pinSalt: salt,
