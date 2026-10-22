@@ -5,24 +5,27 @@ import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import SalesInvoices from '../../../../components/sales/SalesInvoices';
 import SalesQuotations from '../../../../components/sales/SalesQuotations';
 import SoldAbovePrice from '../../../../components/sales/SoldAbovePrice';
+import SaleProfit from '../../../../components/sales/SaleProfit';
 import PageHeader from '../../../../components/ui';
 
 export default function Page() {
   const { checkPermission } = useAuth();
   const canQuotes = checkPermission('pos.quotations.view');
   const canSales = checkPermission('pos.sales.view');
+  const canProfit = canSales && checkPermission('purchases.bills.view');
   const [tab, setTab] = useState('invoices');
   const tabs = [
     ['invoices', 'Invoices'],
     ...(canQuotes ? [['quotations', 'Quotations']] : []),
     ...(canSales ? [['above', 'Sold Above Price']] : []),
+    ...(canProfit ? [['profit', 'Profit / Loss']] : []),
   ];
 
   // Open a tab straight from a link: /operations/sales?tab=above
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
     if (wanted && tabs.some(([id]) => id === wanted)) setTab(wanted);
-  }, [canQuotes, canSales]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [canQuotes, canSales, canProfit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <RequirePermission permissions={['pos.sales.view', 'sales.orders.view']}>
@@ -45,7 +48,7 @@ export default function Page() {
           <PageHeader title="Quotations" description="Quotations from SAC-POS phones (Sale / Quotation toggle). Selling one on the phone marks it converted." />
           <SalesQuotations />
         </>
-      ) : tab === 'above' && canSales ? <SoldAbovePrice /> : <SalesInvoices />}
+      ) : tab === 'above' && canSales ? <SoldAbovePrice /> : tab === 'profit' && canProfit ? <SaleProfit /> : <SalesInvoices />}
     </RequirePermission>
   );
 }
