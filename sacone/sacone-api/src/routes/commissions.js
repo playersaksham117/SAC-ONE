@@ -23,6 +23,14 @@ salesAgentRouter.get('/:id/dashboard', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.agentDashboard(req.params.id, req.query, req.actor));
 }));
 
+/** Invoices to give this agent commission on (Sales Agents → Select invoices). */
+salesAgentRouter.get('/:id/invoices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.agentInvoices(req.params.id, req.query, req.actor));
+}));
+salesAgentRouter.post('/:id/invoices', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.assignInvoices(req.params.id, req.body || {}, req.actor, req));
+}));
+
 salesAgentRouter.get('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.getAgent(req.params.id, req.actor));
 }));

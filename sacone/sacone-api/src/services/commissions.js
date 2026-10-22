@@ -1,6 +1,7 @@
 import { currentFirmId, withFinancialYear } from '../database/context.js';
 import crypto from 'crypto';
 import { AppError } from '../core/http.js';
+import { getDatabase } from '../database/connection.js';
 import { config } from '../config/index.js';
 import { repos } from '../repositories/index.js';
 import { authService, isFirmAdmin, userService } from './index.js';
@@ -324,80 +325,22 @@ export class CommissionService {
 
   /**
    * Create commission rows when POS sale is posted. Call with system actor permissions.
+   * `override` ({ calculationMethod, rate, fixedAmount }) replaces the plan / rule, e.g. a rate
+   * chosen when invoices are picked for an agent afterwards (Sales Agents → Select invoices).
    */
-  createForSale(sale, { agents, actor, req } = {}) {
+  createForSale(sale, { agents, actor, req, override = null } = {}) {
     if (!sale?.id) return [];
     const allocations = this.#normalizeAgentShares(agents || (sale.salesAgentId ? [{ salesAgentId: sale.salesAgentId, sharePercent: 100 }] : []));
     if (!allocations.length) return [];
+    const basis = this.#saleBasis(sale);
+    if (!basis) return [];
 
     const created = [];
-    // Lines sold below their minimum selling price earn no commission.
-    const below = new Set(this.belowMinPrice(sale.items || []).map((l) => l.productId));
-    const items = (sale.items || []).filter((i) => !below.has(i.productId));
-    if (!items.length) return [];
-    let basisSale = sale;
-    if (below.size) {
-      const kept = round2(items.reduce((s, i) => s + Number(i.taxableAmount || 0), 0));
-      const ratio = Number(sale.taxableAmount || 0) > 0 ? kept / Number(sale.taxableAmount) : 0;
-      basisSale = {
-        ...sale,
-        grandTotal: round2(items.reduce((s, i) => s + Number(i.lineTotal || 0), 0)),
-        taxableAmount: kept,
-        gstAmount: round2(items.reduce((s, i) => s + Number(i.gstAmount || 0), 0)),
-        amountPaid: round2(Number(sale.amountPaid || 0) * ratio),
-      };
-    }
-    const cogs = this.#estimateCogs(items.map((i) => ({
-      productId: i.productId,
-      quantity: i.quantity,
-    })));
-    const grossProfit = round2(Number(basisSale.taxableAmount || 0) - cogs);
-    const paymentReceived = Number(basisSale.amountPaid || 0);
-
     for (const share of allocations) {
       const agent = agentRepo.findById(share.salesAgentId);
       if (!agent || agent.status !== 'active') continue;
-
-      const sharePct = Number(share.sharePercent || 100) / 100;
-      const salesAmount = round2(basisSale.grandTotal * sharePct);
-      const taxableAmount = round2(basisSale.taxableAmount * sharePct);
-      const gstAmount = round2((basisSale.gstAmount || 0) * sharePct);
-      const shareCogs = round2(cogs * sharePct);
-      const shareGp = round2(grossProfit * sharePct);
-      const sharePaid = round2(paymentReceived * sharePct);
-
-      const resolved = this.#resolveRule({
-        agent,
-        customerId: sale.customerId,
-        items,
-        salesAmount,
-        taxableAmount,
-      });
-
-      if (resolved.minSalesAmount != null && salesAmount < Number(resolved.minSalesAmount)) {
-        continue;
-      }
-
-      const earned = computeAmount({
-        method: resolved.calculationMethod,
-        rate: resolved.rate,
-        fixedAmount: round2(resolved.fixedAmount * sharePct),
-        salesAmount,
-        taxableAmount,
-        grossProfit: shareGp,
-        maxCommission: resolved.maxCommission,
-      });
-
-      const eligible = resolveEligible({
-        paymentCondition: resolved.paymentCondition,
-        commissionEarned: earned,
-        paymentReceived: sharePaid,
-        salesAmount,
-      });
-
-      let status = 'pending';
-      if (earned > 0 && eligible <= 0) status = 'earned';
-      if (eligible > 0) status = 'eligible';
+      const calc = this.#calculate(sale, basis, agent, share.sharePercent, override);
+      if (!calc) continue;
 
       const row = commissionRepo.create({
         saleId: sale.id,
@@ -407,26 +350,26 @@ export class CommissionService {
         customerId: sale.customerId,
         salesAgentId: agent.id,
         sharePercent: share.sharePercent,
-        planId: resolved.planId,
-        ruleId: resolved.ruleId,
-        ruleSnapshot: resolved,
-        calculationMethod: resolved.calculationMethod,
-        commissionBasis: methodToBasis(resolved.calculationMethod),
-        rateSnapshot: resolved.rate,
-        fixedAmountSnapshot: resolved.fixedAmount,
-        salesAmount,
-        taxableAmount,
-        gstAmount,
-        cogsAmount: shareCogs,
-        grossProfit: shareGp,
-        paymentReceived: sharePaid,
-        paymentCondition: resolved.paymentCondition,
-        commissionEarned: earned,
-        commissionEligible: eligible,
+        planId: calc.resolved.planId,
+        ruleId: calc.resolved.ruleId,
+        ruleSnapshot: calc.resolved,
+        calculationMethod: calc.resolved.calculationMethod,
+        commissionBasis: methodToBasis(calc.resolved.calculationMethod),
+        rateSnapshot: calc.resolved.rate,
+        fixedAmountSnapshot: calc.resolved.fixedAmount,
+        salesAmount: calc.salesAmount,
+        taxableAmount: calc.taxableAmount,
+        gstAmount: calc.gstAmount,
+        cogsAmount: calc.cogs,
+        grossProfit: calc.grossProfit,
+        paymentReceived: calc.paymentReceived,
+        paymentCondition: calc.resolved.paymentCondition,
+        commissionEarned: calc.earned,
+        commissionEligible: calc.eligible,
         commissionPaid: 0,
-        status,
-        appliedRuleLabel: resolved.label,
-        remarks: below.size ? `${below.size} line(s) below minimum selling price excluded` : null,
+        status: calc.status,
+        appliedRuleLabel: calc.resolved.label,
+        remarks: basis.below.size ? `${basis.below.size} line(s) below minimum selling price excluded` : null,
         createdBy: actor?.user?.id,
       });
       created.push(row);
@@ -439,12 +382,212 @@ export class CommissionService {
           module: 'sales',
           recordType: 'sale_commission',
           recordId: row.id,
-          newValue: { saleId: sale.id, agentId: agent.id, earned, eligible },
+          newValue: { saleId: sale.id, agentId: agent.id, earned: calc.earned, eligible: calc.eligible, rule: calc.resolved.label },
           ...meta(req),
         });
       }
     }
     return created;
+  }
+
+  /** The part of a sale commission is worked on: lines sold below their minimum price earn none. */
+  #saleBasis(sale) {
+    const below = new Set(this.belowMinPrice(sale.items || []).map((l) => l.productId));
+    const items = (sale.items || []).filter((i) => !below.has(i.productId));
+    if (!items.length) return null;
+    let basisSale = sale;
+    if (below.size) {
+      const kept = round2(items.reduce((s, i) => s + Number(i.taxableAmount || 0), 0));
+      const ratio = Number(sale.taxableAmount || 0) > 0 ? kept / Number(sale.taxableAmount) : 0;
+      basisSale = {
+        ...sale,
+        grandTotal: round2(items.reduce((s, i) => s + Number(i.lineTotal || 0), 0)),
+        taxableAmount: kept,
+        gstAmount: round2(items.reduce((s, i) => s + Number(i.gstAmount || 0), 0)),
+        amountPaid: round2(Number(sale.amountPaid || 0) * ratio),
+      };
+    }
+    const cogs = this.#estimateCogs(items.map((i) => ({ productId: i.productId, quantity: i.quantity })));
+    return {
+      below, items, basisSale, cogs,
+      grossProfit: round2(Number(basisSale.taxableAmount || 0) - cogs),
+      paymentReceived: Number(basisSale.amountPaid || 0),
+    };
+  }
+
+  /** One agent's commission on a sale (null when the plan's minimum sale is not met). */
+  #calculate(sale, basis, agent, sharePercent, override) {
+    const sharePct = Number(sharePercent || 100) / 100;
+    const { basisSale } = basis;
+    const salesAmount = round2(basisSale.grandTotal * sharePct);
+    const taxableAmount = round2(basisSale.taxableAmount * sharePct);
+    const gstAmount = round2((basisSale.gstAmount || 0) * sharePct);
+    const cogs = round2(basis.cogs * sharePct);
+    const grossProfit = round2(basis.grossProfit * sharePct);
+    const paymentReceived = round2(basis.paymentReceived * sharePct);
+
+    const planned = this.#resolveRule({ agent, customerId: sale.customerId, items: basis.items, salesAmount, taxableAmount });
+    const resolved = override
+      ? {
+        ...planned,
+        planId: null,
+        ruleId: null,
+        calculationMethod: override.calculationMethod,
+        rate: Number(override.rate || 0),
+        fixedAmount: Number(override.fixedAmount || 0),
+        minSalesAmount: null,
+        maxCommission: null,
+        label: override.label || 'Selected invoice',
+      }
+      : planned;
+    if (resolved.minSalesAmount != null && salesAmount < Number(resolved.minSalesAmount)) return null;
+
+    const earned = computeAmount({
+      method: resolved.calculationMethod,
+      rate: resolved.rate,
+      fixedAmount: round2(resolved.fixedAmount * sharePct),
+      salesAmount,
+      taxableAmount,
+      grossProfit,
+      maxCommission: resolved.maxCommission,
+    });
+    const eligible = resolveEligible({ paymentCondition: resolved.paymentCondition, commissionEarned: earned, paymentReceived, salesAmount });
+    let status = 'pending';
+    if (earned > 0 && eligible <= 0) status = 'earned';
+    if (eligible > 0) status = 'eligible';
+    return { resolved, salesAmount, taxableAmount, gstAmount, cogs, grossProfit, paymentReceived, earned, eligible, status };
+  }
+
+  /**
+   * Sales Agents → Select invoices: the firm's invoices with any commission already on them and
+   * what this agent would earn on each by their plan. `show`: 'open' (no commission yet, default)
+   * or 'all'.
+   */
+  agentInvoices(agentId, query = {}, actor) {
+    requirePerm(actor, 'sales.commissions.view');
+    const agent = agentRepo.findById(agentId);
+    if (!agent) throw new AppError('Sales agent not found', 404);
+    const q = withFinancialYear(query);
+    const where = ["s.status != 'voided'"];
+    const params = [agent.id];
+    if (q.dateFrom) { where.push('COALESCE(s.completed_at, s.created_at) >= ?'); params.push(q.dateFrom); }
+    if (q.dateTo) { where.push("COALESCE(s.completed_at, s.created_at) < date(?, '+1 day')"); params.push(q.dateTo); }
+    if (query.search) {
+      where.push("(LOWER(s.invoice_number) LIKE ? OR LOWER(COALESCE(c.name, '')) LIKE ?)");
+      const like = `%${String(query.search).toLowerCase()}%`;
+      params.push(like, like);
+    }
+    const show = query.show === 'all' ? 'all' : 'open';
+    if (show === 'open') where.push("NOT EXISTS (SELECT 1 FROM sale_commissions x WHERE x.sale_id = s.id AND x.status NOT IN ('cancelled', 'reversed'))");
+    const list = this.#db().prepare(`
+      SELECT s.id, s.invoice_number, COALESCE(s.completed_at, s.created_at) AS sale_date, s.grand_total, s.taxable_amount,
+             s.amount_paid, s.amount_credit, s.payment_status, c.name AS customer_name, c.is_walk_in,
+             ba.name AS billed_agent,
+             (SELECT group_concat(sa.name || ' ' || printf('%.2f', sc.commission_earned - sc.commission_reversed), ', ')
+                FROM sale_commissions sc JOIN sales_agents sa ON sa.id = sc.sales_agent_id
+               WHERE sc.sale_id = s.id AND sc.status NOT IN ('cancelled', 'reversed')) AS commissions,
+             EXISTS (SELECT 1 FROM sale_commissions m WHERE m.sale_id = s.id AND m.sales_agent_id = ?) AS has_mine
+      FROM pos_sales s
+      LEFT JOIN customers c ON c.id = s.customer_id
+      LEFT JOIN sales_agents ba ON ba.id = s.sales_agent_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY sale_date DESC
+      LIMIT 300
+    `).all(...params);
+
+    const items = list.map((r) => {
+      const sale = repos.posSales.findById(r.id);
+      const basis = sale ? this.#saleBasis(sale) : null;
+      const calc = basis ? this.#calculate(sale, basis, agent, 100, null) : null;
+      return {
+        saleId: r.id,
+        invoiceNumber: r.invoice_number,
+        date: r.sale_date,
+        customerName: r.is_walk_in ? 'Walk-in' : (r.customer_name || 'Walk-in'),
+        grandTotal: round2(r.grand_total),
+        taxableAmount: round2(r.taxable_amount),
+        grossProfit: basis ? round2(basis.grossProfit) : 0,
+        amountPaid: round2(r.amount_paid),
+        balance: round2(r.amount_credit),
+        paymentStatus: r.payment_status,
+        billedAgent: r.billed_agent || null,
+        existingCommissions: r.commissions || null,
+        hasMine: Boolean(r.has_mine),
+        planCommission: calc ? calc.earned : 0,
+        planLabel: calc ? calc.resolved.label : (basis ? 'Below plan minimum' : 'All lines below minimum price'),
+      };
+    });
+    return { agent: { id: agent.id, name: agent.name }, show, items };
+  }
+
+  /**
+   * Give an agent commission on chosen invoices. `rate` mode: { mode: 'plan' } uses the agent's
+   * plan / rules; { mode: 'custom', calculationMethod, rate, fixedAmount } sets it for these
+   * invoices. Invoices this agent already has commission on are skipped, and so are invoices
+   * with another agent's commission unless `allowShared` is set. An invoice billed with no agent
+   * gets this agent as its sales agent.
+   */
+  assignInvoices(agentId, data = {}, actor, req) {
+    requirePerm(actor, 'sales.commissions.create');
+    const agent = agentRepo.findById(agentId);
+    if (!agent) throw new AppError('Sales agent not found', 404);
+    if (agent.status !== 'active') throw new AppError('This sales agent is inactive', 400);
+    const saleIds = [...new Set(Array.isArray(data.saleIds) ? data.saleIds.map(String) : [])].slice(0, 500);
+    if (!saleIds.length) throw new AppError('Select at least one invoice', 400);
+
+    let override = null;
+    if (data.mode === 'custom') {
+      const method = String(data.calculationMethod || '');
+      if (!['percent_taxable', 'percent_sales_value', 'percent_gross_profit', 'fixed_per_invoice'].includes(method)) {
+        throw new AppError('Choose how the commission is worked out', 400);
+      }
+      const rate = Number(data.rate || 0);
+      const fixed = Number(data.fixedAmount || 0);
+      if (method === 'fixed_per_invoice' ? !(fixed > 0) : !(rate > 0 && rate <= 100)) {
+        throw new AppError(method === 'fixed_per_invoice' ? 'Enter the amount per invoice' : 'Enter a rate between 0 and 100%', 400);
+      }
+      override = {
+        calculationMethod: method, rate: method === 'fixed_per_invoice' ? 0 : rate, fixedAmount: method === 'fixed_per_invoice' ? fixed : 0,
+        label: method === 'fixed_per_invoice' ? `Selected invoice: ₹${fixed} per invoice` : `Selected invoice: ${rate}% of ${methodToBasis(method).replace('_', ' ')}`,
+      };
+    }
+
+    const created = [];
+    const skipped = [];
+    const db = this.#db();
+    for (const id of saleIds) {
+      const sale = repos.posSales.findById(id);
+      if (!sale || sale.status === 'voided') { skipped.push({ saleId: id, invoiceNumber: sale?.invoiceNumber || null, reason: 'Invoice not found or cancelled' }); continue; }
+      const rows = commissionRepo.findBySale(sale.id);
+      if (rows.some((r) => r.salesAgentId === agent.id)) {
+        skipped.push({ saleId: id, invoiceNumber: sale.invoiceNumber, reason: 'Already has commission for this agent' });
+        continue;
+      }
+      const others = rows.filter((r) => !['cancelled', 'reversed'].includes(r.status));
+      if (others.length && !data.allowShared) {
+        skipped.push({ saleId: id, invoiceNumber: sale.invoiceNumber, reason: 'Already has another agent’s commission' });
+        continue;
+      }
+      if (!sale.salesAgentId) {
+        db.prepare('UPDATE pos_sales SET sales_agent_id = ? WHERE id = ?').run(agent.id, sale.id);
+        sale.salesAgentId = agent.id;
+      }
+      const made = this.createForSale(sale, { agents: [{ salesAgentId: agent.id, sharePercent: 100 }], actor, req, override });
+      if (!made.length) {
+        skipped.push({ saleId: id, invoiceNumber: sale.invoiceNumber, reason: 'No commission: lines below minimum price or plan minimum not met' });
+        continue;
+      }
+      created.push({ saleId: id, invoiceNumber: sale.invoiceNumber, commission: made[0].commissionEarned, eligible: made[0].commissionEligible, status: made[0].status });
+    }
+    return {
+      created,
+      skipped,
+      totalCommission: round2(created.reduce((s, c) => s + Number(c.commission || 0), 0)),
+    };
+  }
+
+  #db() {
+    return getDatabase();
   }
 
   /** Recalculate eligibility after customer payment on an invoice. */
