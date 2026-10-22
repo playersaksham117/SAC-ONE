@@ -33,6 +33,13 @@ describe('Bill to / PO / Ship to on the printed bill', () => {
       expect(html).toContain('Khasra 44, NH-48');
     });
   }
+  it('80 mm receipt prints a long address in full, in a wrapping cell', () => {
+    const long = 'CHD 34C PICCADILLY, KFC MALL, PICCADILLY CINEMA, GROUND FLOOR, SECTOR 34';
+    const html = billHtml({ ...sale, customer: { ...sale.customer!, address: long } }, { businessName: 'My Firm' }, 'POS1', '80mm', {});
+    expect(html).toContain(long);
+    expect(html).toMatch(/<td class="r wrap">Sapphire Foods<br>CHD 34C PICCADILLY/);
+    expect(html).toContain('.wrap{white-space:normal');
+  });
   it('80 mm receipt shows the buyer address and PO', () => {
     const html = billHtml(sale, { businessName: 'My Firm' }, 'POS1', '80mm', {});
     expect(html).toContain('Plot 12, Udyog Vihar');

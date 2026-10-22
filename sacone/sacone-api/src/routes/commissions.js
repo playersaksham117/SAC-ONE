@@ -23,6 +23,11 @@ salesAgentRouter.get('/:id/dashboard', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.agentDashboard(req.params.id, req.query, req.actor));
 }));
 
+/** Work the agent's unpaid commissions out again at their current plan / rate. */
+salesAgentRouter.post('/:id/recalculate', asyncHandler(async (req, res) => {
+  sendSuccess(res, commissionService.recalculateAgent(req.params.id, req.actor, req));
+}));
+
 /** Invoices to give this agent commission on (Sales Agents → Select invoices). */
 salesAgentRouter.get('/:id/invoices', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.agentInvoices(req.params.id, req.query, req.actor));

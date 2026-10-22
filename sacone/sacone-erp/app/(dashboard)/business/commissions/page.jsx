@@ -154,8 +154,11 @@ export default function CommissionsPage() {
         createLogin: !editingAgent && canCreateLogins && agentForm.createLogin,
       };
       if (editingAgent) {
-        await apiRequest(`/api/sales-agents/${editingAgent.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        setMessage('Agent updated');
+        const saved = await apiRequest(`/api/sales-agents/${editingAgent.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        setMessage(saved?.recalculatedCommissions
+          ? `Agent updated · ${saved.recalculatedCommissions} unpaid commission(s) recalculated at the new rate`
+          : 'Agent updated');
+        loadCommissions().catch(() => {});
       } else {
         const created = await apiRequest('/api/sales-agents', { method: 'POST', body: JSON.stringify(payload) });
         if (created.credentials) setCredentials({ ...created.credentials, name: created.name });
@@ -282,6 +285,16 @@ export default function CommissionsPage() {
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => openDashboard(a.id)}>Dashboard</button>
+                          {canEditAgents && (
+                            <button type="button" className="btn-secondary !px-2 !py-1 text-xs" title="Work out this agent's unpaid commissions again at their current rate / plan"
+                              onClick={async () => {
+                                try {
+                                  const r = await apiRequest(`/api/sales-agents/${a.id}/recalculate`, { method: 'POST' });
+                                  setMessage(r.recalculatedCommissions ? `${r.recalculatedCommissions} unpaid commission(s) of ${a.name} recalculated` : `${a.name}: unpaid commissions already match the current rate`);
+                                  loadCommissions().catch(() => {});
+                                } catch (err) { setError(err.message); }
+                              }}>Recalculate</button>
+                          )}
                           {canAddCommission && a.status === 'active' && (
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setPickAgent(a)}>Select invoices</button>
                           )}

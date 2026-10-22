@@ -194,6 +194,10 @@ export class CommissionService {
       throw new AppError('Agent code already exists', 409);
     }
     const updated = agentRepo.update(id, data);
+    // A new rate / basis / plan applies to this agent's commissions not paid yet, too.
+    const rateChanged = ['defaultCommissionRate', 'defaultCommissionBasis', 'commissionPlanId']
+      .some((k) => String(updated[k] ?? '') !== String(existing[k] ?? ''));
+    const recalculated = rateChanged ? this.recalculateUnpaid(updated, actor, req) : 0;
     // Agent and login are the same person: keep name, phone and active status in step.
     if (updated.userId && repos.users.findById(updated.userId)) {
       const loginChanges = {};
@@ -213,7 +217,49 @@ export class CommissionService {
       action: 'update', module: 'sales', recordType: 'sales_agent', recordId: id,
       previousValue: existing, newValue: updated, ...meta(req),
     });
-    return agentRepo.findById(id);
+    return { ...agentRepo.findById(id), recalculatedCommissions: recalculated };
+  }
+
+  recalculateAgent(id, actor, req) {
+    requirePerm(actor, 'sales.agents.edit');
+    const agent = agentRepo.findById(id);
+    if (!agent) throw new AppError('Sales agent not found', 404);
+    return { recalculatedCommissions: this.recalculateUnpaid(agent, actor, req) };
+  }
+
+  /**
+   * Work an agent's unpaid commissions out again with their current plan / rate. Paid, part-paid,
+   * reversed and custom-rate ("Selected invoice") commissions are left as they are.
+   */
+  recalculateUnpaid(agent, actor, req) {
+    const rows = getDatabase().prepare(`
+      SELECT id, sale_id, share_percent, commission_earned FROM sale_commissions
+      WHERE sales_agent_id = ? AND commission_paid = 0 AND commission_reversed = 0
+        AND status IN ('pending', 'earned', 'eligible')
+        AND COALESCE(applied_rule_label, '') NOT LIKE 'Selected invoice%'
+    `).all(agent.id);
+    let changed = 0;
+    for (const row of rows) {
+      const sale = repos.posSales.findById(row.sale_id);
+      if (!sale || sale.status === 'voided') continue;
+      const basis = this.#saleBasis(sale);
+      const calc = basis ? this.#calculate(sale, basis, agent, row.share_percent, null) : null;
+      if (!calc) continue;
+      commissionRepo.setRule(row.id, {
+        planId: calc.resolved.planId, ruleId: calc.resolved.ruleId, snapshot: calc.resolved,
+        calculationMethod: calc.resolved.calculationMethod, commissionBasis: methodToBasis(calc.resolved.calculationMethod),
+        rate: calc.resolved.rate, fixedAmount: calc.resolved.fixedAmount, paymentCondition: calc.resolved.paymentCondition, label: calc.resolved.label,
+      });
+      commissionRepo.updateAmounts(row.id, { commissionEarned: calc.earned, commissionEligible: calc.eligible, status: calc.status });
+      if (Math.abs(calc.earned - Number(row.commission_earned)) > 0.004) changed += 1;
+    }
+    if (changed && actor) {
+      auditRepo.create({
+        userId: actor.user.id, userName: actor.user.fullName, action: 'update', module: 'sales',
+        recordType: 'sales_agent', recordId: agent.id, newValue: { recalculatedCommissions: changed }, ...meta(req),
+      });
+    }
+    return changed;
   }
 
   // ── Plans ───────────────────────────────────────────────
@@ -897,8 +943,10 @@ export class CommissionService {
   }
 
   #resolveRule({ agent, customerId, items, salesAmount }) {
-    const plan = (agent.commissionPlanId && planRepo.findById(agent.commissionPlanId))
-      || planRepo.findDefault();
+    // The agent's own plan, else the firm's default plan. A rate set on the agent beats the
+    // default plan's flat rate (the default plan's specific rules — customer, product… — still win).
+    const ownPlan = agent.commissionPlanId ? planRepo.findById(agent.commissionPlanId) : null;
+    const plan = ownPlan || planRepo.findDefault();
 
     const rules = plan ? planRepo.listRules(plan.id).filter((r) => r.isActive) : [];
     const productIds = new Set((items || []).map((i) => i.productId).filter(Boolean));
@@ -939,6 +987,10 @@ export class CommissionService {
       };
     }
 
+    if (plan && !ownPlan && Number(agent.defaultCommissionRate || 0) > 0) {
+      return { ...this.#agentDefault(agent), paymentCondition: plan.paymentCondition || 'on_payment_received' };
+    }
+
     if (plan) {
       return {
         planId: plan.id,
@@ -953,7 +1005,11 @@ export class CommissionService {
       };
     }
 
-    // Agent defaults
+    return this.#agentDefault(agent);
+  }
+
+  /** The rate / basis set on the agent. */
+  #agentDefault(agent) {
     const basis = agent.defaultCommissionBasis || 'taxable';
     const method = basis === 'sales_value' ? 'percent_sales_value'
       : basis === 'gross_profit' ? 'percent_gross_profit'
@@ -968,7 +1024,7 @@ export class CommissionService {
       minSalesAmount: null,
       maxCommission: null,
       paymentCondition: 'on_payment_received',
-      label: 'Agent default',
+      label: `Agent rate ${Number(agent.defaultCommissionRate || 0)}%`,
     };
   }
 }
