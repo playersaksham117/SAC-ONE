@@ -2,10 +2,12 @@ import { config } from './config/index.js';
 import { createApp } from './app.js';
 import { closeMongo } from './database/mongo.js';
 import { closeDatabase } from './database/connection.js';
+import { appUpdateService } from './services/app-updates.js';
 
 const app = createApp();
 
 const server = app.listen(config.port, config.host, () => {
+  appUpdateService.start();
   console.log(`SACONE API running on http://${config.host}:${config.port} [${config.appEnv}, ${config.serverMode} server]`);
   console.log(`  Database: ${config.databaseDriver} · real-time feed: /api/events · POS sync: /api/v1/sync`);
   if (config.serverMode === 'local') {

@@ -428,6 +428,43 @@ function InboxTab({ devices, onChanged, setError, setMessage }) {
   );
 }
 
+/* ───────────────────────── SAC-POS app updates ───────────────────────── */
+
+/** The newest SAC-POS APK this server holds (copied from GitHub releases) — phones install it from More → App update. */
+function AppReleaseCard() {
+  const { checkPermission } = useAuth();
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { apiRequest('/api/pos-devices/app-release').then(setStatus).catch((e) => setError(e.message)); }, []);
+  const check = async () => {
+    setBusy(true); setError('');
+    try { setStatus(await apiRequest('/api/pos-devices/app-release/check', { method: 'POST' })); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const latest = status?.latest;
+  const link = latest ? `https://github.com/${status.repo}/releases/download/${latest.tag}/sac-pos.apk` : null;
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-semibold text-slate-900">📲 SAC-POS app update</div>
+          <div className="text-slate-600">
+            {latest
+              ? <>Phones are offered <b>{latest.versionName} (build {latest.versionCode})</b> · {(latest.size / 1048576).toFixed(1)} MB · published {new Date(latest.publishedAt).toLocaleDateString('en-IN')}. Staff install it from SAC-POS → More → App update.</>
+              : 'No app release on this server yet. New APKs are built by GitHub Actions and copied here automatically.'}
+          </div>
+          {status?.lastError && <div className="mt-1 text-xs text-rose-700">Last check: {status.lastError}</div>}
+          {error && <div className="mt-1 text-xs text-rose-700">{error}</div>}
+          {link && <div className="mt-1 text-xs text-slate-500">First install on a phone without in-app updates: <a className="font-medium text-brand-600 underline" href={link} target="_blank" rel="noreferrer">download the APK</a></div>}
+        </div>
+        {checkPermission('pos.devices.edit') && (
+          <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check for new version'}</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ───────────────────────── Page ───────────────────────── */
 
 export default function PosDevicesPage() {
@@ -485,6 +522,7 @@ export default function PosDevicesPage() {
       <Alert type="error" message={error} />
       <Alert type="success" message={message} />
       <ServerUrlCard />
+      <AppReleaseCard />
       <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         Terminal staff are managed in <Link href="/admin/users" className="font-semibold underline">User Management</Link>: add the person there with a role that has SAC-POS access,
         and they sign in on the phone with that email and password. Disable the user there to block them on every terminal.

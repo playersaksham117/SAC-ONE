@@ -3,6 +3,7 @@ import { ApiError } from '../api/client';
 import { sync, type DeviceConfig } from '../api/sacone';
 import { customerPayload, paymentPayload, quotationPayload, returnPayload, salePayload } from '../domain/payloads';
 import { erpQuotation, erpSale } from '../domain/serverSale';
+import { checkForUpdate } from '../lib/appUpdate';
 import type { SyncMeta } from '../domain/types';
 import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
@@ -108,6 +109,9 @@ async function runCycle(): Promise<void> {
       if (!recovered) throw e;
       cfg = recovered;
     }
+
+    // 1a. a newer SAC-POS on the shop server (offered in More → App update; never blocks the sync)
+    checkForUpdate(cfg).catch(() => undefined);
 
     // 1b. the uploaded UPI QR image, only when the ERP has a new one
     const bank = useDevice.getState().info?.settings?.invoice?.bank;

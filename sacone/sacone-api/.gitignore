@@ -4,5 +4,6 @@ data/*.db-*
 data/exports/
 # Cloud export snapshots hold password hashes: never commit them
 data/cloud-snapshots/
+data/app-releases/
 .env
 *.log

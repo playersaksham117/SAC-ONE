@@ -109,7 +109,12 @@ export interface ChangeFeed {
   changed: boolean; seq: number; tables: string[]; reset?: boolean;
 }
 
-const deviceHeaders = (c: DeviceConfig) => ({
+/** A SAC-POS release the shop server holds (built by GitHub Actions). */
+export interface AppRelease {
+  versionName: string; versionCode: number; size: number; sha256: string; notes: string; publishedAt: string; tag: string;
+}
+
+export const deviceHeaders = (c: DeviceConfig) => ({
   'X-API-Key': c.deviceKey,
   'X-Device-Id': c.deviceId,
   'X-App-Version': 'sac-pos/1.0.0',
@@ -178,6 +183,10 @@ export const sync = {
     request<{ sales: (ServerSale & { source: 'erp' | 'terminal'; createdBy: string | null })[] | null; quotations: ServerQuotation[] | null }>(
       c.baseUrl, '/api/v1/sync/documents', { query: { userId, days: 30 }, headers: deviceHeaders(c), timeoutMs: 60000 },
     ),
+
+  /** The newest SAC-POS app on the shop server (null when it has none yet). */
+  appLatest: (c: DeviceConfig) =>
+    request<{ latest: AppRelease | null }>(c.baseUrl, '/api/v1/sync/app/latest', { headers: deviceHeaders(c) }),
 
   /** Waits up to `wait` seconds for a catalogue / stock / customer / staff change. */
   changes: (c: DeviceConfig, since: number | undefined, wait = 25) =>
