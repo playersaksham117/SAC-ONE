@@ -1013,15 +1013,25 @@ export class PosSyncService {
     const db = getDatabase();
     deviceRepo.touch(device.id, { kind: 'pull' });
 
+    // This terminal's own bills come too, tagged with the phone's bill number (phoneRef): a phone
+    // that still has the bill skips it, one that lost it (re-paired, reinstalled) gets it back.
+    const own = `${device.code}-`;
     const sales = has('pos.sales.view')
       ? db.prepare(`
           SELECT id FROM pos_sales
           WHERE status != 'voided' AND COALESCE(completed_at, created_at) >= ?
-            AND (terminal_ref IS NULL OR terminal_ref NOT LIKE ?)
           ORDER BY created_at DESC LIMIT 1000
-        `).all(from, `${device.code}-%`)
+        `).all(from)
         .map((r) => saleRepo.findById(r.id)).filter(Boolean)
-        .map((s) => ({ ...phoneSale(s), source: s.terminalRef ? 'terminal' : 'erp', createdBy: s.createdByName || null }))
+        .map((s) => {
+          const mine = Boolean(s.terminalRef?.startsWith(own));
+          return {
+            ...phoneSale(s),
+            source: mine ? 'this_terminal' : s.terminalRef ? 'terminal' : 'erp',
+            phoneRef: mine ? s.terminalRef.slice(own.length) : null,
+            createdBy: s.createdByName || null,
+          };
+        })
       : null;
 
     const today = nowIso().slice(0, 10);

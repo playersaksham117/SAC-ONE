@@ -221,7 +221,7 @@ async function runCycle(): Promise<void> {
       try {
         const docs = await sync.documents(cfg, me);
         useLedger.getState().applyErpDocs(
-          docs.sales ? docs.sales.map((s) => erpSale(s, s.source, s.createdBy)) : null,
+          docs.sales ? docs.sales.map((s) => ({ ...erpSale(s, s.source === 'erp' ? 'erp' : 'terminal', s.createdBy), phoneRef: s.phoneRef ?? null })) : null,
           docs.quotations ? docs.quotations.map(erpQuotation) : null,
         );
       } catch (e) {

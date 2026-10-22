@@ -180,7 +180,7 @@ export const sync = {
    * (null = not allowed by their ERP role). Last 30 days, plus quotations still open.
    */
   documents: (c: DeviceConfig, userId: string) =>
-    request<{ sales: (ServerSale & { source: 'erp' | 'terminal'; createdBy: string | null })[] | null; quotations: ServerQuotation[] | null }>(
+    request<{ sales: (ServerSale & { source: 'erp' | 'terminal' | 'this_terminal'; phoneRef?: string | null; createdBy: string | null })[] | null; quotations: ServerQuotation[] | null }>(
       c.baseUrl, '/api/v1/sync/documents', { query: { userId, days: 30 }, headers: deviceHeaders(c), timeoutMs: 60000 },
     ),
 

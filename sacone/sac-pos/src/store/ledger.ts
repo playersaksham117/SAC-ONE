@@ -32,7 +32,7 @@ interface LedgerState {
    * Replace the bills / quotations pulled from the ERP (null = this user may not see them: drop them).
    * Documents made on this phone are never touched; ERP copies of them are skipped.
    */
-  applyErpDocs: (sales: Sale[] | null, quotations: Quotation[] | null) => void;
+  applyErpDocs: (sales: (Sale & { phoneRef?: string | null })[] | null, quotations: Quotation[] | null) => void;
   prune: (keepDays: number) => void;
   /** Forget every local bill (only after all of them reached the ERP): the phone becomes another terminal. */
   clearForNewTerminal: () => void;
@@ -140,9 +140,13 @@ export const useLedger = create<LedgerState>()(
           const ownSales = s.sales.filter((x) => !x.origin);
           const ownQuotes = (s.quotations ?? []).filter((x) => !x.origin);
           const ownSaleIds = new Set(ownSales.map((x) => x.serverId).filter(Boolean));
+          const ownNumbers = new Set(ownSales.map((x) => x.number));
           const ownQuoteIds = new Set(ownQuotes.map((x) => x.serverId).filter(Boolean));
           const byDate = <T extends { createdAt: string }>(a: T, b: T) => b.createdAt.localeCompare(a.createdAt);
-          const sales = [...ownSales, ...(erpSales ?? []).filter((x) => !ownSaleIds.has(x.serverId))].sort(byDate);
+          // a bill this phone made and still holds is never doubled (matched by ERP id or its own number)
+          const sales = [...ownSales, ...(erpSales ?? [])
+            .filter((x) => !ownSaleIds.has(x.serverId) && !(x.phoneRef && ownNumbers.has(x.phoneRef)))
+            .map(({ phoneRef: _ref, ...x }) => x)].sort(byDate);
           const quotations = [...ownQuotes, ...(erpQuotes ?? []).filter((x) => !ownQuoteIds.has(x.serverId))].sort(byDate);
           return sameDoc(sales, s.sales) && sameDoc(quotations, s.quotations ?? []) ? {} : { sales, quotations };
         });
