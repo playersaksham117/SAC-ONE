@@ -28,6 +28,11 @@ interface LedgerState {
   retry: (kind: DocKind, id: string) => void;
   /** Bring synced bills up to date with the ERP (an admin edited or cancelled them there). */
   applyServerSales: (statuses: ServerSaleStatus[]) => number;
+  /**
+   * Replace the bills / quotations pulled from the ERP (null = this user may not see them: drop them).
+   * Documents made on this phone are never touched; ERP copies of them are skipped.
+   */
+  applyErpDocs: (sales: Sale[] | null, quotations: Quotation[] | null) => void;
   prune: (keepDays: number) => void;
   /** Forget every local bill (only after all of them reached the ERP): the phone becomes another terminal. */
   clearForNewTerminal: () => void;
@@ -128,6 +133,19 @@ export const useLedger = create<LedgerState>()(
         });
         if (changed) set({ sales });
         return changed;
+      },
+
+      applyErpDocs(erpSales, erpQuotes) {
+        set((s) => {
+          const ownSales = s.sales.filter((x) => !x.origin);
+          const ownQuotes = (s.quotations ?? []).filter((x) => !x.origin);
+          const ownSaleIds = new Set(ownSales.map((x) => x.serverId).filter(Boolean));
+          const ownQuoteIds = new Set(ownQuotes.map((x) => x.serverId).filter(Boolean));
+          const byDate = <T extends { createdAt: string }>(a: T, b: T) => b.createdAt.localeCompare(a.createdAt);
+          const sales = [...ownSales, ...(erpSales ?? []).filter((x) => !ownSaleIds.has(x.serverId))].sort(byDate);
+          const quotations = [...ownQuotes, ...(erpQuotes ?? []).filter((x) => !ownQuoteIds.has(x.serverId))].sort(byDate);
+          return sameDoc(sales, s.sales) && sameDoc(quotations, s.quotations ?? []) ? {} : { sales, quotations };
+        });
       },
 
       retry(kind, id) {

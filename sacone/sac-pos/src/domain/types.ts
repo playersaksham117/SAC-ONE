@@ -145,6 +145,8 @@ export interface Sale extends SyncMeta {
   returned: Record<string, number>;   // productId → qty returned
   /** The bill was cancelled in the ERP after it synced. */
   cancelledInErp?: boolean;
+  /** Made in the ERP ('erp') or on another terminal ('terminal'), pulled for viewing / returns / dues. */
+  origin?: 'erp' | 'terminal';
 }
 
 /** A quotation made on this phone (Sale / Quotation toggle); synced to SACONE quotations. */
@@ -160,6 +162,10 @@ export interface Quotation extends SyncMeta {
   notes?: string | null;
   status: 'open' | 'converted';
   convertedSaleId?: string | null;
+  /** Made in the ERP (or another terminal) and pulled; its ERP status (draft / sent / accepted / converted). */
+  origin?: 'erp';
+  erpStatus?: string;
+  customerPo?: { number: string; date: string | null } | null;
 }
 
 export interface ReturnLine {

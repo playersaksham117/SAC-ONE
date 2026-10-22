@@ -1,6 +1,6 @@
 import { request } from './client';
 import type { PayBank } from '../domain/upi';
-import type { ServerSaleStatus } from '../domain/serverSale';
+import type { ServerQuotation, ServerSale, ServerSaleStatus } from '../domain/serverSale';
 
 /** Typed calls to SACONE. Auth → ERP session; everything else → device sync key (/api/v1/sync). */
 
@@ -138,7 +138,7 @@ export const sync = {
     }),
 
   customers: (c: DeviceConfig, since: string, page: number) =>
-    request<Page & { customers: ServerCustomer[] }>(c.baseUrl, '/api/v1/sync/customers', {
+    request<Page & { customers: ServerCustomer[]; all_total?: number }>(c.baseUrl, '/api/v1/sync/customers', {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
 
@@ -169,6 +169,15 @@ export const sync = {
     request<{ sales: ServerSaleStatus[] }>(c.baseUrl, '/api/v1/sync/sales/current', {
       method: 'POST', body: { refs }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
+
+  /**
+   * Bills and quotations made in the ERP or on other terminals that `userId` may see
+   * (null = not allowed by their ERP role). Last 30 days, plus quotations still open.
+   */
+  documents: (c: DeviceConfig, userId: string) =>
+    request<{ sales: (ServerSale & { source: 'erp' | 'terminal'; createdBy: string | null })[] | null; quotations: ServerQuotation[] | null }>(
+      c.baseUrl, '/api/v1/sync/documents', { query: { userId, days: 30 }, headers: deviceHeaders(c), timeoutMs: 60000 },
+    ),
 
   /** Waits up to `wait` seconds for a catalogue / stock / customer / staff change. */
   changes: (c: DeviceConfig, since: number | undefined, wait = 25) =>

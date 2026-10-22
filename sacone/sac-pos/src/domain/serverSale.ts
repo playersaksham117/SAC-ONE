@@ -1,4 +1,4 @@
-import type { Payment, PaymentMethod, Sale } from './types';
+import type { Payment, PaymentMethod, Quotation, Sale } from './types';
 import type { ShipTo, Transport } from './dispatch';
 import type { Period } from './warranty';
 
@@ -21,6 +21,23 @@ export interface ServerSale {
   customerPo: { number: string; date: string | null } | null;
   transport: Transport | null;
   shipTo: ShipTo | null;
+}
+
+/** An ERP quotation (GET /api/v1/sync/documents). */
+export interface ServerQuotation {
+  id: string;
+  number: string;
+  date: string;
+  createdAt: string;
+  validUntil: string | null;
+  status: string;
+  preparedBy: string | null;
+  notes: string | null;
+  customer: { id: string | null; name: string; phone: string | null; gstin: string | null; gstStateCode: string | null } | null;
+  customerPo: { number: string; date: string | null } | null;
+  items: Omit<ServerSale['items'][number], 'quantityReturned' | 'serialNumbers'>[];
+  subtotal: number; itemDiscountTotal: number; invoiceDiscount: number; taxableAmount: number;
+  cgstAmount: number; sgstAmount: number; igstAmount: number; gstAmount: number; grandTotal: number;
 }
 
 export type ServerSaleStatus = { ref: string; status: 'current'; sale: ServerSale } | { ref: string; status: 'voided' | 'unknown' };
@@ -76,6 +93,39 @@ export function withServerSale(local: Sale, s: ServerSale): Sale {
     shipTo: s.shipTo,
     cancelledInErp: undefined,
     returned,
+  };
+}
+
+/** A bill made in the ERP or on another terminal, as a read-mostly phone bill (returns / dues work by its ERP number). */
+export function erpSale(s: ServerSale, source: 'erp' | 'terminal', createdBy: string | null): Sale {
+  const base: Sale = {
+    id: `erp-${s.id}`, number: s.number, createdAt: s.date, userId: '', userName: createdBy ?? (source === 'erp' ? 'ERP' : 'Other terminal'),
+    customer: null, totals: { lines: [], subtotal: 0, itemDiscountTotal: 0, invoiceDiscount: 0, taxableAmount: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0, gstAmount: 0, grandTotal: 0, taxSplit: 'cgst_sgst' },
+    payments: [], amountPaid: 0, amountDue: 0, returned: {},
+    sync: 'synced', serverId: s.id, serverNumber: s.number, origin: source,
+  };
+  return withServerSale(base, s);
+}
+
+/** An ERP quotation as a phone quotation: print / share / convert to a sale like one made here. */
+export function erpQuotation(q: ServerQuotation): Quotation {
+  const customer = q.customer ? { ...q.customer, id: q.customer.id ?? '' } : null;
+  const asSale = erpSale({
+    id: q.id, number: q.number, date: q.date || q.createdAt, customer,
+    items: q.items.map((i) => ({ ...i, quantityReturned: 0, serialNumbers: [] })),
+    subtotal: q.subtotal, itemDiscountTotal: q.itemDiscountTotal, invoiceDiscount: q.invoiceDiscount, taxableAmount: q.taxableAmount,
+    cgstAmount: q.cgstAmount, sgstAmount: q.sgstAmount, igstAmount: q.igstAmount, gstAmount: q.gstAmount, grandTotal: q.grandTotal,
+    amountPaid: 0, amountDue: 0, payments: [], customerPo: q.customerPo, transport: null, shipTo: null,
+  }, 'erp', q.preparedBy);
+  return {
+    id: `erp-${q.id}`, number: q.number, createdAt: q.date || q.createdAt, userId: '', userName: q.preparedBy ?? 'ERP',
+    customer,
+    totals: asSale.totals,
+    validUntil: (q.validUntil || (q.date || q.createdAt)).slice(0, 10),
+    notes: q.notes,
+    status: q.status === 'converted' ? 'converted' : 'open',
+    sync: 'synced', serverId: q.id, serverNumber: q.number,
+    origin: 'erp', erpStatus: q.status, customerPo: q.customerPo,
   };
 }
 

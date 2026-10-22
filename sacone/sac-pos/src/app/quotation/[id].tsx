@@ -82,9 +82,10 @@ export default function QuotationDetail() {
           <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ marginTop: space.sm }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize, number))} />
         </Card>
 
-        <SectionTitle right={<DocSyncBadge doc={quote} />}>Quotation {quote.number}</SectionTitle>
+        <SectionTitle right={quote.origin ? null : <DocSyncBadge doc={quote} />}>Quotation {quote.number}</SectionTitle>
         {quote.syncError ? <Banner tone="danger" title="ERP could not save this quotation" messages={[quote.syncError]} /> : null}
-        {quote.status === 'converted' ? <Banner tone="success" messages={['Converted to a sale on this phone.']} /> : null}
+        {quote.origin ? <Banner tone="info" messages={[`Made in SACONE ERP${quote.erpStatus ? ` · ${quote.erpStatus}` : ''}. Converting it here bills it on this terminal and marks it converted in the ERP.`]} /> : null}
+        {quote.status === 'converted' ? <Banner tone="success" messages={[quote.origin ? 'Already converted to a sale.' : 'Converted to a sale on this phone.']} /> : null}
         {quote.status === 'open' && expired ? <Banner tone="warning" messages={['This quotation has expired.']} /> : null}
 
         <Card>

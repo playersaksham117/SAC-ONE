@@ -115,7 +115,8 @@ export default function SaleDetail() {
           ) : null}
         </Card>
 
-        <SectionTitle right={<DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>
+        <SectionTitle right={sale.origin ? null : <DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>
+        {sale.origin ? <Banner tone="info" messages={[sale.origin === 'erp' ? 'Made in SACONE ERP.' : 'Made on another SAC-POS terminal.']} /> : null}
         {sale.syncError ? <Banner tone="danger" title="ERP could not post this bill" messages={[sale.syncError, 'A manager can fix and retry it in ERP → POS Devices & Sync → Sync inbox.']} /> : null}
         {sale.syncWarnings?.length ? <Banner tone="warning" messages={sale.syncWarnings} /> : null}
 
