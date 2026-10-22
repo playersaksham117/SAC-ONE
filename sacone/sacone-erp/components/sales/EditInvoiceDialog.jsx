@@ -56,6 +56,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
             productId: i.productId,
             name: i.productName || i.name,
             sku: i.sku,
+            hsnCode: i.hsnCode || '',
             quantity: i.quantity,
             unitPrice: i.unitPrice,
             discountAmount: i.discountAmount || 0,
@@ -87,6 +88,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
     invoiceDiscount: Number(form.invoiceDiscount || 0),
     items: form.items.map((i) => ({
       productId: i.productId,
+      hsnCode: String(i.hsnCode || '').trim() || undefined,
       quantity: Number(i.quantity),
       unitPrice: Number(i.unitPrice),
       discountAmount: Number(i.discountAmount || 0),
@@ -109,7 +111,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const addItem = () => {
     const p = products.find((x) => x.id === pick);
     if (!p) return;
-    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0, serials: '' }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, hsnCode: p.hsnCode || '', quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0, serials: '' }] }));
     setPick('');
   };
 
@@ -187,6 +189,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2 w-28">HSN / SAC</th>
                   <th className="px-3 py-2 w-24">Qty</th>
                   <th className="px-3 py-2 w-32">Rate</th>
                   <th className="px-3 py-2 w-28">Discount ₹</th>
@@ -200,6 +203,17 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
                       {it.name}<div className="text-xs text-slate-400">{it.sku}</div>
                       <textarea className="input-field mt-1 !min-h-0 font-mono text-xs" rows={1} placeholder="Serial no(s), one per line"
                         value={it.serials} onChange={(e) => setItem(idx, { serials: e.target.value })} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        className={`input-field font-mono ${it.hsnCode && !/^\d{2,8}$/.test(String(it.hsnCode).trim()) ? 'border-red-400' : ''}`}
+                        inputMode="numeric"
+                        maxLength={8}
+                        placeholder="HSN"
+                        aria-label={`HSN / SAC for ${it.name}`}
+                        value={it.hsnCode}
+                        onChange={(e) => setItem(idx, { hsnCode: e.target.value.replace(/\D/g, '') })}
+                      />
                     </td>
                     <td className="px-3 py-2"><input type="number" min="0" step="any" className="input-field" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} /></td>
                     <td className="px-3 py-2"><input type="number" min="0" step="0.01" className="input-field" value={it.unitPrice} onChange={(e) => setItem(idx, { unitPrice: e.target.value })} /></td>

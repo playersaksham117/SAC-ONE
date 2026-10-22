@@ -49,6 +49,17 @@ function round2(n) {
  * Line: (unitPrice * qty) - discount -> taxable; GST on taxable; total = taxable + GST.
  * Invoice discount is spread proportionally across line taxables.
  */
+/**
+ * HSN / SAC code for a bill line: the one given for this line (Edit bill lets the admin correct
+ * it), else the product's. 2–8 digits.
+ */
+function lineHsn(given, product) {
+  const code = String(given ?? '').replace(/\s/g, '');
+  if (!code) return product.hsnCode;
+  if (!/^\d{2,8}$/.test(code)) throw new AppError(`HSN / SAC for ${product.name} must be 2 to 8 digits`, 400, 'BAD_HSN');
+  return code;
+}
+
 export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStateCode = null, customerStateCode = null } = {}) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     throw new AppError('Cart must contain at least one item', 400);
@@ -365,7 +376,7 @@ export class PosService {
         productId: product.id,
         productName: product.name,
         sku: product.sku,
-        hsnCode: product.hsnCode,
+        hsnCode: lineHsn(item.hsnCode, product),
         quantity: item.quantity,
         unitPrice: item.unitPrice != null ? item.unitPrice : product.sellingPrice,
         discountAmount: item.discountAmount || 0,
