@@ -6,6 +6,7 @@ import { documentLinkService } from '../services/document-links.js';
 import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
 import { priceRealisationService } from '../services/price-realisation.js';
+import { customerInvoiceService } from '../services/customer-invoices.js';
 import { partyStatementService } from '../services/party-statements.js';
 import { warrantyService } from '../services/warranty.js';
 
@@ -52,6 +53,18 @@ customerRouter.get('/:id/sales', asyncHandler(async (req, res) => {
 
 customerRouter.get('/:id/invoices', asyncHandler(async (req, res) => {
   sendSuccess(res, customerService.getInvoiceHistory(req.params.id, req.query, req.actor));
+}));
+
+// Customer screen: invoices with balance left, payments with the invoice balance after each,
+// and a plain history of what happened to the invoices (the ledger stays on /statement).
+customerRouter.get('/:id/invoice-balances', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.invoices(req.params.id, req.query, req.actor));
+}));
+customerRouter.get('/:id/payment-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.payments(req.params.id, req.actor));
+}));
+customerRouter.get('/:id/invoice-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.history(req.params.id, req.actor));
 }));
 
 customerRouter.get('/:id/payments', asyncHandler(async (req, res) => {

@@ -12,6 +12,7 @@ import PartyStatementView from '../../../../components/parties/PartyStatementVie
 import PartyCsvImport from '../../../../components/parties/PartyCsvImport';
 import CustomerActivity from '../../../../components/crm/CustomerActivity';
 import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
+import { CustomerInvoices, CustomerPayments, CustomerSalesHistory } from '../../../../components/customers/CustomerInvoicePanels';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -226,12 +227,6 @@ export default function PartiesPage() {
       if (tab === 'customers') {
         if (kind === 'summary') {
           setSummary(await apiRequest(`/api/customers/${selected.id}/summary`));
-        } else if (kind === 'sales' || kind === 'invoices' || kind === 'returns') {
-          const data = await apiRequest(`/api/customers/${selected.id}/sales`);
-          setHistory(data.items || []);
-        } else if (kind === 'payments') {
-          const data = await apiRequest(`/api/customers/${selected.id}/payments`);
-          setHistory(data.items || []);
         } else if (kind === 'statement') {
           setStatement(await apiRequest(`/api/customers/${selected.id}/statement`));
         }
@@ -574,7 +569,7 @@ export default function PartiesPage() {
 
               <div className="mb-3 flex flex-wrap gap-1">
                   {(tab === 'customers'
-                    ? [['summary', 'Summary'], ...(checkPermission('crm.activities.view') ? [['activity', 'Activity']] : []), ['sales', 'Sales History'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
+                    ? [['summary', 'Summary'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['sales', 'Sales History'], ['returns', 'Returns'], ['statement', 'Ledger'], ...(checkPermission('crm.activities.view') ? [['activity', 'Activity']] : [])]
                     : [['summary', 'Summary'], ['purchases', 'Purchase History'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
                   ).map(([id, label]) => (
                   <button
@@ -596,6 +591,10 @@ export default function PartiesPage() {
               )}
 
               {detailTab === 'activity' && tab === 'customers' && <CustomerActivity customerId={selected.id} />}
+              {tab === 'customers' && detailTab === 'invoices' && <CustomerInvoices customerId={selected.id} canEdit={isAdmin} onEdit={setEditSaleId} />}
+              {tab === 'customers' && detailTab === 'payments' && <CustomerPayments customerId={selected.id} />}
+              {tab === 'customers' && detailTab === 'sales' && <CustomerSalesHistory customerId={selected.id} />}
+              {tab === 'customers' && detailTab === 'returns' && <CustomerSalesHistory customerId={selected.id} only={['returned']} />}
 
               {detailTab === 'summary' && summary && (
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -627,7 +626,7 @@ export default function PartiesPage() {
                 </div>
               )}
 
-              {(detailTab === 'sales' || detailTab === 'invoices' || detailTab === 'purchases' || detailTab === 'payments') && detailTab !== 'statement' && (
+              {tab === 'suppliers' && (detailTab === 'purchases' || detailTab === 'payments') && (
                 <div className="max-h-96 overflow-auto">
                   <table className="min-w-full text-xs">
                     <thead className="bg-slate-50 text-left uppercase text-slate-500">
