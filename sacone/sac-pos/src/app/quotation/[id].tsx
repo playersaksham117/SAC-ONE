@@ -1,3 +1,4 @@
+import { withBuyerAddress } from '../../store/catalog';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -38,7 +39,7 @@ export default function QuotationDetail() {
   const t = quote.totals;
   const number = quote.serverNumber ?? quote.number;
   const expired = new Date(`${quote.validUntil}T23:59:59`).getTime() < Date.now();
-  const html = (size: PaperSize) => billHtml(doc, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
+  const html = (size: PaperSize) => billHtml(withBuyerAddress(doc), info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
   };

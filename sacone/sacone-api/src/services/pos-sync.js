@@ -123,7 +123,7 @@ function phoneSale(s) {
     id: s.id,
     number: s.invoiceNumber,
     date: s.createdAt,
-    customer: c ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c) } : null,
+    customer: c ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c), address: c.address || null, city: c.city || null, state: c.state || null } : null,
     items: (s.items || []).map((i) => ({
       productId: i.productId, name: i.productName, sku: i.sku, hsn: i.hsnCode || null, unit: i.unit || 'pcs',
       quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, gstRate: i.gstPercentage,

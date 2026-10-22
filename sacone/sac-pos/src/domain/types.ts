@@ -124,7 +124,7 @@ export interface Sale extends SyncMeta {
   createdAt: string;
   userId: string;
   userName: string;
-  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode'> | null;
+  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode' | 'address' | 'city' | 'state'> | null;
   totals: CartTotals;
   payments: Payment[];
   amountPaid: number;
@@ -160,7 +160,7 @@ export interface Quotation extends SyncMeta {
   createdAt: string;
   userId: string;
   userName: string;
-  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode'> | null;
+  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode' | 'address' | 'city' | 'state'> | null;
   totals: CartTotals;
   validUntil: string; // YYYY-MM-DD
   notes?: string | null;

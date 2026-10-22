@@ -7,7 +7,7 @@ export interface ServerSale {
   id: string;
   number: string;
   date: string;
-  customer: { id: string; name: string; phone: string | null; gstin: string | null; gstStateCode: string | null } | null;
+  customer: { id: string; name: string; phone: string | null; gstin: string | null; gstStateCode: string | null; address?: string | null; city?: string | null; state?: string | null } | null;
   items: {
     productId: string; name: string; sku: string; hsn: string | null; unit: string;
     quantity: number; unitPrice: number; discountAmount: number; gstRate: number;

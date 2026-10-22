@@ -114,7 +114,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   ${validRow(sale)}
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
-  ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
+  ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${buyerAddress(sale).map((x) => `<br>${esc(x)}`).join('')}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
   ${sale.shipTo ? `<tr><td>Ship to</td><td class="r">${shipToText(sale).map(esc).join('<br>')}</td></tr>` : ''}
   ${transportRows(sale).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}
   </table><hr>
@@ -195,7 +195,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   <div class="party">
     <div class="box"><div class="label">Bill to</div>
       ${sale.customer
-    ? `<div class="b">${esc(sale.customer.name)}</div>${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
+    ? `<div class="b">${esc(sale.customer.name)}</div>${buyerAddress(sale).map((x) => `<div>${esc(x)}</div>`).join('')}${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
     : '<div class="b">Walk-in customer</div>'}
     </div>
     ${sale.shipTo ? `<div class="box"><div class="label">Ship to</div>${shipToText(sale).map((x, i) => `<div${i ? '' : ' class="b"'}>${esc(x)}</div>`).join('')}</div>` : ''}
@@ -319,6 +319,13 @@ function transportRows(sale: Sale): [string, string][] {
     ...(t.ewayBillNumber ? [['E-way bill', t.ewayBillNumber] as [string, string]] : []),
   ];
 }
+/** The buyer's address lines for "Bill to" (kept on the bill when it was made). */
+const buyerAddress = (sale: Sale): string[] => {
+  const c = sale.customer;
+  if (!c) return [];
+  return [c.address, [c.city, c.state].filter(Boolean).join(', ')].map((x) => String(x || '').trim()).filter(Boolean);
+};
+
 const shipToText = (sale: Sale) => {
   const st = sale.shipTo;
   return st ? [st.name, st.address, [st.city, st.state].filter(Boolean).join(', '), st.gstin ? `GSTIN ${st.gstin}` : '', st.phone].filter(Boolean) : [];
@@ -354,6 +361,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const party = (label: string) => `
     <div class="plabel">${esc(label)}</div>
     <div class="pname">${esc(cust?.name || 'CASH')}</div>
+    ${buyerAddress(sale).map((x) => `<div class="pline">${esc(x)}</div>`).join('')}
     ${cust?.phone ? `<div class="pline">Mobile: ${esc(cust.phone)}</div>` : ''}
     ${cust?.gstin ? `<div class="pline">GSTIN: ${esc(cust.gstin)}</div>` : ''}
     <div class="pstate"><span>State : ${esc(GST_STATES[custCode] || '')}</span><span>State Code : ${esc(custCode)}</span></div>`;

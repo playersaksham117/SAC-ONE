@@ -58,6 +58,15 @@ export function mapServerProduct(p: ServerProduct): Product {
   };
 }
 
+/** A bill / quotation with its buyer's address filled from the customer list when the bill has none. */
+export function withBuyerAddress<T extends { customer: { id: string; address?: string | null; city?: string | null; state?: string | null } | null }>(doc: T): T {
+  const c = doc.customer;
+  if (!c || c.address || c.city) return doc;
+  const known = useCatalog.getState().customers[c.id];
+  if (!known || !(known.address || known.city)) return doc;
+  return { ...doc, customer: { ...c, address: known.address ?? null, city: known.city ?? null, state: known.state ?? null } };
+}
+
 export function mapServerCustomer(c: ServerCustomer): Customer {
   return {
     id: c.uuid,
