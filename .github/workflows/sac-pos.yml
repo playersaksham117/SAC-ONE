@@ -38,13 +38,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: sacone/sac-pos/package-lock.json
+          cache-dependency-path: |
+            sacone/sac-pos/package-lock.json
+            sacone/sacone-api/package-lock.json
       - run: npm ci
+      # tests/domain.test.ts checks the phone's bill maths against the server's (sacone-api/src/services/pos.js)
+      - name: Install server packages for the shared-maths test
+        working-directory: sacone/sacone-api
+        run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p .
       - run: npx vitest run
 
@@ -75,12 +81,12 @@ jobs:
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.token.outputs.ok == 'true'
         with:
           fetch-depth: 20
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.token.outputs.ok == 'true'
         with:
           node-version: 22
