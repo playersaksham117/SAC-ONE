@@ -16,13 +16,26 @@ export function transportFrom(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const lrDate = clean(pick(raw, 'lrDate', 'lr_date'), 10);
   if (lrDate && !/^\d{4}-\d{2}-\d{2}$/.test(lrDate)) throw new AppError('LR / GR date must be a date', 400);
+  // e-way bill: approximate road distance, transporter's GSTIN / TRANSIN, delivery pincode, EWB date
+  const distance = clean(pick(raw, 'distanceKm', 'distance_km'), 6);
+  if (distance && !(/^\d+$/.test(distance) && Number(distance) <= 4000)) throw new AppError('Distance must be whole kilometres (up to 4000)', 400);
+  const transporterId = clean(pick(raw, 'transporterId', 'transporter_id'), 15).toUpperCase().replace(/\s/g, '');
+  if (transporterId && !/^[0-9A-Z]{15}$/.test(transporterId)) throw new AppError('Transporter ID must be the 15-character GSTIN / TRANSIN', 400);
+  const deliveryPincode = clean(pick(raw, 'deliveryPincode', 'delivery_pincode'), 6);
+  if (deliveryPincode && !/^[1-9]\d{5}$/.test(deliveryPincode)) throw new AppError('Delivery pincode must be 6 digits', 400);
+  const ewayBillDate = clean(pick(raw, 'ewayBillDate', 'eway_bill_date'), 10);
+  if (ewayBillDate && !/^\d{4}-\d{2}-\d{2}$/.test(ewayBillDate)) throw new AppError('E-way bill date must be a date', 400);
   return compact({
     mode: clean(pick(raw, 'mode'), 30),
     transporter: clean(pick(raw, 'transporter', 'transporter_name'), 80),
-    vehicleNumber: clean(pick(raw, 'vehicleNumber', 'vehicle_number'), 20).toUpperCase(),
+    transporterId,
+    vehicleNumber: clean(pick(raw, 'vehicleNumber', 'vehicle_number'), 20).toUpperCase().replace(/[\s-]/g, ''),
     lrNumber: clean(pick(raw, 'lrNumber', 'lr_number'), 40),
     lrDate,
+    distanceKm: distance ? Number(distance) : '',
+    deliveryPincode,
     ewayBillNumber: clean(pick(raw, 'ewayBillNumber', 'eway_bill_number'), 20),
+    ewayBillDate,
   });
 }
 

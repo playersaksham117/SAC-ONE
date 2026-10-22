@@ -7,6 +7,7 @@ import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
 import { priceRealisationService } from '../services/price-realisation.js';
 import { saleProfitService } from '../services/sale-profit.js';
+import { ewayBillService } from '../services/eway-bills.js';
 import { customerInvoiceService } from '../services/customer-invoices.js';
 import { supplierBillService } from '../services/supplier-bills.js';
 import { partyStatementService } from '../services/party-statements.js';
@@ -232,6 +233,16 @@ posRouter.post('/checkout', asyncHandler(async (req, res) => {
 // Every invoice line against the product's base selling price (what sold above it, and by how much).
 posRouter.get('/reports/price-realisation', asyncHandler(async (req, res) => {
   sendSuccess(res, priceRealisationService.report(req.query, req.actor));
+}));
+/** E-way bills: invoices above ₹50,000, their missing details, and the portal's bulk JSON. */
+posRouter.get('/eway-bills', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.list(req.query, req.actor));
+}));
+posRouter.put('/eway-bills/:saleId', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.update(req.params.saleId, req.body || {}, req.actor));
+}));
+posRouter.post('/eway-bills/export', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.exportJson(req.body || {}, req.actor));
 }));
 posRouter.get('/reports/sale-profit', asyncHandler(async (req, res) => {
   sendSuccess(res, saleProfitService.report(req.query, req.actor));

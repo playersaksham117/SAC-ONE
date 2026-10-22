@@ -6,6 +6,7 @@ import SalesInvoices from '../../../../components/sales/SalesInvoices';
 import SalesQuotations from '../../../../components/sales/SalesQuotations';
 import SoldAbovePrice from '../../../../components/sales/SoldAbovePrice';
 import SaleProfit from '../../../../components/sales/SaleProfit';
+import EwayBills from '../../../../components/sales/EwayBills';
 import PageHeader from '../../../../components/ui';
 
 export default function Page() {
@@ -19,6 +20,7 @@ export default function Page() {
     ...(canQuotes ? [['quotations', 'Quotations']] : []),
     ...(canSales ? [['above', 'Sold Above Price']] : []),
     ...(canProfit ? [['profit', 'Profit / Loss']] : []),
+    ...(canSales ? [['eway', 'E-way Bills']] : []),
   ];
 
   // Open a tab straight from a link: /operations/sales?tab=above
@@ -48,7 +50,7 @@ export default function Page() {
           <PageHeader title="Quotations" description="Quotations from SAC-POS phones (Sale / Quotation toggle). Selling one on the phone marks it converted." />
           <SalesQuotations />
         </>
-      ) : tab === 'above' && canSales ? <SoldAbovePrice /> : tab === 'profit' && canProfit ? <SaleProfit /> : <SalesInvoices />}
+      ) : tab === 'above' && canSales ? <SoldAbovePrice /> : tab === 'profit' && canProfit ? <SaleProfit /> : tab === 'eway' && canSales ? <EwayBills /> : <SalesInvoices />}
     </RequirePermission>
   );
 }
