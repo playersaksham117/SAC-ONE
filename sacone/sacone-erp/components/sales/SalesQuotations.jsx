@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { useLiveRefresh } from '../../lib/live';
-import { openDocumentPrint } from '../../lib/document-share';
+import { documentHtml, money as moneyFmt, quotationDocument } from '../../lib/bill-document';
+import DocumentDialog from '../documents/DocumentDialog';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { Alert, LoadingState } from '../ui';
 import { EmptyPanel } from '../module-ui';
@@ -55,9 +56,7 @@ export default function SalesQuotations() {
   useLiveRefresh(() => load(true), { tables: ['pos_quotations'] });
 
   const rows = data.items || [];
-  const print = async (q) => {
-    try { await openDocumentPrint(q.id, apiRequest); } catch (e) { setError(e.message); }
-  };
+  const [openId, setOpenId] = useState(null);
 
   return (
     <div className="space-y-4">
@@ -103,7 +102,7 @@ export default function SalesQuotations() {
                   </td>
                   <td className="px-4 py-3 text-right font-semibold">{money(q.grandTotal)}</td>
                   <td className="px-4 py-3 text-right">
-                    <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => print(q)}>Print</button>
+                    <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(q.id)}>Print / Share</button>
                   </td>
                 </tr>
               ))}
@@ -111,6 +110,31 @@ export default function SalesQuotations() {
           </table>
         </div>
       )}
+      {openId && <DocumentDialog title="Quotation" documentLabel="quotation" load={() => loadQuotation(openId)} onClose={() => setOpenId(null)} />}
     </div>
   );
+}
+
+async function loadQuotation(id) {
+  const [quote, company, invoice] = await Promise.all([
+    apiRequest(`/api/pos/quotations/${id}`),
+    apiRequest('/api/company').catch(() => null),
+    apiRequest('/api/settings/invoice').catch(() => ({})),
+  ]);
+  const model = quotationDocument(quote);
+  return {
+    summary: [
+      ['Quotation', quote.quotationNumber],
+      ['Date', new Date(quote.quotationDate || quote.createdAt).toLocaleDateString('en-IN')],
+      ['Customer', quote.customerSnapshot?.name || 'Walk-in'],
+      ...(quote.validUntil ? [['Valid until', new Date(quote.validUntil).toLocaleDateString('en-IN')]] : []),
+      ...(quote.customerPoNumber ? [['Customer PO', quote.customerPoNumber]] : []),
+      ['Total', moneyFmt(quote.grandTotal)],
+    ],
+    html: (size, layout) => documentHtml(model, company, size, { layout, invoice }),
+    defaultLayout: invoice.layout,
+    items: quote.items,
+    csvName: quote.quotationNumber,
+    share: { number: quote.quotationNumber, amount: quote.grandTotal, label: 'Quotation' },
+  };
 }
