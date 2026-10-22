@@ -54,7 +54,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-font",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": false
