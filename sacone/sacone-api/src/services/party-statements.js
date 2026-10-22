@@ -98,7 +98,7 @@ export class PartyStatementService {
       SELECT p.id, p.amount, p.method, p.created_at as txn_date, p.reference, s.invoice_number, s.id as sale_id
       FROM pos_payments p
       INNER JOIN pos_sales s ON s.id = p.sale_id
-      WHERE s.customer_id = ? AND p.method != 'credit'
+      WHERE s.customer_id = ? AND p.method != 'credit' AND s.status != 'voided'
       ORDER BY p.created_at ASC
     `).all(customerId);
     for (const p of posPays) {

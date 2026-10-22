@@ -7,6 +7,7 @@ import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
 import { priceRealisationService } from '../services/price-realisation.js';
 import { customerInvoiceService } from '../services/customer-invoices.js';
+import { supplierBillService } from '../services/supplier-bills.js';
 import { partyStatementService } from '../services/party-statements.js';
 import { warrantyService } from '../services/warranty.js';
 
@@ -127,6 +128,18 @@ supplierRouter.get('/:id/summary', asyncHandler(async (req, res) => {
 
 supplierRouter.get('/:id/purchases', asyncHandler(async (req, res) => {
   sendSuccess(res, supplierService.getPurchaseHistory(req.params.id, req.query, req.actor));
+}));
+
+// Supplier screen: bills with balance left, payments with the bill balance after each, and a plain
+// history of what happened to the bills (the ledger stays on /statement).
+supplierRouter.get('/:id/bill-balances', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.bills(req.params.id, req.query, req.actor));
+}));
+supplierRouter.get('/:id/payment-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.payments(req.params.id, req.actor));
+}));
+supplierRouter.get('/:id/bill-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.history(req.params.id, req.actor));
 }));
 
 supplierRouter.get('/:id/payments', asyncHandler(async (req, res) => {

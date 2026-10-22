@@ -233,12 +233,6 @@ export default function PartiesPage() {
       } else {
         if (kind === 'summary') {
           setSummary(await apiRequest(`/api/suppliers/${selected.id}/summary`));
-        } else if (kind === 'purchases') {
-          const data = await apiRequest(`/api/suppliers/${selected.id}/purchases`);
-          setHistory(data.items || []);
-        } else if (kind === 'payments') {
-          const data = await apiRequest(`/api/suppliers/${selected.id}/payments`);
-          setHistory(data.items || []);
         } else if (kind === 'statement') {
           setStatement(await apiRequest(`/api/suppliers/${selected.id}/statement`));
         }
@@ -570,7 +564,7 @@ export default function PartiesPage() {
               <div className="mb-3 flex flex-wrap gap-1">
                   {(tab === 'customers'
                     ? [['summary', 'Summary'], ['invoices', 'Invoices'], ['payments', 'Payments'], ['sales', 'Sales History'], ['returns', 'Returns'], ['statement', 'Ledger'], ...(checkPermission('crm.activities.view') ? [['activity', 'Activity']] : [])]
-                    : [['summary', 'Summary'], ['purchases', 'Purchase History'], ['payments', 'Payments'], ['statement', 'Ledger'], ['returns', 'Returns']]
+                    : [['summary', 'Summary'], ['bills', 'Bills'], ['payments', 'Payments'], ['purchases', 'Purchase History'], ['returns', 'Returns'], ['statement', 'Ledger']]
                   ).map(([id, label]) => (
                   <button
                     key={id}
@@ -595,6 +589,10 @@ export default function PartiesPage() {
               {tab === 'customers' && detailTab === 'payments' && <CustomerPayments customerId={selected.id} />}
               {tab === 'customers' && detailTab === 'sales' && <CustomerSalesHistory customerId={selected.id} />}
               {tab === 'customers' && detailTab === 'returns' && <CustomerSalesHistory customerId={selected.id} only={['returned']} />}
+              {tab === 'suppliers' && detailTab === 'bills' && <CustomerInvoices party="supplier" customerId={selected.id} />}
+              {tab === 'suppliers' && detailTab === 'payments' && <CustomerPayments party="supplier" customerId={selected.id} />}
+              {tab === 'suppliers' && detailTab === 'purchases' && <CustomerSalesHistory party="supplier" customerId={selected.id} />}
+              {tab === 'suppliers' && detailTab === 'returns' && <CustomerSalesHistory party="supplier" customerId={selected.id} only={['returned']} />}
 
               {detailTab === 'summary' && summary && (
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -623,85 +621,6 @@ export default function PartiesPage() {
                     <div>{selected.email || ''} {selected.phone ? `· ${selected.phone}` : ''}</div>
                     {selected.notes && <div className="mt-1 italic">{selected.notes}</div>}
                   </div>
-                </div>
-              )}
-
-              {tab === 'suppliers' && (detailTab === 'purchases' || detailTab === 'payments') && (
-                <div className="max-h-96 overflow-auto">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-slate-50 text-left uppercase text-slate-500">
-                      <tr>
-                        {tab === 'customers' && detailTab !== 'payments' && detailTab !== 'returns' && (
-                          <><th className="px-2 py-1">Invoice</th><th className="px-2 py-1">Customer PO</th><th className="px-2 py-1">Total</th><th className="px-2 py-1">Paid</th><th className="px-2 py-1">Due</th><th className="px-2 py-1">Status</th><th className="px-2 py-1">Date</th></>
-                        )}
-                        {tab === 'customers' && detailTab === 'payments' && (
-                          <><th className="px-2 py-1">Invoice</th><th className="px-2 py-1">Method</th><th className="px-2 py-1">Amount</th><th className="px-2 py-1">Date</th></>
-                        )}
-                        {tab === 'suppliers' && detailTab === 'purchases' && (
-                          <><th className="px-2 py-1">Bill</th><th className="px-2 py-1">Total</th><th className="px-2 py-1">Payable</th><th className="px-2 py-1">Status</th></>
-                        )}
-                        {tab === 'suppliers' && detailTab === 'payments' && (
-                          <><th className="px-2 py-1">Method</th><th className="px-2 py-1">Amount</th><th className="px-2 py-1">Ref</th><th className="px-2 py-1">Date</th></>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((row) => (
-                        <tr key={row.id} className="border-t border-slate-100">
-                          {tab === 'customers' && detailTab !== 'payments' && detailTab !== 'returns' && (
-                            <>
-                              <td className="whitespace-nowrap px-2 py-1 font-mono">
-                                {row.invoiceNumber}
-                                {isAdmin && row.status === 'completed' && (
-                                  <button type="button" className="ml-1 text-brand-600 hover:underline" title="Edit bill (admin only)" onClick={() => setEditSaleId(row.id)}>✏</button>
-                                )}
-                              </td>
-                              <td className="px-2 py-1">{row.customerPoNumber ? `${row.customerPoNumber}${row.customerPoDate ? ` · ${new Date(row.customerPoDate).toLocaleDateString('en-IN')}` : ''}` : '—'}</td>
-                              <td className="px-2 py-1">{money(row.grandTotal)}</td>
-                              <td className="px-2 py-1">{money(row.amountPaid)}</td>
-                              <td className="px-2 py-1">{money(row.dueAmount ?? row.amountCredit)}</td>
-                              <td className="px-2 py-1">{row.displayStatus || row.paymentStatus}</td>
-                              <td className="px-2 py-1">{new Date(row.createdAt).toLocaleDateString()}</td>
-                            </>
-                          )}
-                          {tab === 'customers' && detailTab === 'returns' && (
-                            <>
-                              <td className="px-2 py-1 font-mono" colSpan={3}>{row.invoiceNumber || row.returnNumber || row.id}</td>
-                              <td className="px-2 py-1">{money(row.grandTotal || row.amount)}</td>
-                              <td className="px-2 py-1" colSpan={3}>{row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '—'}</td>
-                            </>
-                          )}
-                          {tab === 'customers' && detailTab === 'payments' && (
-                            <>
-                              <td className="px-2 py-1 font-mono">{row.invoiceNumber}</td>
-                              <td className="px-2 py-1 uppercase">{row.method}</td>
-                              <td className="px-2 py-1">{money(row.amount)}</td>
-                              <td className="px-2 py-1">{new Date(row.createdAt).toLocaleDateString()}</td>
-                            </>
-                          )}
-                          {tab === 'suppliers' && detailTab === 'purchases' && (
-                            <>
-                              <td className="px-2 py-1 font-mono">{row.billNumber}</td>
-                              <td className="px-2 py-1">{money(row.grandTotal)}</td>
-                              <td className="px-2 py-1">{money(row.amountPayable)}</td>
-                              <td className="px-2 py-1 capitalize">{row.status}</td>
-                            </>
-                          )}
-                          {tab === 'suppliers' && detailTab === 'payments' && (
-                            <>
-                              <td className="px-2 py-1 uppercase">{row.method}</td>
-                              <td className="px-2 py-1">{money(row.amount)}</td>
-                              <td className="px-2 py-1">{row.reference || row.billNumber || '—'}</td>
-                              <td className="px-2 py-1">{row.paymentDate}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                      {!history.length && (
-                        <tr><td colSpan={4} className="px-2 py-6 text-center text-slate-400">No records</td></tr>
-                      )}
-                    </tbody>
-                  </table>
                 </div>
               )}
 
