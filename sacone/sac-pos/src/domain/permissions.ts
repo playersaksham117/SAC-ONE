@@ -19,6 +19,8 @@ export const P = {
   stockView: 'inventory.stock.view',
   productsView: 'products.products.view',
   deviceAdmin: 'pos.devices.edit',
+  /** Costs are shown to those who may see purchase prices. */
+  costs: 'purchases.bills.view',
 } as const;
 
 export type Capability =
@@ -35,7 +37,8 @@ export type Capability =
   | 'createCustomers'
   | 'collectPayment'
   | 'viewStock'
-  | 'manageDevice';
+  | 'manageDevice'
+  | 'enterCost';
 
 const RULES: Record<Capability, string[]> = {
   useTerminal: [P.terminal],
@@ -52,6 +55,7 @@ const RULES: Record<Capability, string[]> = {
   collectPayment: [P.collectPayment],
   viewStock: [P.stockView, P.productsView],
   manageDevice: [P.deviceAdmin],
+  enterCost: [P.costs],
 };
 
 /** true when the permission list grants ANY of the keys behind the capability. */
@@ -76,4 +80,5 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   collectPayment: 'Collect customer payments',
   viewStock: 'View stock',
   manageDevice: 'Manage device pairing',
+  enterCost: 'Enter job / line costs',
 };

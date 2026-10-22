@@ -279,6 +279,10 @@ posRouter.put('/sales/:id/items/:itemId/serials', asyncHandler(async (req, res) 
 posRouter.put('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.editSale(req.params.id, req.body || {}, req.actor, req));
 }));
+/** One bill line's work description and / or cost to provide it (e.g. entered later from Profit / Loss). */
+posRouter.put('/sales/:id/items/:itemId', asyncHandler(async (req, res) => {
+  sendSuccess(res, posService.setLineDetail(req.params.id, req.params.itemId, req.body || {}, req.actor));
+}));
 posRouter.delete('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.deleteSale(req.params.id, req.body || {}, req.actor, req));
 }));

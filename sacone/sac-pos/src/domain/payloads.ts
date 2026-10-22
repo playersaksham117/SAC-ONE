@@ -41,6 +41,8 @@ export function salePayload(sale: Sale, userId: string) {
       tax_rate: l.gstRate,
       total_amount: l.lineTotal,
       serial_numbers: l.serialNumbers?.length ? l.serialNumbers : undefined,
+      description: l.shortDescription ?? undefined,
+      cost_amount: l.costAmount ?? undefined,
     })),
   };
 }
@@ -69,6 +71,7 @@ export function quotationPayload(q: Quotation, userId: string) {
       unit_price: l.unitPrice,
       discount_amount: l.discountAmount,
       tax_rate: l.gstRate,
+      description: l.shortDescription ?? undefined,
     })),
   };
 }

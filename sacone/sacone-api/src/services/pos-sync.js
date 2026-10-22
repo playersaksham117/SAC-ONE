@@ -555,6 +555,7 @@ export class PosSyncService {
         discountAmount: num(item.discount_amount, 0),
       };
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
+      if (item.description != null) line.description = str(item.description);
       return line;
     });
     const hasCustomer = str(q.customer_uuid) || str(q.customer_phone) || str(q.customer_name);
@@ -613,6 +614,9 @@ export class PosSyncService {
       };
       if (Array.isArray(item.serial_numbers) && item.serial_numbers.length) line.serialNumbers = item.serial_numbers;
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
+      // per-bill work description and the cost of providing the line (services)
+      if (item.description != null) line.description = str(item.description);
+      if (item.cost_amount != null && Number.isFinite(Number(item.cost_amount)) && Number(item.cost_amount) >= 0) line.costAmount = num(item.cost_amount);
       return line;
     });
 

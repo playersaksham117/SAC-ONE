@@ -117,6 +117,7 @@ function mapSaleItem(row) {
     guaranteeValue: row.guarantee_value || null,
     guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     shortDescription: row.short_description || null,
+    costAmount: row.cost_amount ?? null,
     basePrice: row.base_price ?? null,
     movementId: row.movement_id,
     sortOrder: row.sort_order,
@@ -463,6 +464,23 @@ export class PosSaleRepository {
         base_price = (SELECT p.selling_price FROM products p WHERE p.id = pos_sale_items.product_id)
       WHERE sale_id = ?
     `).run(saleId);
+  }
+
+  /**
+   * Per-invoice line details given at billing: the work description (replaces the product's short
+   * description on this bill) and the cost of providing the line. Blank entries are left alone.
+   */
+  setLineDetails(saleId, details) {
+    const db = getDatabase();
+    const desc = db.prepare('UPDATE pos_sale_items SET short_description = ? WHERE id = ? AND sale_id = ?');
+    const cost = db.prepare('UPDATE pos_sale_items SET cost_amount = ? WHERE id = ? AND sale_id = ?');
+    db.transaction(() => {
+      for (const d of details || []) {
+        if (!d?.itemId) continue;
+        if (d.description !== undefined && d.description !== null) desc.run(d.description || null, d.itemId, saleId);
+        if (d.costAmount !== undefined) cost.run(d.costAmount, d.itemId, saleId);
+      }
+    })();
   }
 
   setTerminalRef(id, terminalRef) {

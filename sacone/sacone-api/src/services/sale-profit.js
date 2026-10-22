@@ -12,6 +12,7 @@ import { authService } from './index.js';
  *   avg    — weighted average of the item's purchase-bill rates up to the sale date (default)
  *   last   — the rate on the item's latest purchase bill up to the sale date
  *   master — the purchase price in the Product Master today
+ * A cost typed on the bill line itself (services: what this job cost) always wins.
  * A purchase-bill rate is the bill line's taxable value ÷ quantity. When an item has no purchase
  * bill up to the sale date, the Product Master price is used and the line is marked so.
  */
@@ -35,7 +36,7 @@ function saleLines({ dateFrom, dateTo, search }) {
   return getDatabase().prepare(`
     SELECT si.id, si.sale_id, s.invoice_number, s.created_at, c.name AS customer_name, c.is_walk_in,
            u.full_name AS staff_name, si.product_id, si.product_name, si.sku, si.quantity, si.quantity_returned,
-           si.taxable_amount, p.purchase_price AS master_price, COALESCE(p.item_type, 'goods') AS item_type
+           si.taxable_amount, si.cost_amount, p.purchase_price AS master_price, COALESCE(p.item_type, 'goods') AS item_type
     FROM pos_sale_items si
     JOIN pos_sales s ON s.id = si.sale_id
     LEFT JOIN products p ON p.id = si.product_id
@@ -88,6 +89,9 @@ function upTo(list, date) {
 }
 
 function unitCost(row, basis, history) {
+  if (row.cost_amount != null && Number(row.quantity) > 0) {
+    return { cost: Number(row.cost_amount) / Number(row.quantity), source: 'entered', note: 'cost entered on the bill' };
+  }
   const master = Number(row.master_price || 0);
   if (basis !== 'master') {
     const p = upTo(history.get(row.product_id) || [], String(row.created_at).slice(0, 10));
@@ -98,7 +102,7 @@ function unitCost(row, basis, history) {
     }
   }
   if (master > 0) return { cost: master, source: 'master', note: basis === 'master' ? null : 'no purchase bill yet' };
-  if (row.item_type === 'service') return { cost: 0, source: 'service', note: 'service, no cost' };
+  if (row.item_type === 'service') return { cost: 0, source: 'service', note: 'service cost not entered' };
   return { cost: 0, source: 'none', note: 'no purchase rate' };
 }
 
@@ -148,6 +152,8 @@ export const saleProfitService = {
         unitCost: round2(c.cost),
         costSource: c.source,
         costNote: c.note,
+        isService: r.item_type === 'service',
+        enteredCost: r.cost_amount ?? null,
         revenue,
         cost,
         profit: round2(revenue - cost),
@@ -161,7 +167,7 @@ export const saleProfitService = {
         const revenue = sum(i.lines, 'revenue');
         const cost = sum(i.lines, 'cost');
         const profit = round2(revenue - cost);
-        return { ...i, revenue, cost, profit, marginPercent: pct(profit, revenue), missingCost: i.lines.some((l) => l.costSource === 'none') };
+        return { ...i, revenue, cost, profit, marginPercent: pct(profit, revenue), missingCost: i.lines.some((l) => l.costSource === 'none' || l.costSource === 'service') };
       });
 
     const byProduct = new Map();
@@ -188,6 +194,7 @@ export const saleProfitService = {
         lossInvoices: all.filter((i) => i.profit < 0).length,
         lossAmount: round2(all.filter((i) => i.profit < 0).reduce((s, i) => s + i.profit, 0)),
         missingCostLines: all.flatMap((i) => i.lines).filter((l) => l.costSource === 'none').length,
+        serviceCostMissing: all.flatMap((i) => i.lines).filter((l) => l.costSource === 'service').length,
         masterPriceLines: basis === 'master' ? 0 : all.flatMap((i) => i.lines).filter((l) => l.costSource === 'master').length,
       },
       invoices: shown.slice(0, limit),

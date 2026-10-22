@@ -8,7 +8,8 @@ import { authService } from './index.js';
 /**
  * E-way bills for sales invoices: the JSON the NIC portal (ewaybillgst.gov.in → e-Waybill →
  * Generate Bulk) takes, built from the invoice, the firm, the buyer and the invoice's transport
- * details. Invoices above ₹50,000 are listed with what is still missing; distance, vehicle,
+ * details. Invoices whose goods (taxable + GST, services left out) exceed ₹50,000 are listed with
+ * what is still missing — a services-only bill needs no e-way bill; distance, vehicle,
  * delivery pincode and the e-way bill number the portal returns are kept on the invoice.
  */
 
@@ -247,7 +248,9 @@ export const ewayBillService = {
   list(query = {}, actor) {
     authService.checkPermission(actor.permissions, 'pos.sales.view');
     const { ids, min } = invoicesAbove(query);
-    const all = ids.map((id) => repos.posSales.findById(id)).filter(Boolean).map(describe);
+    // the limit is on the goods moved: services on the bill do not count towards it
+    const all = ids.map((id) => repos.posSales.findById(id)).filter(Boolean).map(describe)
+      .filter((i) => i.consignmentValue > min);
     const show = ['pending', 'ready', 'needs_details', 'generated', 'all'].includes(query.show) ? query.show : 'pending';
     const items = all.filter((i) => (show === 'all' ? true : show === 'pending' ? i.status !== 'generated' : i.status === show));
     return {

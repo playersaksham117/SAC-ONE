@@ -23,7 +23,7 @@ const BASIS_HELP = {
   last: 'Cost = rate on the item’s latest purchase bill up to the sale date.',
   master: 'Cost = purchase price in the Product Master today (each new purchase bill updates it).',
 };
-const SOURCE = { avg: null, last: null, master: 'master', service: 'service', none: 'no cost' };
+const SOURCE = { avg: null, last: null, master: 'master', service: 'service cost not entered', none: 'no cost', entered: null };
 
 const INVOICE_COLUMNS = [
   { label: 'Date', value: (i) => day(i.date) },
@@ -61,6 +61,35 @@ const PRODUCT_COLUMNS = [
   { label: 'Margin %', value: (g) => g.marginPercent },
 ];
 
+/** The cost of one bill line (a service job) typed here; blank clears it back to purchase rates. */
+function LineCost({ saleId, line, onSaved }) {
+  const [value, setValue] = useState(line.enteredCost ?? '');
+  const [state, setState] = useState('');
+  useEffect(() => { setValue(line.enteredCost ?? ''); }, [line.enteredCost]);
+  const save = async () => {
+    const next = value === '' ? null : Number(value);
+    if (next === (line.enteredCost ?? null)) return;
+    if (next !== null && !(next >= 0)) { setState('invalid'); return; }
+    setState('saving');
+    try {
+      await apiRequest(`/api/pos/sales/${saleId}/items/${line.id}`, { method: 'PUT', body: JSON.stringify({ costAmount: next }) });
+      setState('saved');
+      onSaved();
+    } catch (e) {
+      setState(e.message);
+    }
+  };
+  return (
+    <span className="ml-2 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <span className={line.isService && line.enteredCost == null ? 'font-medium text-amber-700' : 'text-slate-400'}>{line.isService ? 'job cost ₹' : 'cost ₹'}</span>
+      <input type="number" min="0" step="0.01" className="input-field !min-h-0 w-24 !py-0.5 text-xs" value={value} placeholder={line.isService ? 'enter' : 'auto'}
+        aria-label={`Cost of ${line.productName} on this bill`} onChange={(e) => setValue(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+      {state === 'saving' && <span className="text-slate-400">…</span>}
+      {state && !['saving', 'saved'].includes(state) && <span className="text-rose-700">{state}</span>}
+    </span>
+  );
+}
+
 function PL({ value }) {
   const tone = value > 0.004 ? 'text-emerald-700' : value < -0.004 ? 'text-rose-700' : 'text-slate-500';
   return <span className={`font-semibold ${tone}`}>{signed(value)}</span>;
@@ -68,7 +97,8 @@ function PL({ value }) {
 
 /** Sales → Profit / Loss: each invoice's sale value against what its items cost to buy, both before GST. */
 export default function SaleProfit() {
-  const { session } = useAuth();
+  const { session, checkPermission } = useAuth();
+  const canSetCost = checkPermission('purchases.bills.view');
   const [filters, setFilters] = useState({ search: '', dateFrom: '', dateTo: '', show: 'all', basis: 'avg' });
   const [applied, setApplied] = useState(filters);
   const [data, setData] = useState(null);
@@ -160,6 +190,11 @@ export default function SaleProfit() {
             <StatCard label="Sales at a loss" value={String(t.lossInvoices)} hint={t.lossInvoices ? `lost ${signed(t.lossAmount)}` : 'none'} tone={t.lossInvoices ? 'warning' : 'default'} compact />
           </div>
 
+          {t.serviceCostMissing > 0 && (
+            <p className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">
+              {t.serviceCostMissing} service line(s) have no job cost yet, so their whole sale value shows as profit. Open the sale (▸) and type what the job cost you — labour, parts, travel, sub-contractor — next to the line.
+            </p>
+          )}
           {(t.missingCostLines > 0 || t.masterPriceLines > 0) && (
             <p className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">
               {t.missingCostLines > 0 && <>{t.missingCostLines} item line(s) have no purchase rate and no Product Master purchase price, so their cost is taken as ₹0 (marked “no cost”). </>}
@@ -212,6 +247,7 @@ export default function SaleProfit() {
                             <span className="text-slate-500"> · {qty(l.quantity)} × {money(l.soldAt)} sold, cost {money(l.unitCost)}</span>
                             {SOURCE[l.costSource] && <span className="ml-1 text-amber-700">({SOURCE[l.costSource]})</span>}
                             {l.costNote && !SOURCE[l.costSource] && <span className="ml-1 text-slate-400">({l.costNote})</span>}
+                            {canSetCost && <LineCost saleId={i.saleId} line={l} onSaved={() => load(true)} />}
                           </td>
                           <td className="px-3 py-1.5 text-right">{money(l.revenue)}</td>
                           <td className="px-3 py-1.5 text-right text-slate-600">{money(l.cost)}</td>
