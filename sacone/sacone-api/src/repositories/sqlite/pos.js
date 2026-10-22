@@ -117,6 +117,7 @@ function mapSaleItem(row) {
     guaranteeValue: row.guarantee_value || null,
     guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     shortDescription: row.short_description || null,
+    basePrice: row.base_price ?? null,
     movementId: row.movement_id,
     sortOrder: row.sort_order,
   };
@@ -447,7 +448,10 @@ export class PosSaleRepository {
       .run(transport ? JSON.stringify(transport) : null, shipTo ? JSON.stringify(shipTo) : null, id);
   }
 
-  /** Copy each line's product warranty / guarantee onto the invoice (kept even if the product changes). */
+  /**
+   * Copy each line's product warranty / guarantee, and its base selling price (for the price
+   * realisation report), onto the invoice: kept even if the product changes later.
+   */
   snapshotPeriods(saleId) {
     getDatabase().prepare(`
       UPDATE pos_sale_items SET
@@ -455,7 +459,8 @@ export class PosSaleRepository {
         warranty_unit = (SELECT p.warranty_unit FROM products p WHERE p.id = pos_sale_items.product_id),
         guarantee_value = (SELECT p.guarantee_value FROM products p WHERE p.id = pos_sale_items.product_id),
         guarantee_unit = (SELECT p.guarantee_unit FROM products p WHERE p.id = pos_sale_items.product_id),
-        short_description = (SELECT p.short_description FROM products p WHERE p.id = pos_sale_items.product_id)
+        short_description = (SELECT p.short_description FROM products p WHERE p.id = pos_sale_items.product_id),
+        base_price = (SELECT p.selling_price FROM products p WHERE p.id = pos_sale_items.product_id)
       WHERE sale_id = ?
     `).run(saleId);
   }

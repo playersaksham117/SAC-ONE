@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.js';
 import { documentLinkService } from '../services/document-links.js';
 import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
+import { priceRealisationService } from '../services/price-realisation.js';
 import { partyStatementService } from '../services/party-statements.js';
 import { warrantyService } from '../services/warranty.js';
 
@@ -199,6 +200,11 @@ posRouter.post('/preview', asyncHandler(async (req, res) => {
 
 posRouter.post('/checkout', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.checkout(req.body, req.actor, req), 201);
+}));
+
+// Every invoice line against the product's base selling price (what sold above it, and by how much).
+posRouter.get('/reports/price-realisation', asyncHandler(async (req, res) => {
+  sendSuccess(res, priceRealisationService.report(req.query, req.actor));
 }));
 
 posRouter.get('/sales', asyncHandler(async (req, res) => {

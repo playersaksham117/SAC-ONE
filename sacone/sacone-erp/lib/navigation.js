@@ -57,6 +57,16 @@ export const ERP_MODULES = [
     placeholder: false,
   },
   {
+    id: 'price-realisation',
+    section: 'operations',
+    label: 'Sold Above Price',
+    description: 'Each item sold vs its base selling price: what sold above it and how much extra',
+    href: '/operations/price-realisation',
+    permission: 'pos.sales.view',
+    icon: '📈',
+    placeholder: false,
+  },
+  {
     id: 'warranty',
     section: 'operations',
     label: 'Warranty Check',
