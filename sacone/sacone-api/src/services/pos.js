@@ -49,6 +49,17 @@ function round2(n) {
  * Line: (unitPrice * qty) - discount -> taxable; GST on taxable; total = taxable + GST.
  * Invoice discount is spread proportionally across line taxables.
  */
+/**
+ * HSN / SAC code for a bill line: the one given for this line (Edit bill lets the admin correct
+ * it), else the product's. 2–8 digits.
+ */
+function lineHsn(given, product) {
+  const code = String(given ?? '').replace(/\s/g, '');
+  if (!code) return product.hsnCode;
+  if (!/^\d{2,8}$/.test(code)) throw new AppError(`HSN / SAC for ${product.name} must be 2 to 8 digits`, 400, 'BAD_HSN');
+  return code;
+}
+
 export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStateCode = null, customerStateCode = null } = {}) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     throw new AppError('Cart must contain at least one item', 400);
@@ -235,6 +246,21 @@ export function invoicePrintSettings({ withImage = true } = {}) {
   };
 }
 
+/** A bill line's own work description and cost (undefined = not given, null cost = clear it). */
+function lineDetailOf(it) {
+  const out = {};
+  if (it?.description != null) out.description = String(it.description).replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (it?.costAmount !== undefined && it?.costAmount !== '') {
+    if (it.costAmount === null) out.costAmount = null;
+    else {
+      const n = Number(it.costAmount);
+      if (!Number.isFinite(n) || n < 0) throw new AppError('Cost must be zero or more', 400);
+      out.costAmount = Math.round(n * 100) / 100;
+    }
+  }
+  return out;
+}
+
 export class SettingsService {
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.system_settings.view');
@@ -365,7 +391,7 @@ export class PosService {
         productId: product.id,
         productName: product.name,
         sku: product.sku,
-        hsnCode: product.hsnCode,
+        hsnCode: lineHsn(item.hsnCode, product),
         quantity: item.quantity,
         unitPrice: item.unitPrice != null ? item.unitPrice : product.sellingPrice,
         discountAmount: item.discountAmount || 0,
@@ -649,6 +675,7 @@ export class PosService {
     if (customerPo.number) saleRepo.setCustomerPo(sale.id, customerPo);
     if (transport || shipTo) saleRepo.setDispatch(sale.id, { transport, shipTo });
     saleRepo.snapshotPeriods(sale.id);
+    saleRepo.setLineDetails(sale.id, (data.items || []).map((it, i) => ({ itemId: itemIds[i], ...lineDetailOf(it) })));
     if (data.terminalRef) saleRepo.setTerminalRef(sale.id, data.terminalRef);
     if (options.billDated) saleRepo.restoreOrigin(sale.id, { createdAt: options.completedAt, createdBy: actor.user.id });
     saveSaleSerials(sale.id, lineSerials.map((serials, i) => ({ itemId: itemIds[i], productId: totals.items[i].productId, serials })), actor.user.id);
@@ -796,6 +823,22 @@ export class PosService {
    * <number>-E1 for audit, and the corrected invoice is posted under the same number and date
    * through the normal checkout rules (stock, minimum price, credit limit, commission).
    */
+  /**
+   * Set one line's work description (needs "POS Sales – create") and / or its cost to provide
+   * (needs "Purchase Bills – view", as costs are shown only to those who see purchase prices).
+   */
+  setLineDetail(saleId, itemId, body, actor) {
+    const sale = saleRepo.findById(saleId);
+    if (!sale || sale.status === 'voided') throw new AppError('Invoice not found', 404);
+    if (!sale.items.some((i) => i.id === itemId)) throw new AppError('Line not found on this invoice', 404);
+    const detail = lineDetailOf(body);
+    if (detail.description !== undefined) authService.checkPermission(actor.permissions, 'pos.sales.create');
+    if (detail.costAmount !== undefined) authService.checkPermission(actor.permissions, 'purchases.bills.view');
+    if (!Object.keys(detail).length) throw new AppError('Nothing to change', 400);
+    saleRepo.setLineDetails(saleId, [{ itemId, ...detail }]);
+    return saleRepo.findById(saleId).items.find((i) => i.id === itemId);
+  }
+
   editSale(id, data = {}, actor, req) {
     this.#assertOwner(actor, 'edit');
     const old = this.#editableSale(id, 'edited');
@@ -826,10 +869,20 @@ export class PosService {
       });
       // Serial numbers stay with the edited lines unless the edit sends new ones.
       const oldSerials = new Map((old.items || []).filter((i) => i.serialNumbers?.length).map((i) => [i.productId, i.serialNumbers]));
+      // the work description and cost typed on the bill stay unless the edit changes them
+      const oldLines = new Map((old.items || []).map((i) => [i.productId, i]));
       const created = this.checkout({
         warehouseId: old.warehouseId,
         customerId,
-        items: (data.items || []).map((it) => (it.serialNumbers !== undefined || !oldSerials.has(it.productId) ? it : { ...it, serialNumbers: oldSerials.get(it.productId) })),
+        items: (data.items || []).map((it) => {
+          const prev = oldLines.get(it.productId);
+          const withSerials = it.serialNumbers !== undefined || !oldSerials.has(it.productId) ? it : { ...it, serialNumbers: oldSerials.get(it.productId) };
+          return {
+            ...withSerials,
+            description: it.description !== undefined ? it.description : prev?.shortDescription ?? undefined,
+            costAmount: it.costAmount !== undefined ? it.costAmount : prev?.costAmount ?? undefined,
+          };
+        }),
         invoiceDiscount,
         payments,
         ...(renumber ? {} : { invoiceNumber: old.invoiceNumber }),

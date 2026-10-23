@@ -99,6 +99,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
        width:${size};padding:${narrow ? '2mm' : '3mm'}}
   h1{font-size:${narrow ? 13 : 16}px;margin:0 0 2px;text-align:center} .c{text-align:center} .muted{color:#444;font-size:${narrow ? 9 : 11}px}
   table{width:100%;border-collapse:collapse} td{padding:1px 0;vertical-align:top} .r{text-align:right;white-space:nowrap}
+  .wrap{white-space:normal;word-break:break-word;padding-left:8px} /* long addresses wrap instead of running off the paper */
   .name{padding-top:5px;font-weight:600;word-break:break-word} hr{border:0;border-top:1px dashed #000;margin:6px 0}
   .total td{font-size:${narrow ? 13 : 15}px;font-weight:700;padding-top:3px}
   .upi{text-align:center;font-size:9px;font-weight:700;margin-top:4px} .upi svg{display:block;margin:0 auto 2px}
@@ -114,8 +115,8 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   ${validRow(sale)}
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
-  ${sale.customer ? `<tr><td>Customer</td><td class="r">${esc(sale.customer.name)}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
-  ${sale.shipTo ? `<tr><td>Ship to</td><td class="r">${shipToText(sale).map(esc).join('<br>')}</td></tr>` : ''}
+  ${sale.customer ? `<tr><td>Customer</td><td class="r wrap">${esc(sale.customer.name)}${buyerAddress(sale).map((x) => `<br>${esc(x)}`).join('')}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
+  ${sale.shipTo ? `<tr><td>Ship to</td><td class="r wrap">${shipToText(sale).map(esc).join('<br>')}</td></tr>` : ''}
   ${transportRows(sale).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}
   </table><hr>
   <table>${rows}</table><hr>
@@ -195,7 +196,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   <div class="party">
     <div class="box"><div class="label">Bill to</div>
       ${sale.customer
-    ? `<div class="b">${esc(sale.customer.name)}</div>${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
+    ? `<div class="b">${esc(sale.customer.name)}</div>${buyerAddress(sale).map((x) => `<div>${esc(x)}</div>`).join('')}${sale.customer.phone ? `<div>${esc(sale.customer.phone)}</div>` : ''}${sale.customer.gstin ? `<div>GSTIN ${esc(sale.customer.gstin)}</div>` : ''}`
     : '<div class="b">Walk-in customer</div>'}
     </div>
     ${sale.shipTo ? `<div class="box"><div class="label">Ship to</div>${shipToText(sale).map((x, i) => `<div${i ? '' : ' class="b"'}>${esc(x)}</div>`).join('')}</div>` : ''}
@@ -319,6 +320,13 @@ function transportRows(sale: Sale): [string, string][] {
     ...(t.ewayBillNumber ? [['E-way bill', t.ewayBillNumber] as [string, string]] : []),
   ];
 }
+/** The buyer's address lines for "Bill to" (kept on the bill when it was made). */
+const buyerAddress = (sale: Sale): string[] => {
+  const c = sale.customer;
+  if (!c) return [];
+  return [c.address, [c.city, c.state].filter(Boolean).join(', ')].map((x) => String(x || '').trim()).filter(Boolean);
+};
+
 const shipToText = (sale: Sale) => {
   const st = sale.shipTo;
   return st ? [st.name, st.address, [st.city, st.state].filter(Boolean).join(', '), st.gstin ? `GSTIN ${st.gstin}` : '', st.phone].filter(Boolean) : [];
@@ -354,6 +362,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const party = (label: string) => `
     <div class="plabel">${esc(label)}</div>
     <div class="pname">${esc(cust?.name || 'CASH')}</div>
+    ${buyerAddress(sale).map((x) => `<div class="pline">${esc(x)}</div>`).join('')}
     ${cust?.phone ? `<div class="pline">Mobile: ${esc(cust.phone)}</div>` : ''}
     ${cust?.gstin ? `<div class="pline">GSTIN: ${esc(cust.gstin)}</div>` : ''}
     <div class="pstate"><span>State : ${esc(GST_STATES[custCode] || '')}</span><span>State Code : ${esc(custCode)}</span></div>`;

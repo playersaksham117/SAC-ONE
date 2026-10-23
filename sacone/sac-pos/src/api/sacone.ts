@@ -1,6 +1,6 @@
 import { request } from './client';
 import type { PayBank } from '../domain/upi';
-import type { ServerSaleStatus } from '../domain/serverSale';
+import type { ServerQuotation, ServerSale, ServerSaleStatus } from '../domain/serverSale';
 
 /** Typed calls to SACONE. Auth → ERP session; everything else → device sync key (/api/v1/sync). */
 
@@ -109,7 +109,12 @@ export interface ChangeFeed {
   changed: boolean; seq: number; tables: string[]; reset?: boolean;
 }
 
-const deviceHeaders = (c: DeviceConfig) => ({
+/** A SAC-POS release the shop server holds (built by GitHub Actions). */
+export interface AppRelease {
+  versionName: string; versionCode: number; size: number; sha256: string; notes: string; publishedAt: string; tag: string;
+}
+
+export const deviceHeaders = (c: DeviceConfig) => ({
   'X-API-Key': c.deviceKey,
   'X-Device-Id': c.deviceId,
   'X-App-Version': 'sac-pos/1.0.0',
@@ -138,7 +143,7 @@ export const sync = {
     }),
 
   customers: (c: DeviceConfig, since: string, page: number) =>
-    request<Page & { customers: ServerCustomer[] }>(c.baseUrl, '/api/v1/sync/customers', {
+    request<Page & { customers: ServerCustomer[]; all_total?: number }>(c.baseUrl, '/api/v1/sync/customers', {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
 
@@ -169,6 +174,19 @@ export const sync = {
     request<{ sales: ServerSaleStatus[] }>(c.baseUrl, '/api/v1/sync/sales/current', {
       method: 'POST', body: { refs }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
+
+  /**
+   * Bills and quotations made in the ERP or on other terminals that `userId` may see
+   * (null = not allowed by their ERP role). Last 30 days, plus quotations still open.
+   */
+  documents: (c: DeviceConfig, userId: string) =>
+    request<{ sales: (ServerSale & { source: 'erp' | 'terminal' | 'this_terminal'; phoneRef?: string | null; createdBy: string | null })[] | null; quotations: ServerQuotation[] | null }>(
+      c.baseUrl, '/api/v1/sync/documents', { query: { userId, days: 30 }, headers: deviceHeaders(c), timeoutMs: 60000 },
+    ),
+
+  /** The newest SAC-POS app on the shop server (null when it has none yet). */
+  appLatest: (c: DeviceConfig) =>
+    request<{ latest: AppRelease | null }>(c.baseUrl, '/api/v1/sync/app/latest', { headers: deviceHeaders(c) }),
 
   /** Waits up to `wait` seconds for a catalogue / stock / customer / staff change. */
   changes: (c: DeviceConfig, since: number | undefined, wait = 25) =>

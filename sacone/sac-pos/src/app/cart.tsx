@@ -35,9 +35,12 @@ function NumberInput({ value, onCommit, label, testID }: { value: number; onComm
   );
 }
 
-function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }) {
+function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: boolean; canCost: boolean }) {
   const { setQty, updateLine } = useCart.getState();
   const [open, setOpen] = useState(false);
+  // services start with their details open: the work differs for every customer
+  const [detailsOpen, setDetailsOpen] = useState(line.itemType === 'service');
+  const [descText, setDescText] = useState(line.shortDescription ?? '');
   const [serialOpen, setSerialOpen] = useState(Boolean(line.serialNumbers?.length));
   const [serialText, setSerialText] = useState((line.serialNumbers || []).join('\n'));
   const serialCheck = parseSerials(serialText, line.quantity);
@@ -54,6 +57,8 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
           </Text>
           {line.discountAmount > 0 ? <Badge tone="success" label={`− ${formatMoney(line.discountAmount)} discount`} /> : null}
           {Math.abs(line.unitPrice - line.listPrice) > 0.001 ? <Badge tone="warning" label={`Price changed (list ${formatMoney(line.listPrice)})`} /> : null}
+          {!detailsOpen && line.shortDescription ? <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }} numberOfLines={2}>{line.shortDescription}</Text> : null}
+          {!detailsOpen && canCost && line.costAmount != null ? <Text style={{ color: colors.textFaint, fontSize: font.xs }}>Cost to us {formatMoney(line.costAmount)}</Text> : null}
         </View>
         <Text style={{ fontWeight: '800', fontSize: font.md, color: colors.text }}>{formatMoney(lineGross)}</Text>
       </Row>
@@ -65,6 +70,12 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
             <Text style={{ color: hasWarranty ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>
               Serial no.{line.serialNumbers?.length ? ` (${line.serialNumbers.length})` : ''}
             </Text>
+          </Row>
+        </Pressable>
+        <Pressable onPress={() => setDetailsOpen(!detailsOpen)} hitSlop={8}>
+          <Row gap={4}>
+            <Ionicons name="create-outline" size={16} color={line.itemType === 'service' ? colors.primary : colors.textMuted} />
+            <Text style={{ color: line.itemType === 'service' ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>Details</Text>
           </Row>
         </Pressable>
         {canOverride ? (
@@ -81,6 +92,34 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
           <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} />
           <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} />
         </Row>
+      ) : null}
+      {detailsOpen ? (
+        <View style={{ marginTop: space.sm, gap: space.sm }}>
+          <View>
+            <Text style={{ fontSize: font.xs, color: colors.textMuted, marginBottom: 4, fontWeight: '600' }}>
+              {line.itemType === 'service' ? 'Work done for this customer (prints on the bill)' : 'Description on this bill'}
+            </Text>
+            <TextInput
+              value={descText}
+              onChangeText={setDescText}
+              onBlur={() => updateLine(line.productId, { shortDescription: descText.trim() || null })}
+              placeholder={line.itemType === 'service' ? 'e.g. AC gas refill + coil cleaning, 2 units, Sector 21' : 'Optional'}
+              placeholderTextColor={colors.textFaint}
+              multiline
+              maxLength={500}
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: space.sm, color: colors.text, minHeight: 44 }}
+              testID={`desc-${line.productId}`}
+            />
+          </View>
+          {canCost ? (
+            <NumberInput
+              label={line.itemType === 'service' ? 'Cost to us for this job ₹ (not printed)' : 'Cost to us for this line ₹ (not printed)'}
+              value={line.costAmount ?? 0}
+              onCommit={(v) => updateLine(line.productId, { costAmount: v > 0 ? v : null })}
+              testID={`cost-${line.productId}`}
+            />
+          ) : null}
+        </View>
       ) : null}
       {serialOpen ? (
         <View style={{ marginTop: space.sm }}>
@@ -110,6 +149,7 @@ function LineRow({ line, canOverride }: { line: CartLine; canOverride: boolean }
 export default function Cart() {
   const { totals, customer, lines, invoiceDiscount } = useCartTotals();
   const canOverride = useCan('overridePrice');
+  const canCost = useCan('enterCost');
   const setInvoiceDiscount = useCart((s) => s.setInvoiceDiscount);
   const setCustomer = useCart((s) => s.setCustomer);
   const canQuote = useCan('quote');
@@ -208,7 +248,7 @@ export default function Cart() {
         </Card>
 
         <SectionTitle>Items</SectionTitle>
-        {lines.map((l) => <LineRow key={l.productId} line={l} canOverride={canOverride} />)}
+        {lines.map((l) => <LineRow key={l.productId} line={l} canOverride={canOverride} canCost={canCost} />)}
 
         <SectionTitle>Bill</SectionTitle>
         <Card>

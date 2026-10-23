@@ -117,6 +117,17 @@ export class QuotationRepository {
     `).run(quotationId);
   }
 
+  /** Per-quotation line descriptions (the work quoted for this customer), by line order. */
+  setLineDescriptions(quotationId, descriptions) {
+    const db = getDatabase();
+    const ids = db.prepare('SELECT id FROM pos_quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC').all(quotationId).map((r) => r.id);
+    const set = db.prepare('UPDATE pos_quotation_items SET short_description = ? WHERE id = ?');
+    db.transaction(() => {
+      (descriptions || []).forEach((d, i) => { if (ids[i] && typeof d === 'string') set.run(d || null, ids[i]); });
+    })();
+    return this.findById(quotationId);
+  }
+
   listItems(quotationId) {
     return getDatabase().prepare(`
       SELECT * FROM pos_quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, product_name ASC

@@ -14,6 +14,7 @@ import { syncNow, useSyncStatus } from '../../sync/engine';
 import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { AttendanceCard } from '../../ui/AttendanceCard';
+import { AppUpdateCard } from '../../ui/AppUpdateCard';
 import {
   Badge, Banner, Button, Card, Divider, Field, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, space,
 } from '../../ui/components';
@@ -162,6 +163,8 @@ export default function More() {
             Change roles in SACONE ERP → Administration → Roles and Permissions. Updates reach this phone on the next sync.
           </Text>
         </Card>
+
+        <AppUpdateCard />
 
         <SectionTitle>Device</SectionTitle>
         <Card>

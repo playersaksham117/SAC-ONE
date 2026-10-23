@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { ApiError } from '../api/client';
 import { sync, type DeviceConfig } from '../api/sacone';
 import { customerPayload, paymentPayload, quotationPayload, returnPayload, salePayload } from '../domain/payloads';
+import { erpQuotation, erpSale } from '../domain/serverSale';
+import { checkForUpdate } from '../lib/appUpdate';
 import type { SyncMeta } from '../domain/types';
 import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
@@ -18,6 +20,7 @@ import { useSignStamp } from '../store/signStamp';
  *   2. staff          → refresh RBAC for every profile on this phone; drop disabled users
  *   3. push           → new customers, sales, returns, payments (idempotent on the server)
  *   4. pull           → products + stock, customers (incremental, server-time cursors)
+ *   5. documents      → ERP / other terminals' bills and quotations the signed-in user may see
  */
 
 type Status = 'idle' | 'syncing' | 'offline' | 'error';
@@ -37,6 +40,7 @@ export const useSyncStatus = create<SyncStatusState>(() => ({
 }));
 
 const BATCH = 50;
+const EPOCH_CURSOR = '1970-01-01T00:00:00.000Z';
 let running: Promise<void> | null = null;
 let again = false;
 
@@ -106,6 +110,9 @@ async function runCycle(): Promise<void> {
       cfg = recovered;
     }
 
+    // 1a. a newer SAC-POS on the shop server (offered in More → App update; never blocks the sync)
+    checkForUpdate(cfg).catch(() => undefined);
+
     // 1b. the uploaded UPI QR image, only when the ERP has a new one
     const bank = useDevice.getState().info?.settings?.invoice?.bank;
     const wantVersion = bank?.hasQrImage ? bank.qrImageVersion ?? null : null;
@@ -166,7 +173,7 @@ async function runCycle(): Promise<void> {
 
     // 3c. bills edited or cancelled in the ERP after they synced
     let updatedBills = 0;
-    const syncedRefs = useLedger.getState().sales.filter((s) => s.sync === 'synced').map((s) => s.number);
+    const syncedRefs = useLedger.getState().sales.filter((s) => s.sync === 'synced' && !s.origin).map((s) => s.number);
     try {
       for (let i = 0; i < syncedRefs.length; i += 500) {
         const res = await sync.currentSales(cfg, syncedRefs.slice(i, i + 500));
@@ -190,6 +197,13 @@ async function runCycle(): Promise<void> {
     for (let page = 1; page < 200; page++) {
       const res = await sync.customers(cfg, useCatalog.getState().customerCursor, page);
       customerCursor ??= res.server_time;
+      // The phone holds fewer customers than the ERP (missed while offline / clock skew): pull all again.
+      const held = Object.values(useCatalog.getState().customers).filter((c) => !(c as LocalCustomer).isLocal).length;
+      if (page === 1 && res.all_total != null && held + res.customers.length < res.all_total && useCatalog.getState().customerCursor !== EPOCH_CURSOR) {
+        useCatalog.getState().setCursors({ customerCursor: EPOCH_CURSOR });
+        page = 0;
+        continue;
+      }
       const remap = useCatalog.getState().applyCustomers(res.customers);
       const cartCustomer = useCart.getState().customerId;
       if (cartCustomer && remap[cartCustomer]) useCart.getState().setCustomer(remap[cartCustomer]);
@@ -200,6 +214,19 @@ async function runCycle(): Promise<void> {
       useCatalog.getState().setMinPrices((await sync.minPrices(cfg)).prices);
     } catch (e) {
       if (!(e instanceof ApiError && e.status === 404)) throw e; // older server: no minimum prices
+    }
+    // 5. bills & quotations made in the ERP or on other terminals (by the signed-in user's ERP role)
+    const me = useSession.getState().currentUserId;
+    if (me) {
+      try {
+        const docs = await sync.documents(cfg, me);
+        useLedger.getState().applyErpDocs(
+          docs.sales ? docs.sales.map((s) => ({ ...erpSale(s, s.source === 'erp' ? 'erp' : 'terminal', s.createdBy), phoneRef: s.phoneRef ?? null })) : null,
+          docs.quotations ? docs.quotations.map(erpQuotation) : null,
+        );
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) throw e; // older server: phone documents only
+      }
     }
     useLedger.getState().prune(30);
 

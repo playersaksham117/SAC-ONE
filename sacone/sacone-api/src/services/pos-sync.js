@@ -123,7 +123,7 @@ function phoneSale(s) {
     id: s.id,
     number: s.invoiceNumber,
     date: s.createdAt,
-    customer: c ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c) } : null,
+    customer: c ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c), address: c.address || null, city: c.city || null, state: c.state || null } : null,
     items: (s.items || []).map((i) => ({
       productId: i.productId, name: i.productName, sku: i.sku, hsn: i.hsnCode || null, unit: i.unit || 'pcs',
       quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, gstRate: i.gstPercentage,
@@ -141,6 +141,36 @@ function phoneSale(s) {
   };
 }
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+
+/** An ERP quotation in the shape the phone keeps (same item / total fields as phoneSale). */
+function phoneQuotation(q) {
+  const snap = q.customerSnapshot || {};
+  const c = q.customerId ? customerRepo.findById(q.customerId) : null;
+  return {
+    id: q.id,
+    number: q.quotationNumber,
+    date: q.quotationDate && q.quotationDate.length === 10 ? `${q.quotationDate}T00:00:00.000Z` : (q.quotationDate || q.createdAt),
+    createdAt: q.createdAt,
+    validUntil: q.validUntil || null,
+    status: q.status,
+    preparedBy: q.createdByName || null,
+    notes: q.notes || null,
+    customer: c && !c.isWalkIn
+      ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c) }
+      : (snap.name ? { id: q.customerId || null, name: snap.name, phone: snap.phone || null, gstin: snap.gstNumber || null, gstStateCode: null } : null),
+    customerPo: q.customerPoNumber ? { number: q.customerPoNumber, date: q.customerPoDate || null } : null,
+    items: (q.items || []).map((i) => ({
+      productId: i.productId, name: i.productName, sku: i.sku, hsn: i.hsnCode || null, unit: i.unitAbbreviation || 'pcs',
+      quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, gstRate: i.gstPercentage,
+      taxableAmount: i.taxableAmount, gstAmount: i.gstAmount, lineTotal: i.lineTotal,
+      warranty: period(i.warrantyValue, i.warrantyUnit), guarantee: period(i.guaranteeValue, i.guaranteeUnit),
+      shortDescription: i.shortDescription || null,
+    })),
+    subtotal: q.subtotal, itemDiscountTotal: q.itemDiscountTotal, invoiceDiscount: q.invoiceDiscount,
+    taxableAmount: q.taxableAmount, cgstAmount: q.cgstAmount, sgstAmount: q.sgstAmount, igstAmount: q.igstAmount,
+    gstAmount: q.gstAmount, grandTotal: q.grandTotal,
+  };
+}
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -525,6 +555,7 @@ export class PosSyncService {
         discountAmount: num(item.discount_amount, 0),
       };
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
+      if (item.description != null) line.description = str(item.description);
       return line;
     });
     const hasCustomer = str(q.customer_uuid) || str(q.customer_phone) || str(q.customer_name);
@@ -549,9 +580,11 @@ export class PosSyncService {
   #markQuotationConverted(device, quotationRef, saleId, actor) {
     const ref = str(quotationRef);
     if (!ref) return;
+    // A quotation made on this phone (by its own number), else one made in the ERP and pulled.
     const inbox = inboxRepo.find(device.id, 'quotation', ref);
-    if (inbox?.status !== 'applied' || !inbox.resultId) return;
-    const quote = repos.quotations.findById(inbox.resultId);
+    const quote = inbox?.status === 'applied' && inbox.resultId
+      ? repos.quotations.findById(inbox.resultId)
+      : repos.quotations.findByNumber(ref);
     if (quote && ['draft', 'sent', 'accepted'].includes(quote.status)) {
       repos.quotations.updateStatus(quote.id, 'converted', { convertedSaleId: saleId, updatedBy: actor.user.id });
     }
@@ -581,6 +614,9 @@ export class PosSyncService {
       };
       if (Array.isArray(item.serial_numbers) && item.serial_numbers.length) line.serialNumbers = item.serial_numbers;
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
+      // per-bill work description and the cost of providing the line (services)
+      if (item.description != null) line.description = str(item.description);
+      if (item.cost_amount != null && Number.isFinite(Number(item.cost_amount)) && Number(item.cost_amount) >= 0) line.costAmount = num(item.cost_amount);
       return line;
     });
 
@@ -935,6 +971,8 @@ export class PosSyncService {
     const { items, total } = catalogRepo.findChangedCustomers(since, { limit, offset });
     deviceRepo.touch(device.id, { kind: 'pull' });
     return {
+      // Every registered customer of the firm: a phone holding fewer pulls them all again.
+      all_total: catalogRepo.countCustomers(),
       customers: items.map((c) => ({
         uuid: c.id,
         code: c.code,
@@ -958,6 +996,56 @@ export class PosSyncService {
       has_more: offset + items.length < total,
       server_time: serverTime,
     };
+  }
+
+  /**
+   * Bills and quotations made in the ERP or on other terminals of this firm, for the signed-in
+   * staff member: bills need "POS Sales – view", quotations "POS Quotations – view". The phone
+   * replaces its copies with each answer, so a document dropped here disappears there too.
+   */
+  pullDocuments(device, query) {
+    const userId = str(query.userId);
+    const staff = userId ? this.staffStatus(device, { ids: userId }).staff[0] : null;
+    const perms = staff?.isActive ? staff.permissions : [];
+    const has = (key) => perms.includes('*') || perms.includes(key);
+    const days = Math.min(Math.max(parseInt(query.days, 10) || 30, 1), 90);
+    const from = new Date(Date.now() - days * 86400000).toISOString();
+    const db = getDatabase();
+    deviceRepo.touch(device.id, { kind: 'pull' });
+
+    // This terminal's own bills come too, tagged with the phone's bill number (phoneRef): a phone
+    // that still has the bill skips it, one that lost it (re-paired, reinstalled) gets it back.
+    const own = `${device.code}-`;
+    const sales = has('pos.sales.view')
+      ? db.prepare(`
+          SELECT id FROM pos_sales
+          WHERE status != 'voided' AND COALESCE(completed_at, created_at) >= ?
+          ORDER BY created_at DESC LIMIT 1000
+        `).all(from)
+        .map((r) => saleRepo.findById(r.id)).filter(Boolean)
+        .map((s) => {
+          const mine = Boolean(s.terminalRef?.startsWith(own));
+          return {
+            ...phoneSale(s),
+            source: mine ? 'this_terminal' : s.terminalRef ? 'terminal' : 'erp',
+            phoneRef: mine ? s.terminalRef.slice(own.length) : null,
+            createdBy: s.createdByName || null,
+          };
+        })
+      : null;
+
+    const today = nowIso().slice(0, 10);
+    const quotations = has('pos.quotations.view')
+      ? db.prepare(`
+          SELECT id FROM pos_quotations
+          WHERE status != 'cancelled' AND (created_at >= ? OR (status IN ('draft', 'sent', 'accepted') AND COALESCE(valid_until, ?) >= ?))
+          ORDER BY created_at DESC LIMIT 500
+        `).all(from, today, from.slice(0, 10))
+        .map((r) => repos.quotations.findById(r.id)).filter(Boolean)
+        .map(phoneQuotation)
+      : null;
+
+    return { sales, quotations, days, server_time: nowIso() };
   }
 
   pullUsers(device, query) {

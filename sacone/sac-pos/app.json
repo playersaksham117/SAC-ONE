@@ -25,6 +25,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.vyomtrana.sacpos",
+      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.INTERNET",
@@ -54,10 +55,19 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-font",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "75c61bdd-106b-4487-9bd1-d33a25a5b698"
+      }
+    },
+    "owner": "playersaks"
   }
 }

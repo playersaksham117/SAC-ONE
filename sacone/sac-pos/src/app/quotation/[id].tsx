@@ -1,3 +1,4 @@
+import { withBuyerAddress } from '../../store/catalog';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -38,7 +39,7 @@ export default function QuotationDetail() {
   const t = quote.totals;
   const number = quote.serverNumber ?? quote.number;
   const expired = new Date(`${quote.validUntil}T23:59:59`).getTime() < Date.now();
-  const html = (size: PaperSize) => billHtml(doc, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
+  const html = (size: PaperSize) => billHtml(withBuyerAddress(doc), info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
   };
@@ -82,9 +83,10 @@ export default function QuotationDetail() {
           <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ marginTop: space.sm }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize, number))} />
         </Card>
 
-        <SectionTitle right={<DocSyncBadge doc={quote} />}>Quotation {quote.number}</SectionTitle>
+        <SectionTitle right={quote.origin ? null : <DocSyncBadge doc={quote} />}>Quotation {quote.number}</SectionTitle>
         {quote.syncError ? <Banner tone="danger" title="ERP could not save this quotation" messages={[quote.syncError]} /> : null}
-        {quote.status === 'converted' ? <Banner tone="success" messages={['Converted to a sale on this phone.']} /> : null}
+        {quote.origin ? <Banner tone="info" messages={[`Made in SACONE ERP${quote.erpStatus ? ` · ${quote.erpStatus}` : ''}. Converting it here bills it on this terminal and marks it converted in the ERP.`]} /> : null}
+        {quote.status === 'converted' ? <Banner tone="success" messages={[quote.origin ? 'Already converted to a sale.' : 'Converted to a sale on this phone.']} /> : null}
         {quote.status === 'open' && expired ? <Banner tone="warning" messages={['This quotation has expired.']} /> : null}
 
         <Card>

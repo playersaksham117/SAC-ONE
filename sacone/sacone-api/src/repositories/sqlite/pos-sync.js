@@ -444,6 +444,10 @@ export class PosCatalogRepository {
     return getDatabase().prepare("SELECT id FROM pos_sales WHERE terminal_ref = ? AND status != 'voided' ORDER BY created_at DESC").get(terminalRef)?.id || null;
   }
 
+  countCustomers() {
+    return getDatabase().prepare('SELECT COUNT(*) AS c FROM customers WHERE is_walk_in = 0').get().c;
+  }
+
   /** Registered (non walk-in) customers changed since `since` — for terminal credit sales. */
   findChangedCustomers(since, { limit = 200, offset = 0 } = {}) {
     const db = getDatabase();

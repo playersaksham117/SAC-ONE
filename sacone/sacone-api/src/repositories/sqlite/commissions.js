@@ -513,6 +513,16 @@ export class SaleCommissionRepository {
     return this.findById(id);
   }
 
+  /** Point an unpaid commission at a new plan / rule / rate (its amounts follow via updateAmounts). */
+  setRule(id, r) {
+    getDatabase().prepare(`
+      UPDATE sale_commissions SET plan_id = ?, rule_id = ?, rule_snapshot_json = ?, calculation_method = ?,
+        commission_basis = ?, rate_snapshot = ?, fixed_amount_snapshot = ?, payment_condition = ?, applied_rule_label = ?, updated_at = ?
+      WHERE id = ?
+    `).run(r.planId || null, r.ruleId || null, JSON.stringify(r.snapshot || null), r.calculationMethod, r.commissionBasis,
+      Number(r.rate || 0), Number(r.fixedAmount || 0), r.paymentCondition, r.label || null, new Date().toISOString(), id);
+  }
+
   updateAmounts(id, data) {
     const existing = this.findById(id);
     if (!existing) return null;

@@ -5,6 +5,11 @@ import { authenticate } from '../middleware/auth.js';
 import { documentLinkService } from '../services/document-links.js';
 import { customerService, supplierService } from '../services/parties.js';
 import { posService, settingsService } from '../services/pos.js';
+import { priceRealisationService } from '../services/price-realisation.js';
+import { saleProfitService } from '../services/sale-profit.js';
+import { ewayBillService } from '../services/eway-bills.js';
+import { customerInvoiceService } from '../services/customer-invoices.js';
+import { supplierBillService } from '../services/supplier-bills.js';
 import { partyStatementService } from '../services/party-statements.js';
 import { warrantyService } from '../services/warranty.js';
 
@@ -51,6 +56,18 @@ customerRouter.get('/:id/sales', asyncHandler(async (req, res) => {
 
 customerRouter.get('/:id/invoices', asyncHandler(async (req, res) => {
   sendSuccess(res, customerService.getInvoiceHistory(req.params.id, req.query, req.actor));
+}));
+
+// Customer screen: invoices with balance left, payments with the invoice balance after each,
+// and a plain history of what happened to the invoices (the ledger stays on /statement).
+customerRouter.get('/:id/invoice-balances', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.invoices(req.params.id, req.query, req.actor));
+}));
+customerRouter.get('/:id/payment-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.payments(req.params.id, req.actor));
+}));
+customerRouter.get('/:id/invoice-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, customerInvoiceService.history(req.params.id, req.actor));
 }));
 
 customerRouter.get('/:id/payments', asyncHandler(async (req, res) => {
@@ -113,6 +130,18 @@ supplierRouter.get('/:id/summary', asyncHandler(async (req, res) => {
 
 supplierRouter.get('/:id/purchases', asyncHandler(async (req, res) => {
   sendSuccess(res, supplierService.getPurchaseHistory(req.params.id, req.query, req.actor));
+}));
+
+// Supplier screen: bills with balance left, payments with the bill balance after each, and a plain
+// history of what happened to the bills (the ledger stays on /statement).
+supplierRouter.get('/:id/bill-balances', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.bills(req.params.id, req.query, req.actor));
+}));
+supplierRouter.get('/:id/payment-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.payments(req.params.id, req.actor));
+}));
+supplierRouter.get('/:id/bill-history', asyncHandler(async (req, res) => {
+  sendSuccess(res, supplierBillService.history(req.params.id, req.actor));
 }));
 
 supplierRouter.get('/:id/payments', asyncHandler(async (req, res) => {
@@ -201,6 +230,24 @@ posRouter.post('/checkout', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.checkout(req.body, req.actor, req), 201);
 }));
 
+// Every invoice line against the product's base selling price (what sold above it, and by how much).
+posRouter.get('/reports/price-realisation', asyncHandler(async (req, res) => {
+  sendSuccess(res, priceRealisationService.report(req.query, req.actor));
+}));
+/** E-way bills: invoices above ₹50,000, their missing details, and the portal's bulk JSON. */
+posRouter.get('/eway-bills', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.list(req.query, req.actor));
+}));
+posRouter.put('/eway-bills/:saleId', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.update(req.params.saleId, req.body || {}, req.actor));
+}));
+posRouter.post('/eway-bills/export', asyncHandler(async (req, res) => {
+  sendSuccess(res, ewayBillService.exportJson(req.body || {}, req.actor));
+}));
+posRouter.get('/reports/sale-profit', asyncHandler(async (req, res) => {
+  sendSuccess(res, saleProfitService.report(req.query, req.actor));
+}));
+
 posRouter.get('/sales', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.listSales(req.query, req.actor));
 }));
@@ -231,6 +278,10 @@ posRouter.put('/sales/:id/items/:itemId/serials', asyncHandler(async (req, res) 
 
 posRouter.put('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.editSale(req.params.id, req.body || {}, req.actor, req));
+}));
+/** One bill line's work description and / or cost to provide it (e.g. entered later from Profit / Loss). */
+posRouter.put('/sales/:id/items/:itemId', asyncHandler(async (req, res) => {
+  sendSuccess(res, posService.setLineDetail(req.params.id, req.params.itemId, req.body || {}, req.actor));
 }));
 posRouter.delete('/sales/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.deleteSale(req.params.id, req.body || {}, req.actor, req));

@@ -67,7 +67,11 @@ export interface CartLine {
   guarantee?: Period | null;
   /** Serial numbers of the units sold (warranty claims), printed on the bill and synced. */
   serialNumbers?: string[];
+  /** Printed under the item; starts as the product's, can be typed per bill (the work done for this customer). */
   shortDescription?: string | null;
+  /** What this line cost us to provide (services: this job), ₹ before GST for the whole line. */
+  costAmount?: number | null;
+  itemType?: 'goods' | 'service';
 }
 
 export interface ComputedLine extends CartLine {
@@ -120,7 +124,7 @@ export interface Sale extends SyncMeta {
   createdAt: string;
   userId: string;
   userName: string;
-  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode'> | null;
+  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode' | 'address' | 'city' | 'state'> | null;
   totals: CartTotals;
   payments: Payment[];
   amountPaid: number;
@@ -145,6 +149,8 @@ export interface Sale extends SyncMeta {
   returned: Record<string, number>;   // productId → qty returned
   /** The bill was cancelled in the ERP after it synced. */
   cancelledInErp?: boolean;
+  /** Made in the ERP ('erp') or on another terminal ('terminal'), pulled for viewing / returns / dues. */
+  origin?: 'erp' | 'terminal';
 }
 
 /** A quotation made on this phone (Sale / Quotation toggle); synced to SACONE quotations. */
@@ -154,12 +160,16 @@ export interface Quotation extends SyncMeta {
   createdAt: string;
   userId: string;
   userName: string;
-  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode'> | null;
+  customer: Pick<Customer, 'id' | 'name' | 'phone' | 'gstin' | 'gstStateCode' | 'address' | 'city' | 'state'> | null;
   totals: CartTotals;
   validUntil: string; // YYYY-MM-DD
   notes?: string | null;
   status: 'open' | 'converted';
   convertedSaleId?: string | null;
+  /** Made in the ERP (or another terminal) and pulled; its ERP status (draft / sent / accepted / converted). */
+  origin?: 'erp';
+  erpStatus?: string;
+  customerPo?: { number: string; date: string | null } | null;
 }
 
 export interface ReturnLine {

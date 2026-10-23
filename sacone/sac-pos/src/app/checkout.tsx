@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { DENOMINATIONS, notesTotal, suggestChange, type NoteCounts } from '../domain/cash';
 import { formatMoney, round2 } from '../domain/money';
@@ -70,6 +70,14 @@ export default function Checkout() {
   const credit = exchange ? round2(Math.min(exchange.amount, total)) : 0;
   const giveBack = exchange ? round2(Math.max(exchange.amount - total, 0)) : 0;
   const due = round2(total - credit);
+
+  // A payment screen left over from a finished bill must not take a new bill's PO / address:
+  // when its cart is empty, go back to Sell.
+  const lineCount = useCart((s) => s.lines.length);
+  const done = useRef(false);
+  useEffect(() => {
+    if (!lineCount && !done.current) router.dismissTo('/sell');
+  }, [lineCount]);
 
   const [split, setSplit] = useState(false);
   const [rows, setRows] = useState<Row_[]>([{ method: 'cash', amount: due.toFixed(2), reference: '' }]);
@@ -154,7 +162,9 @@ export default function Checkout() {
         shipTo: shipCheck.value,
         billDate: isAdmin ? billDate : null,
       });
-      if (router.canDismiss()) router.dismissAll();
+      done.current = true;
+      // close the cart and this payment screen for good, then show the finished bill over Sell
+      router.dismissTo('/sell');
       router.push({ pathname: '/sale/[id]', params: { id: sale.id, done: '1' } });
     } catch (e) {
       setSubmitError(e instanceof ValidationError ? e.result.errors.map((x) => x.message) : [(e as Error).message]);

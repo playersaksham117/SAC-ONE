@@ -49,7 +49,7 @@ export const ERP_MODULES = [
     id: 'sales',
     section: 'operations',
     label: 'Sales',
-    description: 'Invoices: print receipts / A5 / A4, PDF and CSV',
+    description: 'Invoices, quotations and Sold Above Price (sales against the base selling price)',
     href: '/operations/sales',
     permission: 'pos.sales.view',
     permissions: ['pos.sales.view', 'sales.orders.view'],

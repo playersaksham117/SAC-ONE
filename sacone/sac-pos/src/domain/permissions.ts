@@ -9,6 +9,7 @@ export const P = {
   sell: 'pos.sales.create',
   quote: 'pos.quotations.create',
   viewSales: 'pos.sales.view',
+  viewQuotes: 'pos.quotations.view',
   returns: 'pos.returns.create',
   approveReturns: 'pos.returns.approve',
   priceOverride: 'pos.pricing.edit',
@@ -18,6 +19,8 @@ export const P = {
   stockView: 'inventory.stock.view',
   productsView: 'products.products.view',
   deviceAdmin: 'pos.devices.edit',
+  /** Costs are shown to those who may see purchase prices. */
+  costs: 'purchases.bills.view',
 } as const;
 
 export type Capability =
@@ -25,6 +28,8 @@ export type Capability =
   | 'sell'
   | 'quote'
   | 'viewSales'
+  | 'viewAllSales'
+  | 'viewQuotes'
   | 'returns'
   | 'approveReturns'
   | 'overridePrice'
@@ -32,13 +37,16 @@ export type Capability =
   | 'createCustomers'
   | 'collectPayment'
   | 'viewStock'
-  | 'manageDevice';
+  | 'manageDevice'
+  | 'enterCost';
 
 const RULES: Record<Capability, string[]> = {
   useTerminal: [P.terminal],
   sell: [P.sell],
   quote: [P.quote],
   viewSales: [P.viewSales, P.sell],
+  viewAllSales: [P.viewSales],
+  viewQuotes: [P.viewQuotes],
   returns: [P.returns],
   approveReturns: [P.approveReturns],
   overridePrice: [P.priceOverride],
@@ -47,6 +55,7 @@ const RULES: Record<Capability, string[]> = {
   collectPayment: [P.collectPayment],
   viewStock: [P.stockView, P.productsView],
   manageDevice: [P.deviceAdmin],
+  enterCost: [P.costs],
 };
 
 /** true when the permission list grants ANY of the keys behind the capability. */
@@ -61,6 +70,8 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   sell: 'Create sales',
   quote: 'Make quotations',
   viewSales: 'View sales',
+  viewAllSales: 'View ERP & other terminals’ bills',
+  viewQuotes: 'View ERP quotations',
   returns: 'Process returns',
   approveReturns: 'Approve returns & exchanges',
   overridePrice: 'Change price / give discount',
@@ -69,4 +80,5 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   collectPayment: 'Collect customer payments',
   viewStock: 'View stock',
   manageDevice: 'Manage device pairing',
+  enterCost: 'Enter job / line costs',
 };

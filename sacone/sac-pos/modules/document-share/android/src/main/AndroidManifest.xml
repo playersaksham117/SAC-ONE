@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- In-app update: lets SAC-POS open Android's installer for its own newer APK (the user confirms). -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <application>
-    <!-- Serves only cache/shared-documents/ (see document_share_paths.xml); never exported. -->
+    <!-- Serves only cache/shared-documents/ and cache/app-updates/ (see document_share_paths.xml); never exported. -->
     <provider
       android:name="expo.modules.documentshare.DocumentShareFileProvider"
       android:authorities="${applicationId}.SacDocumentShareProvider"

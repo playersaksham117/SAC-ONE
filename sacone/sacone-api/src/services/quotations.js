@@ -52,6 +52,12 @@ function buildCustomerSnapshot(customer, overrides = {}) {
   };
 }
 
+/** The work description typed for each quotation line (null when none was given). */
+function lineDescriptions(items) {
+  const list = (items || []).map((i) => (i?.description == null ? null : String(i.description).replace(/\s+/g, ' ').trim().slice(0, 500)));
+  return list.some((d) => d !== null) ? list : null;
+}
+
 export class QuotationService {
   #enrichItems(items, actor, { allowPriceEdit = true, allowDiscount = true } = {}) {
     return items.map((item, index) => {
@@ -171,7 +177,9 @@ export class QuotationService {
       },
       items: totals.items.map((item) => ({ ...item, id: generateId() })),
     });
-    const quote = quoteRepo.setCustomerPo(created.id, customerPo);
+    let quote = quoteRepo.setCustomerPo(created.id, customerPo);
+    const descriptions = lineDescriptions(data.items);
+    if (descriptions) quote = quoteRepo.setLineDescriptions(quote.id, descriptions);
 
     auditRepo.create({
       userId: actor.user.id,
@@ -221,7 +229,9 @@ export class QuotationService {
       },
       items: totals.items.map((item) => ({ ...item, id: generateId() })),
     });
-    const quote = quoteRepo.setCustomerPo(updatedQuote.id, customerPo);
+    let quote = quoteRepo.setCustomerPo(updatedQuote.id, customerPo);
+    const descriptions = lineDescriptions(data.items);
+    if (descriptions) quote = quoteRepo.setLineDescriptions(quote.id, descriptions);
 
     auditRepo.create({
       userId: actor.user.id,

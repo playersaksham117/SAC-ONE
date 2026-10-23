@@ -4,6 +4,7 @@ import { FlatList, Text, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
 import { useCart } from '../../store/cart';
 import { useLedger } from '../../store/ledger';
+import { useCan } from '../../store/session';
 import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Button, Card, Empty, Header, Row, Screen, SearchBar, Segmented, colors, font, space } from '../../ui/components';
@@ -16,11 +17,16 @@ export default function Sales() {
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab ?? 'sales');
   const [q, setQ] = useState('');
-  const sales = useLedger((s) => s.sales);
+  const canAllSales = useCan('viewAllSales');
+  const canQuotes = useCan('viewQuotes');
+  const allSales = useLedger((s) => s.sales);
   const returns = useLedger((s) => s.returns);
   const payments = useLedger((s) => s.payments);
   const held = useLedger((s) => s.held);
-  const quotations = useLedger((s) => s.quotations ?? []);
+  const allQuotes = useLedger((s) => s.quotations);
+  // Documents pulled from the ERP / other terminals only for staff whose ERP role allows them.
+  const sales = useMemo(() => (canAllSales ? allSales : allSales.filter((s) => !s.origin)), [allSales, canAllSales]);
+  const quotations = useMemo(() => (allQuotes ?? []).filter((x) => !x.origin || canQuotes), [allQuotes, canQuotes]);
 
   useEffect(() => { if (params.tab) setTab(params.tab); }, [params.tab]);
 
@@ -40,7 +46,7 @@ export default function Sales() {
 
   return (
     <Screen padded={false}>
-      <Header title="Sales" subtitle="Bills from this phone (last 30 days)" />
+      <Header title="Sales" subtitle={canAllSales ? 'This phone, other terminals and the ERP (last 30 days)' : 'Bills from this phone (last 30 days)'} />
       <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
         <Segmented<Tab>
           value={tab}
@@ -65,7 +71,7 @@ export default function Sales() {
           renderItem={({ item }) => (
             <Card style={{ marginBottom: space.sm, padding: space.md }} onPress={() => router.push({ pathname: '/sale/[id]', params: { id: item.id } })}>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: '800', color: item.cancelledInErp ? colors.danger : colors.text }}>{item.serverNumber ?? item.number}{item.cancelledInErp ? ' · Cancelled' : ''}</Text>
+                <Text style={{ fontWeight: '800', color: item.cancelledInErp ? colors.danger : colors.text }}>{item.serverNumber ?? item.number}{item.cancelledInErp ? ' · Cancelled' : ''}{item.origin ? (item.origin === 'erp' ? ' · ERP' : ' · other terminal') : ''}</Text>
                 <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(item.totals.grandTotal)}</Text>
               </Row>
               <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
@@ -84,11 +90,11 @@ export default function Sales() {
           data={quotations}
           keyExtractor={(q) => q.id}
           contentContainerStyle={{ padding: space.lg }}
-          ListEmptyComponent={<Empty icon="document-text-outline" title="No quotations" message="Switch the Sell screen to Quotation to make one." />}
+          ListEmptyComponent={<Empty icon="document-text-outline" title="No quotations" message={canQuotes ? 'Switch the Sell screen to Quotation to make one. Quotations made in the ERP appear here too.' : 'Switch the Sell screen to Quotation to make one.'} />}
           renderItem={({ item }) => (
             <Card style={{ marginBottom: space.sm, padding: space.md }} onPress={() => router.push({ pathname: '/quotation/[id]', params: { id: item.id } })}>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: '800', color: colors.text }}>{item.number}{item.status === 'converted' ? ' · sold' : ''}</Text>
+                <Text style={{ fontWeight: '800', color: colors.text }}>{item.serverNumber ?? item.number}{item.status === 'converted' ? ' · sold' : ''}{item.origin ? ' · ERP' : ''}</Text>
                 <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(item.totals.grandTotal)}</Text>
               </Row>
               <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>

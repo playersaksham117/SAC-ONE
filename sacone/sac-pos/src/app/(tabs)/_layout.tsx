@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 import type { ColorValue } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
+import { availableUpdate, useAppUpdate } from '../../lib/appUpdate';
 import { pendingCount, useLedger } from '../../store/ledger';
 import { useCan, useSession } from '../../store/session';
 import { colors } from '../../ui/theme';
 
 export default function TabsLayout() {
   const signedIn = useSession((s) => Boolean(s.currentUserId));
+  const hasUpdate = useAppUpdate((s) => Boolean(availableUpdate(s.latest)));
   const canSell = useCan('sell');
   const canSales = useCan('viewSales');
   const canCustomers = useCan('viewCustomers');
@@ -38,8 +40,9 @@ export default function TabsLayout() {
         options={{
           title: 'More',
           tabBarIcon: icon('ellipsis-horizontal-circle'),
-          tabBarBadge: unsynced.review ? '!' : unsynced.pending || undefined,
-          tabBarBadgeStyle: { backgroundColor: unsynced.review ? colors.danger : colors.warning, fontSize: 10 },
+          // sync problems first; otherwise a dot when a newer SAC-POS is waiting (More → App update)
+          tabBarBadge: unsynced.review ? '!' : unsynced.pending || (hasUpdate ? '↑' : undefined),
+          tabBarBadgeStyle: { backgroundColor: unsynced.review ? colors.danger : unsynced.pending ? colors.warning : colors.primary, fontSize: 10 },
         }}
       />
     </Tabs>

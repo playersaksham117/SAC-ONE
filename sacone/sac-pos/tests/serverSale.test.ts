@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sameDoc, withServerSale, type ServerSale } from '../src/domain/serverSale';
+import { erpQuotation, erpSale, sameDoc, withServerSale, type ServerSale } from '../src/domain/serverSale';
 import type { Sale } from '../src/domain/types';
 
 const line = {
@@ -41,5 +41,36 @@ describe('bill edited in the ERP', () => {
   it('refreshing again changes nothing', () => {
     expect(sameDoc(withServerSale(next, server), next)).toBe(true);
     expect(sameDoc(next, local)).toBe(false);
+  });
+});
+
+describe('documents pulled from the ERP', () => {
+  it('an ERP bill becomes a synced phone bill numbered by its ERP number (returns / dues match it)', () => {
+    const s = erpSale(server, 'erp', 'Owner');
+    expect(s.id).toBe('erp-new');
+    expect(s.number).toBe('SE/0001/26-27');
+    expect(s.sync).toBe('synced');
+    expect(s.origin).toBe('erp');
+    expect(s.userName).toBe('Owner');
+    expect(s.totals.grandTotal).toBe(2360);
+    expect(s.totals.lines[0].quantity).toBe(2);
+  });
+
+  it('an ERP quotation keeps its lines, customer and validity and can be converted', () => {
+    const q = erpQuotation({
+      id: 'q1', number: 'SE/Q/0003/26-27', date: '2026-10-21T00:00:00.000Z', createdAt: '2026-10-21T17:40:21.226Z',
+      validUntil: '2026-10-28', status: 'sent', preparedBy: 'Owner', notes: null,
+      customer: { id: 'c1', name: 'Sapphire Foods', phone: null, gstin: null, gstStateCode: '04' },
+      customerPo: null,
+      items: server.items.map(({ quantityReturned: _q, serialNumbers: _s, ...i }) => i),
+      subtotal: 2000, itemDiscountTotal: 0, invoiceDiscount: 0, taxableAmount: 2000, cgstAmount: 0, sgstAmount: 0, igstAmount: 360, gstAmount: 360, grandTotal: 2360,
+    });
+    expect(q.number).toBe('SE/Q/0003/26-27');
+    expect(q.status).toBe('open');
+    expect(q.validUntil).toBe('2026-10-28');
+    expect(q.customer?.id).toBe('c1');
+    expect(q.totals.lines).toHaveLength(1);
+    expect(q.totals.grandTotal).toBe(2360);
+    expect(q.origin).toBe('erp');
   });
 });

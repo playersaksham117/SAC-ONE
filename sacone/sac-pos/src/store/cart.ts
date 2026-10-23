@@ -26,7 +26,7 @@ interface CartState {
   loadQuotation: (q: Quotation) => void;
   add: (p: Product, qty?: number) => void;
   setQty: (productId: string, qty: number) => void;
-  updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers'>>) => void;
+  updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount'>>) => void;
   remove: (productId: string) => void;
   setCustomer: (id: string | null) => void;
   setInvoiceDiscount: (amount: number) => void;
@@ -58,6 +58,7 @@ export const useCart = create<CartState>()(
           lines: q.totals.lines.map((l) => ({
             productId: l.productId, name: l.name, sku: l.sku, barcode: l.barcode, hsn: l.hsn, unit: l.unit,
             quantity: l.quantity, unitPrice: l.unitPrice, listPrice: l.listPrice ?? l.unitPrice, discountAmount: l.discountAmount, gstRate: l.gstRate,
+            shortDescription: l.shortDescription ?? null, itemType: l.itemType,
           })),
           customerId: q.customer?.id ?? null,
           invoiceDiscount: q.totals.invoiceDiscount,
@@ -77,7 +78,7 @@ export const useCart = create<CartState>()(
           const line: CartLine = {
             productId: p.id, name: p.name, sku: p.sku, barcode: p.barcode, hsn: p.hsn, unit: p.unit,
             quantity: clampQty(qty), unitPrice: p.price, listPrice: p.price, discountAmount: 0, gstRate: p.gstRate,
-            warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: p.shortDescription ?? null,
+            warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: p.shortDescription ?? null, itemType: p.itemType,
           };
           return { lines: [...s.lines, line] };
         });

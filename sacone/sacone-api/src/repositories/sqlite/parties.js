@@ -351,7 +351,7 @@ export class CustomerRepository {
              s.invoice_number
       FROM pos_payments p
       INNER JOIN pos_sales s ON s.id = p.sale_id
-      WHERE s.customer_id = ?
+      WHERE s.customer_id = ? AND s.status != 'voided'
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `).all(customerId, limit, offset).map((row) => ({
@@ -367,7 +367,7 @@ export class CustomerRepository {
     const total = db.prepare(`
       SELECT COUNT(*) as count FROM pos_payments p
       INNER JOIN pos_sales s ON s.id = p.sale_id
-      WHERE s.customer_id = ?
+      WHERE s.customer_id = ? AND s.status != 'voided'
     `).get(customerId).count;
     return { items, total, limit, offset };
   }

@@ -1,3 +1,4 @@
+import { withBuyerAddress } from '../../store/catalog';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -41,7 +42,7 @@ export default function SaleDetail() {
   const t = sale.totals;
   const saleReturns = returns.filter((r) => r.saleId === sale.id);
   const returnable = !sale.cancelledInErp && t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
-  const html = (size: PaperSize) => billHtml(sale, info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
+  const html = (size: PaperSize) => billHtml(withBuyerAddress(sale), info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const number = sale.serverNumber ?? sale.number;
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
@@ -115,7 +116,8 @@ export default function SaleDetail() {
           ) : null}
         </Card>
 
-        <SectionTitle right={<DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>
+        <SectionTitle right={sale.origin ? null : <DocSyncBadge doc={sale} />}>Bill {sale.number}</SectionTitle>
+        {sale.origin ? <Banner tone="info" messages={[sale.origin === 'erp' ? 'Made in SACONE ERP.' : 'Made on another SAC-POS terminal.']} /> : null}
         {sale.syncError ? <Banner tone="danger" title="ERP could not post this bill" messages={[sale.syncError, 'A manager can fix and retry it in ERP → POS Devices & Sync → Sync inbox.']} /> : null}
         {sale.syncWarnings?.length ? <Banner tone="warning" messages={sale.syncWarnings} /> : null}
 
@@ -186,7 +188,7 @@ export default function SaleDetail() {
           {canReturn && returnable ? (
             <Button title="Return / exchange items" icon="return-down-back-outline" variant="secondary" onPress={() => router.push({ pathname: '/return/[id]', params: { id: sale.id } })} />
           ) : null}
-          {done ? <Button title="New sale" icon="add-circle-outline" size="lg" onPress={() => (router.canGoBack() ? router.back() : router.replace('/sell'))} testID="new-sale" /> : null}
+          {done ? <Button title="New sale" icon="add-circle-outline" size="lg" onPress={() => router.dismissTo('/sell')} testID="new-sale" /> : null}
         </View>
       </View>
     </Screen>

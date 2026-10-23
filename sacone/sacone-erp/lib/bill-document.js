@@ -234,6 +234,51 @@ function saleClassic(sale, customer) {
 
 /** "INV/0012/26-27 dt 05/10/2026" — the original document a note refers to. */
 
+/** Quotation (GET /api/pos/quotations/:id): the invoice layouts, titled QUOTATION, without payment. */
+export function quotationDocument(quote) {
+  const snap = quote.customerSnapshot || {};
+  const customer = snap.name ? {
+    phone: snap.phone, gstNumber: snap.gstNumber, address: snap.billingAddress, city: snap.billingCity,
+    state: snap.billingState, postalCode: snap.billingPostal, shippingAddress: snap.shippingAddress,
+    shippingCity: snap.shippingCity, shippingState: snap.shippingState, shippingPostal: snap.shippingPostal,
+  } : null;
+  const asSale = {
+    ...quote,
+    invoiceNumber: quote.quotationNumber,
+    createdAt: quote.quotationDate || quote.createdAt,
+    customerName: snap.businessName || snap.name,
+    customerPhone: snap.phone,
+    customerIsWalkIn: !snap.name,
+    payments: [],
+    amountCredit: 0,
+  };
+  const base = saleDocument(asSale, customer);
+  const valid = quote.validUntil ? dateOnly(quote.validUntil) : '';
+  return {
+    ...base,
+    title: 'QUOTATION',
+    meta: [
+      ['Quotation', quote.quotationNumber],
+      ...(quote.customerPoNumber ? [['P.O. No.', againstRef(quote.customerPoNumber, quote.customerPoDate)]] : []),
+      ['Date', dateOnly(asSale.createdAt)],
+      ...(valid ? [['Valid until', valid]] : []),
+      ...(quote.createdByName ? [['Prepared by', quote.createdByName]] : []),
+    ],
+    sideBox: { label: 'Quotation', rows: valid ? [[`Valid until ${valid}`, quote.grandTotal]] : [] },
+    footer: quote.termsConditions || 'This is a quotation, not a tax invoice. Prices are subject to the validity shown.',
+    thanks: 'Thank you for your enquiry.',
+    pay: null,
+    classic: {
+      ...base.classic,
+      kind: 'quote',
+      title: 'Quotation',
+      memo: '',
+      numberLabel: 'Quotation No.',
+      extraRef: valid ? ['Valid until', valid] : null,
+    },
+  };
+}
+
 /** GST credit note (GET /api/notes/credit/:id) + optional customer record. */
 export function creditNoteDocument(note, customer) {
   const number = note.noteNumber || note.returnNumber;
