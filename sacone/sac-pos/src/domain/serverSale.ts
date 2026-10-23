@@ -129,6 +129,24 @@ export function erpQuotation(q: ServerQuotation): Quotation {
   };
 }
 
+/**
+ * A quotation made on this phone, updated to what the ERP now has (edited or converted there):
+ * customer, lines, totals, validity, notes, PO and status. The phone's own number and id stay.
+ */
+export function withServerQuotation(local: Quotation, erp: Quotation): Quotation {
+  return {
+    ...local,
+    customer: erp.customer,
+    totals: erp.totals,
+    validUntil: erp.validUntil,
+    notes: erp.notes,
+    customerPo: erp.customerPo,
+    erpStatus: erp.erpStatus,
+    serverNumber: erp.serverNumber ?? local.serverNumber,
+    status: local.status === 'converted' || erp.status === 'converted' ? 'converted' : 'open',
+  };
+}
+
 /** Same content, ignoring key order and empty (null / undefined) fields. */
 export function sameDoc(a: unknown, b: unknown): boolean {
   const canon = (v: unknown): unknown => {

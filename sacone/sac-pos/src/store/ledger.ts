@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { PushResult } from '../api/sacone';
 import { dayKey, docNumber } from '../domain/numbering';
 import type { CustomerPayment, HeldBill, Quotation, Sale, SaleReturn, SyncMeta } from '../domain/types';
-import { sameDoc, withServerSale, type ServerSaleStatus } from '../domain/serverSale';
+import { sameDoc, withServerSale, type ServerSaleStatus, withServerQuotation } from '../domain/serverSale';
 import { jsonStorage } from './persist';
 
 type Prefix = 'S' | 'R' | 'P' | 'C' | 'Q';
@@ -138,7 +138,12 @@ export const useLedger = create<LedgerState>()(
       applyErpDocs(erpSales, erpQuotes) {
         set((s) => {
           const ownSales = s.sales.filter((x) => !x.origin);
-          const ownQuotes = (s.quotations ?? []).filter((x) => !x.origin);
+          // Quotations made here take the ERP's latest version (edited / converted in the ERP).
+          const erpQuoteById = new Map((erpQuotes ?? []).map((q) => [q.serverId, q]));
+          const ownQuotes = (s.quotations ?? []).filter((x) => !x.origin).map((x) => {
+            const erp = x.sync === 'synced' && x.serverId ? erpQuoteById.get(x.serverId) : undefined;
+            return erp ? withServerQuotation(x, erp) : x;
+          });
           const ownSaleIds = new Set(ownSales.map((x) => x.serverId).filter(Boolean));
           const ownNumbers = new Set(ownSales.map((x) => x.number));
           const ownQuoteIds = new Set(ownQuotes.map((x) => x.serverId).filter(Boolean));
