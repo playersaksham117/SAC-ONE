@@ -3,7 +3,8 @@ import { financialYearOf } from '../core/financial-year.js';
 import { AppError } from '../core/http.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { authService, isFirmAdmin } from './index.js';
+import { getDatabase } from '../database/connection.js';
 import { calculateCartTotals } from './pos.js';
 import { inventoryMovementService } from './inventory.js';
 import { supplierService } from './parties.js';
@@ -108,17 +109,25 @@ function matchProductRow(row) {
   return { product: null, method: null, confidence: 0 };
 }
 
-function enrichLines(items) {
+/** HSN / SAC typed on a bill line: 4–8 digits, or blank for the product's own code. */
+function hsnOf(item, product) {
+  const typed = String(item.hsnCode ?? '').replace(/\s/g, '');
+  if (!typed) return product.hsnCode;
+  if (!/^\d{4,8}$/.test(typed)) throw new AppError(`HSN / SAC for ${product.name} must be 4 to 8 digits`, 400);
+  return typed;
+}
+
+function enrichLines(items, { allowInactive = [] } = {}) {
   return items.map((item) => {
     const product = productRepo.findById(item.productId);
-    if (!product || !product.isActive) {
+    if (!product || (!product.isActive && !allowInactive.includes(item.productId))) {
       throw new AppError(`Product not found: ${item.productId}`, 400);
     }
     return {
       productId: product.id,
       productName: product.name,
       sku: product.sku,
-      hsnCode: product.hsnCode,
+      hsnCode: hsnOf(item, product),
       quantity: Number(item.quantity),
       unitPrice: item.unitPrice != null ? Number(item.unitPrice) : product.purchasePrice,
       discountPercent: Number(item.discountPercent || 0),
@@ -498,6 +507,103 @@ export class PurchaseService {
     });
 
     return purchaseRepo.findBillById(bill.id);
+  }
+
+  /**
+   * Edit a purchase bill (firm admin only). Same bill number; lines, supplier invoice no., dates,
+   * warehouse and notes can change. Stock moves only by the difference, the supplier's payable
+   * follows the new total. Not allowed once a debit note is made against the bill, or below
+   * what is already paid.
+   */
+  updateBill(id, data, actor, req) {
+    authService.checkPermission(actor.permissions, 'purchases.bills.create');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can edit purchase bills', 403, 'OWNER_ONLY');
+    const old = purchaseRepo.findBillById(id);
+    if (!old) throw new AppError('Purchase bill not found', 404);
+    if (old.status === 'cancelled') throw new AppError('This purchase bill is cancelled', 400);
+    if (purchaseRepo.returnedQtyByBillItem(id).size || Number(old.returnedAmount || 0) > 0) {
+      throw new AppError('A debit note is made against this bill; it cannot be edited. Correct it with a debit note instead.', 400, 'BILL_HAS_RETURNS');
+    }
+    const supplierId = data.supplierId || old.supplierId;
+    const paid = Number(old.amountPaid || 0);
+    if (supplierId !== old.supplierId && paid > 0) {
+      throw new AppError('A payment is recorded on this bill; the supplier cannot be changed.', 400, 'BILL_HAS_PAYMENTS');
+    }
+    const enriched = enrichLines(data.items || [], { allowInactive: old.items.map((i) => i.productId) });
+    if (!enriched.length) throw new AppError('At least one line item is required', 400);
+    const { totals, items } = buildPurchaseTotals(enriched, supplierId);
+    if (totals.grandTotal + 0.009 < paid) {
+      throw new AppError(`The new total ${totals.grandTotal} is less than the ${paid} already paid on this bill.`, 400, 'BELOW_PAID');
+    }
+    const oldWh = old.warehouseId || null;
+    const warehouseId = data.warehouseId !== undefined ? (data.warehouseId || null) : oldWh;
+    const billDate = data.billDate || old.billDate;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(String(billDate))) throw new AppError('Bill date must be a date', 400);
+
+    const updated = getDatabase().transaction(() => {
+      // Stock: only the difference per product (all of it when the warehouse changes).
+      const qty = (lines) => lines.reduce((m, l) => m.set(l.productId, (m.get(l.productId) || 0) + Number(l.quantity)), new Map());
+      const before = qty(old.items);
+      const after = qty(items);
+      const move = (productId, wh, q) => {
+        if (Math.abs(q) < 1e-9) return;
+        inventoryMovementService.createMovement({
+          movementType: q > 0 ? MOVEMENT_TYPES.PURCHASE : MOVEMENT_TYPES.PURCHASE_RETURN,
+          productId,
+          warehouseId: wh,
+          quantity: Math.abs(q),
+          referenceType: 'supplier_bill',
+          referenceId: old.id,
+          reason: `Edited purchase bill ${old.billNumber}`,
+        }, actor, req, { skipPermissionCheck: true });
+      };
+      if (warehouseId !== oldWh) {
+        for (const [pid, q] of before) move(pid, oldWh, -q);
+        for (const [pid, q] of after) move(pid, warehouseId, q);
+      } else {
+        for (const pid of new Set([...before.keys(), ...after.keys()])) move(pid, warehouseId, (after.get(pid) || 0) - (before.get(pid) || 0));
+      }
+      if (old.purchaseOrderId) {
+        for (const pid of new Set([...before.keys(), ...after.keys()])) {
+          const d = (after.get(pid) || 0) - (before.get(pid) || 0);
+          if (d) purchaseRepo.addReceivedQty(old.purchaseOrderId, pid, d);
+        }
+      }
+
+      // Supplier payable follows the new total.
+      supplierRepo.adjustPayable(old.supplierId, -Number(old.grandTotal));
+      supplierRepo.adjustPayable(supplierId, totals.grandTotal);
+
+      purchaseRepo.replaceBill(old.id, {
+        supplierId,
+        supplierInvoiceNumber: data.supplierInvoiceNumber !== undefined ? (data.supplierInvoiceNumber || null) : old.supplierInvoiceNumber,
+        billDate,
+        dueDate: data.dueDate !== undefined ? (data.dueDate || null) : old.dueDate,
+        warehouseId,
+        subtotal: totals.subtotal,
+        gstAmount: totals.gstAmount,
+        cgstAmount: totals.cgstAmount,
+        sgstAmount: totals.sgstAmount,
+        igstAmount: totals.igstAmount,
+        grandTotal: totals.grandTotal,
+        notes: data.notes !== undefined ? (data.notes || null) : old.notes,
+      }, items);
+      for (const line of items) productRepo.update(line.productId, { purchasePrice: line.unitPrice });
+      return purchaseRepo.findBillById(old.id);
+    })();
+
+    auditRepo.create({
+      userId: actor.user.id,
+      userName: actor.user.fullName,
+      action: 'update',
+      module: 'purchases',
+      recordType: 'purchase_bill',
+      recordId: id,
+      previousValue: old,
+      newValue: updated,
+      ...getRequestMeta(req),
+    });
+    return updated;
   }
 
   createBillFromPo(poId, data, actor, req) {

@@ -414,6 +414,47 @@ export class PurchaseRepository {
     return this.findBillById(id);
   }
 
+  /** Edit: new header totals and lines; payable = total − paid − returned. */
+  replaceBill(id, data, items) {
+    const db = getDatabase();
+    const now = nowIso();
+    db.transaction(() => {
+      const cur = db.prepare('SELECT amount_paid, returned_amount FROM supplier_bills WHERE id = ?').get(id);
+      const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+      const paid = Number(cur.amount_paid || 0);
+      const returned = Number(cur.returned_amount || 0);
+      const payable = Math.max(0, r2(Number(data.grandTotal) - paid - returned));
+      const status = payable <= 0.001 ? 'paid' : (paid > 0.001 || returned > 0.001 ? 'partial' : 'open');
+      db.prepare(`
+        UPDATE supplier_bills SET
+          supplier_id = ?, supplier_invoice_number = ?, bill_date = ?, due_date = ?, warehouse_id = ?,
+          subtotal = ?, gst_amount = ?, cgst_amount = ?, sgst_amount = ?, igst_amount = ?, grand_total = ?,
+          amount_payable = ?, status = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        data.supplierId, data.supplierInvoiceNumber, data.billDate, data.dueDate, data.warehouseId,
+        data.subtotal, data.gstAmount, data.cgstAmount, data.sgstAmount, data.igstAmount, data.grandTotal,
+        payable, status, data.notes, now, id,
+      );
+      db.prepare('DELETE FROM supplier_bill_items WHERE bill_id = ?').run(id);
+      const insertItem = db.prepare(`
+        INSERT INTO supplier_bill_items (
+          id, bill_id, product_id, product_name, sku, hsn_code, quantity, unit_price,
+          discount_percent, gst_percentage, taxable_amount, gst_amount, cgst_amount, sgst_amount, igst_amount,
+          line_total, sort_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      items.forEach((item, idx) => {
+        insertItem.run(
+          generateId(), id, item.productId, item.productName, item.sku || null, item.hsnCode || null,
+          item.quantity, item.unitPrice, item.discountPercent || 0, item.gstPercentage || 0,
+          item.taxableAmount, item.gstAmount, item.cgstAmount || 0, item.sgstAmount || 0, item.igstAmount || 0,
+          item.lineTotal, idx,
+        );
+      });
+    })();
+  }
+
   markBillStockPosted(id) {
     getDatabase().prepare(`
       UPDATE supplier_bills SET stock_posted = 1, updated_at = ? WHERE id = ?

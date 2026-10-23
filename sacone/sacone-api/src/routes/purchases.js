@@ -58,6 +58,11 @@ purchaseRouter.get('/bills/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.getBill(req.params.id, req.actor));
 }));
 
+// Owner only: edit a purchase bill (same number; stock and payable follow the change).
+purchaseRouter.put('/bills/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, purchaseService.updateBill(req.params.id, req.body || {}, req.actor, req));
+}));
+
 purchaseRouter.post('/price-lists/parse', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.parsePriceList(req.body, req.actor));
 }));
