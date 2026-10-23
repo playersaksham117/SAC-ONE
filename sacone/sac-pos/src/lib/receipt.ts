@@ -98,7 +98,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
         <td class="muted">${l.gstRate}%</td><td class="r">${formatMoney(l.lineTotal)}</td></tr>`).join('');
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
+<style>body{text-transform:uppercase}
   @page{margin:0}
   *{box-sizing:border-box}
   body{font-family:-apple-system,Roboto,Arial,sans-serif;font-size:${narrow ? 10 : 12}px;color:#000;margin:0;
@@ -161,7 +161,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   const address = [company?.address, company?.city, company?.state].filter(Boolean).map(esc).join(', ');
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
+<style>body{text-transform:uppercase}
   @page{size:${size} portrait;margin:${a5 ? '8mm' : '12mm'}}
   *{box-sizing:border-box}
   body{font-family:-apple-system,Roboto,Arial,sans-serif;font-size:${a5 ? 10 : 12}px;color:#111;margin:0}
@@ -399,7 +399,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const pad = a5 ? '1px 3px' : '2px 5px';
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
+<style>body{text-transform:uppercase}
   @page{size:${size} portrait;margin:${page.m}mm}
   *{box-sizing:border-box} html,body{margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;color:#000}

@@ -6,6 +6,14 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
+  /* All text in CAPITALS (data is saved in capitals too). Email, password and web-address
+     fields keep what is typed. */
+  body {
+    text-transform: uppercase;
+  }
+  input:not([type=email]):not([type=password]):not([type=url]), textarea, select, button {
+    text-transform: uppercase;
+  }
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
     overflow-x: hidden;

@@ -114,7 +114,7 @@ export function labelsHtml(items: { product: LabelProduct; copies: number }[], {
   @media print{.lbl{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
 
   if (!size.cols) {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>body{text-transform:uppercase}
   @page{size:${size.w}mm ${size.h}mm;margin:0}
   ${base}
   .lbl{page-break-after:always;break-after:page}
@@ -129,7 +129,7 @@ export function labelsHtml(items: { product: LabelProduct; copies: number }[], {
   const marginY = (297 - rows * size.h - (rows - 1) * gapY) / 2;
   const pages: string[][] = [];
   for (let i = 0; i < labels.length; i += perPage) pages.push(labels.slice(i, i + perPage));
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>body{text-transform:uppercase}
   @page{size:A4 portrait;margin:0}
   ${base}
   .sheet{width:210mm;height:297mm;padding:${marginY.toFixed(2)}mm ${marginX.toFixed(2)}mm;display:grid;

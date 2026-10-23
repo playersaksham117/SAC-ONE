@@ -481,7 +481,7 @@ function thermalHtml(model, company, size, invoice = {}) {
     ? `<tr><td>${esc(model.partyLabel)}</td><td class="r">${esc(model.party.name)}${model.party.phone ? `<br>${esc(model.party.phone)}` : ''}${model.party.gstin ? `<br>GSTIN ${esc(model.party.gstin)}` : ''}</td></tr>`
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(model.number)}</title>
-<style>
+<style>body{text-transform:uppercase}
   @page{margin:0}
   *{box-sizing:border-box}
   body{font-family:Arial,Helvetica,sans-serif;font-size:${narrow ? 10 : 12}px;color:#000;margin:0;width:${size};padding:${narrow ? '2mm' : '3mm'}}
@@ -528,7 +528,7 @@ function sheetHtml(model, company, size, invoice = {}) {
     : `<div class="b">${esc(model.partyFallback)}</div>`;
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(model.number)}</title>
-<style>
+<style>body{text-transform:uppercase}
   @page{size:${size} portrait;margin:${a5 ? '8mm' : '12mm'}}
   *{box-sizing:border-box}
   body{font-family:Arial,Helvetica,sans-serif;font-size:${a5 ? 10 : 12}px;color:#111;margin:0}
@@ -632,7 +632,7 @@ function classicHtml(model, company, size, invoice = {}) {
   const signName = company?.businessName || 'SACONE';
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.number)}</title>
-<style>
+<style>body{text-transform:uppercase}
   @page{size:${size} portrait;margin:${page.m}mm}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
