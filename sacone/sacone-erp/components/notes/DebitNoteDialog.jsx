@@ -18,19 +18,24 @@ const blankLine = () => ({ productId: '', quantity: '', unitPrice: '', gstPercen
  * Return to a supplier → GST debit note. Against a bill the lines, rates and GST come from
  * that bill; a direct return (no bill) takes product, quantity, rate and GST by hand.
  * onCreated(note) gets the new debit note.
+ * With `editNote` (admin) it edits that note: same supplier, bill and number, its lines filled in.
  */
-export default function DebitNoteDialog({ onClose, onCreated, supplierId: initialSupplier = '' }) {
+export default function DebitNoteDialog({ onClose, onCreated, supplierId: initialSupplier = '', editNote = null }) {
+  // This note's own quantities count as not yet returned while editing it.
+  const mine = (billItemId) => (editNote?.items || []).filter((i) => i.billItemId === billItemId).reduce((s, i) => s + Number(i.quantity), 0);
   const [boot, setBoot] = useState(null);
-  const [supplierId, setSupplierId] = useState(initialSupplier);
+  const [supplierId, setSupplierId] = useState(editNote?.supplierId || initialSupplier);
   const [bills, setBills] = useState([]);
   const [billId, setBillId] = useState('');
   const [bill, setBill] = useState(null);
   const [qty, setQty] = useState({});
-  const [lines, setLines] = useState([blankLine()]);
+  const [lines, setLines] = useState(editNote && !editNote.billId
+    ? editNote.items.map((i) => ({ productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, gstPercentage: i.gstPercentage }))
+    : [blankLine()]);
   const [products, setProducts] = useState([]);
-  const [warehouseId, setWarehouseId] = useState('');
-  const [returnDate, setReturnDate] = useState(today());
-  const [reason, setReason] = useState('');
+  const [warehouseId, setWarehouseId] = useState(editNote?.warehouseId || '');
+  const [returnDate, setReturnDate] = useState(editNote ? String(editNote.returnDate || '').slice(0, 10) : today());
+  const [reason, setReason] = useState(editNote?.reason || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -43,7 +48,10 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
     setBills([]); setBillId(''); setBill(null);
     if (!supplierId) return;
     apiRequest(`/api/purchases/bills?supplierId=${supplierId}&limit=200&allYears=true`)
-      .then((d) => setBills((d.items || []).filter((b) => b.status !== 'cancelled')))
+      .then((d) => {
+        setBills((d.items || []).filter((b) => b.status !== 'cancelled'));
+        if (editNote?.billId && editNote.supplierId === supplierId) setBillId(editNote.billId);
+      })
       .catch((e) => setError(e.message));
   }, [supplierId]);
 
@@ -51,19 +59,24 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
     setBill(null); setQty({});
     if (!billId) return;
     apiRequest(`/api/purchases/bills/${billId}`)
-      .then((b) => { setBill(b); if (b.warehouseId) setWarehouseId(b.warehouseId); })
+      .then((b) => {
+        setBill(b);
+        if (editNote) {
+          setQty(Object.fromEntries(b.items.filter((i) => mine(i.id) > 0).map((i) => [i.id, mine(i.id)])));
+        } else if (b.warehouseId) setWarehouseId(b.warehouseId);
+      })
       .catch((e) => setError(e.message));
   }, [billId]);
 
   const billLines = (bill?.items || []).map((item) => {
-    const remaining = r2(item.quantity - (item.returnedQuantity || 0));
+    const remaining = r2(item.quantity - ((item.returnedQuantity || 0) - mine(item.id)));
     const q = Math.min(Math.max(Number(qty[item.id] || 0), 0), remaining);
     return { item, remaining, q, ...lineValue(q, item.unitPrice, item.discountPercent, item.gstPercentage) };
   });
   const directLines = lines.map((l) => ({ ...l, ...lineValue(l.quantity, l.unitPrice, 0, l.gstPercentage) }));
-  const total = r2((bill ? billLines : directLines).reduce((s, l) => s + l.total, 0));
+  const total = Math.round(r2((bill ? billLines : directLines).reduce((s, l) => s + l.total, 0))); // whole rupees, like the note
   const taxable = r2((bill ? billLines : directLines).reduce((s, l) => s + l.taxable, 0));
-  const againstBill = bill ? r2(Math.min(total, Math.max(0, bill.amountPayable))) : 0;
+  const againstBill = bill ? r2(Math.min(total, Math.max(0, bill.amountPayable + Number(editNote?.adjustedAmount || 0)))) : 0;
 
   const updateLine = (idx, patch) => setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
 
@@ -81,8 +94,8 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
     setSaving(true);
     setError('');
     try {
-      const note = await apiRequest('/api/purchases/returns', {
-        method: 'POST',
+      const note = await apiRequest(editNote ? `/api/purchases/returns/${editNote.id}` : '/api/purchases/returns', {
+        method: editNote ? 'PUT' : 'POST',
         body: JSON.stringify({
           supplierId, billId: billId || null, warehouseId: warehouseId || null, returnDate,
           reason: reason.trim() || null, items,
@@ -100,13 +113,13 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
     <Modal
       open
       size="xl"
-      title={bill ? `Debit note · return against ${bill.billNumber}` : 'New debit note'}
+      title={editNote ? `✏ Edit debit note ${editNote.noteNumber || editNote.returnNumber}` : bill ? `Debit note · return against ${bill.billNumber}` : 'New debit note'}
       onClose={onClose}
       footer={(
         <>
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button type="button" className="btn-primary" onClick={save} disabled={saving || total <= 0}>
-            {saving ? 'Issuing…' : `Issue debit note${total > 0 ? ` · ${money(total)}` : ''}`}
+            {saving ? 'Saving…' : `${editNote ? 'Save debit note' : 'Issue debit note'}${total > 0 ? ` · ${money(total)}` : ''}`}
           </button>
         </>
       )}
@@ -117,7 +130,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
           <div className="grid gap-3 md:grid-cols-4">
             <div className="md:col-span-2">
               <label className="label">Supplier *</label>
-              <select className="input-field" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <select className="input-field" value={supplierId} disabled={Boolean(editNote)} onChange={(e) => setSupplierId(e.target.value)}>
                 <option value="">Select supplier</option>
                 {(boot.suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -138,7 +151,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
           {supplierId && (
             <div>
               <label className="label">Against purchase bill</label>
-              <select className="input-field" value={billId} onChange={(e) => setBillId(e.target.value)}>
+              <select className="input-field" value={billId} disabled={Boolean(editNote)} onChange={(e) => setBillId(e.target.value)}>
                 <option value="">No bill — direct return (enter items by hand)</option>
                 {bills.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -172,7 +185,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
                         <div className="text-xs text-slate-500">{item.hsnCode ? `HSN ${item.hsnCode} · ` : ''}{money(item.unitPrice)}{item.discountPercent ? ` −${item.discountPercent}%` : ''} · GST {item.gstPercentage}%</div>
                       </td>
                       <td className="px-3 py-2 text-right">{qtyText(item.quantity)}</td>
-                      <td className="px-3 py-2 text-right text-slate-500">{item.returnedQuantity ? qtyText(item.returnedQuantity) : '—'}</td>
+                      <td className="px-3 py-2 text-right text-slate-500">{item.returnedQuantity - mine(item.id) > 0 ? qtyText(item.returnedQuantity - mine(item.id)) : '—'}</td>
                       <td className="px-3 py-2 text-right">
                         {remaining > 0 ? (
                           <div className="flex items-center justify-end gap-1">
@@ -233,7 +246,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
                 <div className="flex justify-between"><span>Value (incl. GST)</span><span className="font-semibold">{money(total)}</span></div>
                 {bill && <div className="flex justify-between"><span>Comes off bill {bill.billNumber}</span><span>{money(againstBill)}</span></div>}
                 <div className="flex justify-between text-slate-500"><span>Supplier balance reduces by</span><span>{money(total)}</span></div>
-                <p className="mt-2 text-xs text-slate-500">Stock goes out of the chosen warehouse. The note gets the next debit note number for this financial year.</p>
+                <p className="mt-2 text-xs text-slate-500">{editNote ? 'Saving undoes the old note (stock, supplier balance, bill) and books this one under the same number.' : 'Stock goes out of the chosen warehouse. The note gets the next debit note number for this financial year.'}</p>
               </div>
             </div>
           )}

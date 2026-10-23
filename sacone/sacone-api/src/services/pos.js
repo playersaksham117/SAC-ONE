@@ -1004,6 +1004,128 @@ export class PosService {
     return cancelled;
   }
 
+  /**
+   * Edit a credit note (firm admin only): quantities per invoice line, settlement, reason and
+   * notes. Same note number and date. Atomically undoes what the note did (stock, invoice due,
+   * customer balance, returned quantities, commission) and books the corrected note.
+   */
+  updateReturn(id, data = {}, actor, req) {
+    authService.checkPermission(actor.permissions, 'pos.returns.create');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can edit credit notes', 403, 'OWNER_ONLY');
+    const old = returnRepo.findById(id);
+    if (!old) throw new AppError('Credit note not found', 404);
+    if (old.status !== 'completed') throw new AppError('This credit note is cancelled', 400);
+    if (old.againstInvoice == null) {
+      throw new AppError('This credit note was kept as customer credit before notes could be edited; issue a new note instead.', 400, 'NOTE_NOT_EDITABLE');
+    }
+    const refundMethod = String(data.refundMethod || old.refundMethod || '').toLowerCase();
+    if (!REFUND_METHODS.has(refundMethod)) throw new AppError('Invalid refund method', 400);
+    if (!Array.isArray(data.items) || !data.items.some((i) => Number(i.quantity) > 0)) {
+      throw new AppError('Return items are required', 400);
+    }
+    const sale = saleRepo.findById(old.saleId);
+    if (!sale) throw new AppError('Original sale not found', 404);
+
+    const updated = getDatabase().transaction(() => {
+      // 1. Undo the old note.
+      for (const item of old.items) {
+        inventoryMovementService.createMovement({
+          productId: item.productId,
+          warehouseId: sale.warehouseId,
+          movementType: MOVEMENT_TYPES.POS_SALE,
+          quantity: item.quantity,
+          allowNegative: true,
+          referenceType: 'pos_sales_return_edit',
+          referenceId: old.id,
+          reason: `Edited credit note ${old.noteNumber || old.returnNumber}`,
+        }, actor, req, { skipPermissionCheck: true });
+        saleRepo.addReturnedQuantity(item.saleItemId, -item.quantity);
+      }
+      if (old.againstInvoice > 0) returnRepo.reduceSaleDue(sale.id, -old.againstInvoice);
+      if (old.adjustedAmount > 0) customerRepo.adjustOutstanding(sale.customerId, old.adjustedAmount);
+
+      // 2. The corrected note, against the invoice as it is without the old note.
+      const fresh = saleRepo.findById(sale.id);
+      const returnItems = [];
+      for (const reqItem of data.items.filter((i) => Number(i.quantity) > 0)) {
+        const saleItem = fresh.items.find((i) => i.id === reqItem.saleItemId);
+        if (!saleItem) throw new AppError('Sale item not found on invoice', 400);
+        const qty = Number(reqItem.quantity);
+        const remaining = saleItem.quantity - saleItem.quantityReturned;
+        if (qty > remaining + 0.000001) {
+          throw new AppError(`Cannot return more than sold for ${saleItem.productName}. Remaining: ${round2(remaining)}`, 400);
+        }
+        const ratio = qty / saleItem.quantity;
+        returnItems.push({
+          id: generateId(),
+          saleItemId: saleItem.id,
+          productId: saleItem.productId,
+          quantity: qty,
+          unitPrice: saleItem.unitPrice,
+          gstPercentage: saleItem.gstPercentage,
+          taxableAmount: round2(saleItem.taxableAmount * ratio),
+          gstAmount: round2(saleItem.gstAmount * ratio),
+          lineTotal: round2(saleItem.lineTotal * ratio),
+        });
+      }
+      const subtotal = round2(returnItems.reduce((s, i) => s + i.taxableAmount, 0));
+      const gstAmount = round2(returnItems.reduce((s, i) => s + i.gstAmount, 0));
+      const grandTotal = roundRupee(returnItems.reduce((s, i) => s + i.lineTotal, 0));
+      const interState = Number(fresh.igstAmount || 0) > 0;
+      const cgstAmount = interState ? 0 : round2(gstAmount / 2);
+      const againstInvoice = round2(Math.min(grandTotal, Math.max(0, Number(fresh.amountCredit || 0))));
+      const adjustedAmount = refundMethod === 'credit_note' ? grandTotal : againstInvoice;
+      const ret = returnRepo.replace(old.id, {
+        subtotal,
+        gstAmount,
+        cgstAmount,
+        sgstAmount: interState ? 0 : round2(gstAmount - cgstAmount),
+        igstAmount: interState ? gstAmount : 0,
+        grandTotal,
+        adjustedAmount,
+        refundAmount: round2(grandTotal - adjustedAmount),
+        againstInvoice,
+        refundMethod,
+        reason: data.reason !== undefined ? data.reason : old.reason,
+        notes: data.notes !== undefined ? data.notes : old.notes,
+      }, returnItems);
+
+      // 3. Book it.
+      for (const item of ret.items) {
+        const result = inventoryMovementService.createMovement({
+          productId: item.productId,
+          warehouseId: sale.warehouseId,
+          movementType: MOVEMENT_TYPES.SALES_RETURN,
+          quantity: item.quantity,
+          allowNegative: this.#allowNegativeStock(),
+          referenceType: 'pos_sales_return',
+          referenceId: ret.id,
+          reason: `Credit note ${ret.noteNumber || ret.returnNumber} for ${sale.invoiceNumber} (edited)`,
+        }, actor, req, { skipPermissionCheck: true });
+        if (result.movement) returnRepo.updateItemMovement(item.id, result.movement.id);
+        saleRepo.addReturnedQuantity(item.saleItemId, item.quantity);
+      }
+      if (againstInvoice > 0) returnRepo.reduceSaleDue(sale.id, againstInvoice);
+      if (adjustedAmount > 0) customerRepo.adjustOutstanding(sale.customerId, -adjustedAmount);
+      const after = saleRepo.findById(sale.id);
+      const allReturned = after.items.every((i) => i.quantityReturned + 0.000001 >= i.quantity);
+      const anyReturned = after.items.some((i) => i.quantityReturned > 0);
+      saleRepo.updateStatus(sale.id, allReturned ? 'returned' : (anyReturned ? 'partially_returned' : 'completed'));
+      const diff = round2(grandTotal - old.grandTotal);
+      if (Math.abs(diff) >= 0.01) {
+        try { commissionService.reverseForReturn(sale.id, diff, actor, req); } catch (err) { console.error('Commission adjust failed:', err.message); }
+      }
+      return returnRepo.findById(ret.id);
+    })();
+
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'update', module: 'pos', recordType: 'pos_sales_return', recordId: id,
+      previousValue: old, newValue: updated, ...getRequestMeta(req),
+    });
+    return updated;
+  }
+
   createReturn(data, actor, req) {
     authService.checkPermission(actor.permissions, 'pos.returns.create');
 
@@ -1114,6 +1236,7 @@ export class PosService {
       saleRepo.addReturnedQuantity(item.saleItemId, item.quantity);
     }
 
+    returnRepo.setAgainstInvoice(ret.id, againstInvoice);
     // Balances: the customer owes less by whatever was not paid back in money.
     if (againstInvoice > 0) returnRepo.reduceSaleDue(sale.id, againstInvoice);
     if (adjustedAmount > 0) customerRepo.adjustOutstanding(sale.customerId, -adjustedAmount);

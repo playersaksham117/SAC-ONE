@@ -311,6 +311,10 @@ posRouter.get('/returns/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.getReturn(req.params.id, req.actor));
 }));
 
+// Owner only: edit a credit note (same number; stock and balances follow the change).
+posRouter.put('/returns/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, posService.updateReturn(req.params.id, req.body || {}, req.actor, req));
+}));
 posRouter.post('/returns', asyncHandler(async (req, res) => {
   sendSuccess(res, posService.createReturn(req.body, req.actor, req), 201);
 }));

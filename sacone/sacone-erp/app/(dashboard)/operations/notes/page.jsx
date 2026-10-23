@@ -80,7 +80,10 @@ const KINDS = {
 };
 
 export default function NotesPage() {
-  const { checkPermission } = useAuth();
+  const { checkPermission, session } = useAuth();
+  // Only the owner may change an issued note.
+  const isOwner = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
+  const [editing, setEditing] = useState(null);
   const kinds = useMemo(() => Object.keys(KINDS).filter((k) => checkPermission(KINDS[k].permission)), [checkPermission]);
   const [kind, setKind] = useState(kinds[0] || 'credit');
   const [years, setYears] = useState(null);
@@ -127,6 +130,21 @@ export default function NotesPage() {
     `${spec.label.replace(/\s+/g, '-')}-${fy === 'all' ? 'all-years' : `FY-${fy}`}.csv`,
     toCsv(rows, spec.columns),
   );
+
+  const startEdit = async (n) => {
+    setMessage('');
+    try {
+      const full = await apiRequest(kind === 'credit' ? `/api/pos/returns/${n.id}` : `/api/purchases/returns/${n.id}`);
+      setEditing(full);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  const edited = (note) => {
+    setEditing(null);
+    setMessage(`${spec.one} ${note.noteNumber || note.returnNumber} updated: ${money(note.grandTotal)}.`);
+    load(true);
+  };
 
   const created = (note) => {
     setCreating(false);
@@ -228,6 +246,9 @@ export default function NotesPage() {
                       : (n.adjustedAmount > 0 ? money(n.adjustedAmount) : '—')}
                   </td>
                   <td className="px-4 py-3 text-right">
+                    {isOwner && n.status !== 'cancelled' && (
+                      <button type="button" className="btn-secondary !min-h-0 mr-2 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => startEdit(n)}>✏ Edit</button>
+                    )}
                     <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(n.id)}>Print / Share</button>
                   </td>
                 </tr>
@@ -245,6 +266,8 @@ export default function NotesPage() {
           onClose={() => setOpenId(null)}
         />
       )}
+      {editing && kind === 'credit' && <CreditNoteDialog editNote={editing} onClose={() => setEditing(null)} onCreated={edited} />}
+      {editing && kind === 'debit' && <DebitNoteDialog editNote={editing} onClose={() => setEditing(null)} onCreated={edited} />}
       {creating && kind === 'credit' && <CreditNoteDialog onClose={() => setCreating(false)} onCreated={created} />}
       {creating && kind === 'debit' && <DebitNoteDialog onClose={() => setCreating(false)} onCreated={created} />}
     </RequirePermission>

@@ -603,6 +603,39 @@ export class PurchaseRepository {
   }
 
   /** bill_item_id → quantity already returned on debit notes. */
+  /** Edit: drop a debit note's lines (they are written again with the corrected note). */
+  clearReturnItems(id) {
+    getDatabase().prepare('DELETE FROM purchase_return_items WHERE return_id = ?').run(id);
+  }
+
+  /** Edit: new header and lines for the same debit note (number kept). */
+  replaceReturn(id, data, items) {
+    const db = getDatabase();
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE purchase_returns SET return_date = ?, warehouse_id = ?, subtotal = ?, gst_amount = ?, grand_total = ?,
+          cgst_amount = ?, sgst_amount = ?, igst_amount = ?, adjusted_amount = ?, reason = ?, notes = ?, financial_year = ?, updated_at = ?
+        WHERE id = ?
+      `).run(data.returnDate, data.warehouseId || null, data.subtotal, data.gstAmount, data.grandTotal,
+        data.cgstAmount || 0, data.sgstAmount || 0, data.igstAmount || 0, data.adjustedAmount || 0,
+        data.reason || null, data.notes || null, data.financialYear || null, nowIso(), id);
+      db.prepare('DELETE FROM purchase_return_items WHERE return_id = ?').run(id);
+      const insert = db.prepare(`
+        INSERT INTO purchase_return_items (
+          id, return_id, product_id, product_name, sku, quantity, unit_price, gst_percentage, line_total,
+          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      items.forEach((item) => {
+        insert.run(generateId(), id, item.productId, item.productName, item.sku || null,
+          item.quantity, item.unitPrice, item.gstPercentage || 0, item.lineTotal,
+          item.billItemId || null, item.hsnCode || null, item.discountPercent || 0,
+          item.taxableAmount ?? null, item.gstAmount ?? null);
+      });
+    })();
+    return this.findReturnById(id);
+  }
+
   returnedQtyByBillItem(billId) {
     const rows = getDatabase().prepare(`
       SELECT i.bill_item_id, SUM(i.quantity) as qty

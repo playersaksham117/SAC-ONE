@@ -54,6 +54,11 @@ purchaseRouter.post('/bills', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.createBill(req.body, req.actor, req), 201);
 }));
 
+// Owner only: edit a debit note (same number; stock and balances follow the change).
+purchaseRouter.put('/returns/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, purchaseService.updateReturn(req.params.id, req.body || {}, req.actor, req));
+}));
+
 purchaseRouter.get('/bills/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.getBill(req.params.id, req.actor));
 }));

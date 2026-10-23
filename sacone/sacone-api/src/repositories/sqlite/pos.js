@@ -184,6 +184,8 @@ function mapReturn(row) {
     grandTotal: Number(row.grand_total || 0),
     adjustedAmount: Number(row.adjusted_amount || 0),
     refundAmount: Number(row.refund_amount || 0),
+    /** Part of the note that cleared the invoice's unpaid amount (null on old credit-kept notes). */
+    againstInvoice: row.against_invoice == null ? null : Number(row.against_invoice),
     refundMethod: row.refund_method,
     reason: row.reason,
     notes: row.notes,
@@ -582,6 +584,36 @@ export class PosHeldBillRepository {
 }
 
 export class PosReturnRepository {
+  setAgainstInvoice(id, amount) {
+    getDatabase().prepare('UPDATE pos_sales_returns SET against_invoice = ? WHERE id = ?').run(amount, id);
+  }
+
+  /** Edit: new totals, settlement and lines for the same note (number and date kept). */
+  replace(id, header, items) {
+    const db = getDatabase();
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE pos_sales_returns SET subtotal = ?, gst_amount = ?, cgst_amount = ?, sgst_amount = ?, igst_amount = ?,
+          grand_total = ?, adjusted_amount = ?, refund_amount = ?, against_invoice = ?, refund_method = ?, reason = ?, notes = ?
+        WHERE id = ?
+      `).run(header.subtotal, header.gstAmount, header.cgstAmount, header.sgstAmount, header.igstAmount,
+        header.grandTotal, header.adjustedAmount, header.refundAmount, header.againstInvoice, header.refundMethod,
+        header.reason ?? null, header.notes ?? null, id);
+      db.prepare('DELETE FROM pos_sales_return_items WHERE return_id = ?').run(id);
+      const insert = db.prepare(`
+        INSERT INTO pos_sales_return_items (
+          id, return_id, sale_item_id, product_id, quantity, unit_price,
+          gst_percentage, taxable_amount, gst_amount, line_total, movement_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+      `);
+      for (const item of items) {
+        insert.run(item.id || generateId(), id, item.saleItemId, item.productId, item.quantity, item.unitPrice,
+          item.gstPercentage, item.taxableAmount, item.gstAmount, item.lineTotal);
+      }
+    })();
+    return this.findById(id);
+  }
+
   nextReturnNumber() {
     const count = getDatabase().prepare('SELECT COUNT(*) as count FROM pos_sales_returns').get().count;
     return `RET-${String(count + 1).padStart(5, '0')}`;

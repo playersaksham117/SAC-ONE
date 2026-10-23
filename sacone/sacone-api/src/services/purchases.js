@@ -677,10 +677,85 @@ export class PurchaseService {
    * than billed less already returned) and take the bill's rate, discount and GST; the note
    * comes off the bill's payable. The supplier's balance always drops by the full note.
    */
-  createReturn(data, actor, req) {
+  /**
+   * Edit a debit note (firm admin only): lines, date, warehouse, reason and notes. Same note
+   * number. Atomically undoes what the note did (stock out, supplier payable, bill balance)
+   * and books the corrected note.
+   */
+  updateReturn(id, data = {}, actor, req) {
     authService.checkPermission(actor.permissions, 'purchases.returns.create');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can edit debit notes', 403, 'OWNER_ONLY');
+    const old = purchaseRepo.findReturnById(id);
+    if (!old) throw new AppError('Debit note not found', 404);
+    if (old.status !== 'completed') throw new AppError('This debit note is cancelled', 400);
+
+    const updated = getDatabase().transaction(() => {
+      // 1. Undo the old note: goods back in, payable and bill balance restored.
+      for (const line of old.items) {
+        inventoryMovementService.createMovement({
+          movementType: MOVEMENT_TYPES.PURCHASE,
+          productId: line.productId,
+          warehouseId: old.warehouseId,
+          quantity: line.quantity,
+          referenceType: 'purchase_return_edit',
+          referenceId: old.id,
+          reason: `Edited debit note ${old.noteNumber || old.returnNumber}`,
+        }, actor, req, { skipPermissionCheck: true });
+      }
+      supplierRepo.adjustPayable(old.supplierId, old.grandTotal);
+      if (old.billId && old.adjustedAmount > 0) purchaseRepo.applyBillReturn(old.billId, -old.adjustedAmount);
+      purchaseRepo.clearReturnItems(old.id);
+
+      // 2. The corrected note (same supplier and bill), booked like a new one.
+      const prep = this.#prepareReturn({
+        ...data,
+        supplierId: old.supplierId,
+        billId: old.billId,
+        warehouseId: data.warehouseId || old.warehouseId,
+      });
+      const returnDate = data.returnDate || old.returnDate;
+      const ret = purchaseRepo.replaceReturn(old.id, {
+        returnDate,
+        financialYear: financialYearOf(returnDate),
+        warehouseId: prep.warehouseId,
+        subtotal: round2(prep.totals.subtotal),
+        gstAmount: round2(prep.totals.gstAmount),
+        cgstAmount: round2(prep.totals.cgstAmount),
+        sgstAmount: round2(prep.totals.sgstAmount),
+        igstAmount: round2(prep.totals.igstAmount),
+        grandTotal: prep.grandTotal,
+        adjustedAmount: prep.adjustedAmount,
+        reason: data.reason !== undefined ? data.reason : old.reason,
+        notes: data.notes !== undefined ? data.notes : old.notes,
+      }, prep.items);
+      supplierRepo.adjustPayable(old.supplierId, -ret.grandTotal);
+      if (prep.adjustedAmount > 0) purchaseRepo.applyBillReturn(old.billId, prep.adjustedAmount);
+      for (const line of prep.items) {
+        inventoryMovementService.createMovement({
+          movementType: MOVEMENT_TYPES.PURCHASE_RETURN,
+          productId: line.productId,
+          warehouseId: prep.warehouseId,
+          quantity: line.quantity,
+          referenceType: 'purchase_return',
+          referenceId: ret.id,
+          reason: `Debit note ${ret.noteNumber || ret.returnNumber}${prep.bill ? ` against ${prep.bill.billNumber}` : ''} (edited)`,
+        }, actor, req, { skipPermissionCheck: true });
+      }
+      return purchaseRepo.findReturnById(ret.id);
+    })();
+
+    auditRepo.create({
+      userId: actor.user.id, userName: actor.user.fullName,
+      action: 'update', module: 'purchases', recordType: 'purchase_return', recordId: id,
+      previousValue: old, newValue: updated, ...getRequestMeta(req),
+    });
+    return updated;
+  }
+
+  /** Lines, bill matching, warehouse and totals of a debit note (new or edited). */
+  #prepareReturn(data) {
     if (!data.supplierId) throw new AppError('Supplier is required', 400);
-    let lines = enrichLines((data.items || []).filter((l) => l.productId));
+    let lines = enrichLines((data.items || []).filter((l) => l.productId), { allowInactive: (data.items || []).map((l) => l.productId) });
     if (!lines.length) throw new AppError('At least one line item is required', 400);
     for (const line of lines) {
       if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
@@ -728,6 +803,12 @@ export class PurchaseService {
     items.forEach((item, idx) => { item.billItemId = lines[idx].billItemId || null; });
     const grandTotal = round2(totals.grandTotal);
     const adjustedAmount = bill ? round2(Math.min(grandTotal, Math.max(0, bill.amountPayable))) : 0;
+    return { bill, warehouseId, totals, items, grandTotal, adjustedAmount };
+  }
+
+  createReturn(data, actor, req) {
+    authService.checkPermission(actor.permissions, 'purchases.returns.create');
+    const { bill, warehouseId, totals, items, grandTotal, adjustedAmount } = this.#prepareReturn(data);
     const returnDate = data.returnDate || new Date().toISOString().slice(0, 10);
     numberOldDebitNotes();
     const note = allocateDocNumber('debit_note');

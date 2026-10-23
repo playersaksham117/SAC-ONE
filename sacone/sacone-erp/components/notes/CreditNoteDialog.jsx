@@ -19,15 +19,19 @@ const SETTLE = [
  * Customer return → GST credit note, against one sales invoice.
  * With `saleId` the invoice is fixed; without it the user searches for the invoice first.
  * onCreated(note) gets the new credit note (with its number).
+ * With `editNote` (admin) it edits that note: same invoice and number, its quantities filled in.
  */
-export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreated }) {
+export default function CreditNoteDialog({ saleId: givenSaleId, editNote = null, onClose, onCreated }) {
+  const fixedSaleId = editNote?.saleId || givenSaleId;
+  // This note's own quantities count as not yet returned while editing it.
+  const mine = (saleItemId) => (editNote?.items || []).filter((i) => i.saleItemId === saleItemId).reduce((s, i) => s + Number(i.quantity), 0);
   const [saleId, setSaleId] = useState(fixedSaleId || '');
   const [search, setSearch] = useState('');
   const [matches, setMatches] = useState([]);
   const [sale, setSale] = useState(null);
   const [qty, setQty] = useState({});
-  const [method, setMethod] = useState('credit_note');
-  const [reason, setReason] = useState('');
+  const [method, setMethod] = useState(editNote?.refundMethod || 'credit_note');
+  const [reason, setReason] = useState(editNote?.reason || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -45,23 +49,26 @@ export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreat
     if (!saleId) { setSale(null); return; }
     setError('');
     apiRequest(`/api/pos/sales/${saleId}`)
-      .then((s) => { setSale(s); setQty({}); })
+      .then((s) => {
+        setSale(s);
+        setQty(editNote ? Object.fromEntries(s.items.filter((i) => mine(i.id) > 0).map((i) => [i.id, mine(i.id)])) : {});
+      })
       .catch((e) => setError(e.message));
   }, [saleId]);
 
   const lines = (sale?.items || []).map((item) => {
-    const remaining = r2(item.quantity - (item.quantityReturned || 0));
+    const remaining = r2(item.quantity - ((item.quantityReturned || 0) - mine(item.id)));
     const q = Math.min(Math.max(Number(qty[item.id] || 0), 0), remaining);
     const ratio = item.quantity ? q / item.quantity : 0;
     return { item, remaining, q, value: r2(item.lineTotal * ratio), gst: r2(item.gstAmount * ratio) };
   });
-  const total = r2(lines.reduce((s, l) => s + l.value, 0));
+  const total = Math.round(r2(lines.reduce((s, l) => s + l.value, 0))); // whole rupees, like the note
   const gst = r2(lines.reduce((s, l) => s + l.gst, 0));
-  const due = Math.max(0, Number(sale?.amountCredit || 0));
+  const due = Math.max(0, Number(sale?.amountCredit || 0) + Number(editNote?.againstInvoice || 0));
   const againstDue = r2(Math.min(total, due));
   const refund = method === 'credit_note' ? 0 : r2(total - againstDue);
   const keptCredit = method === 'credit_note' ? r2(total - againstDue) : 0;
-  const canReturn = sale && ['completed', 'partially_returned'].includes(sale.status);
+  const canReturn = sale && (editNote ? true : ['completed', 'partially_returned'].includes(sale.status));
 
   const save = async () => {
     const items = lines.filter((l) => l.q > 0).map((l) => ({ saleItemId: l.item.id, quantity: l.q }));
@@ -69,8 +76,8 @@ export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreat
     setSaving(true);
     setError('');
     try {
-      const note = await apiRequest('/api/pos/returns', {
-        method: 'POST',
+      const note = await apiRequest(editNote ? `/api/pos/returns/${editNote.id}` : '/api/pos/returns', {
+        method: editNote ? 'PUT' : 'POST',
         body: JSON.stringify({ saleId: sale.id, refundMethod: method, reason: reason.trim() || null, items }),
       });
       onCreated?.(note);
@@ -85,13 +92,13 @@ export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreat
     <Modal
       open
       size="xl"
-      title={sale ? `Credit note · return against ${sale.invoiceNumber}` : 'New credit note'}
+      title={editNote ? `✏ Edit credit note ${editNote.noteNumber || editNote.returnNumber}` : sale ? `Credit note · return against ${sale.invoiceNumber}` : 'New credit note'}
       onClose={onClose}
       footer={(
         <>
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button type="button" className="btn-primary" onClick={save} disabled={saving || !canReturn || total <= 0}>
-            {saving ? 'Issuing…' : `Issue credit note${total > 0 ? ` · ${money(total)}` : ''}`}
+            {saving ? 'Saving…' : `${editNote ? 'Save credit note' : 'Issue credit note'}${total > 0 ? ` · ${money(total)}` : ''}`}
           </button>
         </>
       )}
@@ -159,7 +166,7 @@ export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreat
                           <div className="text-xs text-slate-500">{item.hsnCode ? `HSN/SAC ${item.hsnCode} · ` : ''}{money(item.unitPrice)} · GST {item.gstPercentage}%</div>
                         </td>
                         <td className="px-3 py-2 text-right">{qtyText(item.quantity)}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{item.quantityReturned ? qtyText(item.quantityReturned) : '—'}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{item.quantityReturned - mine(item.id) > 0 ? qtyText(item.quantityReturned - mine(item.id)) : '—'}</td>
                         <td className="px-3 py-2 text-right">
                           {remaining > 0 ? (
                             <div className="flex items-center justify-end gap-1">
@@ -212,7 +219,7 @@ export default function CreditNoteDialog({ saleId: fixedSaleId, onClose, onCreat
                   {method === 'credit_note'
                     ? <div className="flex justify-between"><span>Kept as customer credit</span><span>{money(keptCredit)}</span></div>
                     : <div className="flex justify-between font-semibold"><span>Pay back now ({method.toUpperCase()})</span><span>{money(refund)}</span></div>}
-                  <p className="mt-2 text-xs text-slate-500">Stock comes back for goods; services have no stock. The note gets the next credit note number for this financial year.</p>
+                  <p className="mt-2 text-xs text-slate-500">{editNote ? 'Saving undoes the old note (stock, invoice due, customer balance) and books this one under the same number.' : 'Stock comes back for goods; services have no stock. The note gets the next credit note number for this financial year.'}</p>
                 </div>
               </div>
             )}
