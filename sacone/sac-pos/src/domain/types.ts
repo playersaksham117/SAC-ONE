@@ -92,6 +92,8 @@ export interface CartTotals {
   sgstAmount: number;
   igstAmount: number;
   gstAmount: number;
+  /** Whole-rupee rounding of the final amount (grandTotal − exact total). */
+  roundOff?: number;
   grandTotal: number;
   taxSplit: 'cgst_sgst' | 'igst';
 }

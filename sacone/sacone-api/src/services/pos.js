@@ -60,6 +60,9 @@ function lineHsn(given, product) {
   return code;
 }
 
+/** Final amounts in whole rupees: .50 and above goes up, below .50 goes down. */
+export const roundRupee = (n) => Math.round(round2(n));
+
 export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStateCode = null, customerStateCode = null } = {}) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     throw new AppError('Cart must contain at least one item', 400);
@@ -141,7 +144,8 @@ export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStat
 
   const taxableAmount = round2(computed.reduce((s, l) => s + l.taxableAmount, 0));
   const gstAmount = round2(computed.reduce((s, l) => s + l.gstAmount, 0));
-  const grandTotal = round2(computed.reduce((s, l) => s + l.lineTotal, 0));
+  const exactTotal = round2(computed.reduce((s, l) => s + l.lineTotal, 0));
+  const grandTotal = roundRupee(exactTotal);
 
   const sameState = !customerStateCode
     || !companyStateCode
@@ -160,6 +164,7 @@ export function calculateCartTotals(rawItems, invoiceDiscount = 0, { companyStat
     sgstAmount,
     igstAmount,
     gstAmount,
+    roundOff: round2(grandTotal - exactTotal),
     grandTotal,
     taxSplit: sameState ? 'cgst_sgst' : 'igst',
   };
@@ -851,7 +856,9 @@ export class PosService {
     if (!Array.isArray(payments) || !payments.length) {
       const total = this.preview({ items: data.items, invoiceDiscount, customerId }, actor).grandTotal;
       const method = data.paymentMethod || 'cash';
-      const received = method === 'credit' ? 0 : Math.min(total, Math.max(0, Number(data.amountReceived ?? total)));
+      let received = method === 'credit' ? 0 : Math.min(total, Math.max(0, Number(data.amountReceived ?? total)));
+      // A bill paid in full before totals were rounded to whole rupees: the paise gap is rounding, not credit.
+      if (method !== 'credit' && total - received > 0 && total - received < 1) received = total;
       payments = [
         ...(received > 0 ? [{ method, amount: received, paymentAccountId: data.paymentAccountId || undefined }] : []),
         ...(total - received > 0.009 ? [{ method: 'credit', amount: Math.round((total - received) * 100) / 100 }] : []),
@@ -1049,7 +1056,7 @@ export class PosService {
 
     const subtotal = round2(returnItems.reduce((s, i) => s + i.taxableAmount, 0));
     const gstAmount = round2(returnItems.reduce((s, i) => s + i.gstAmount, 0));
-    const grandTotal = round2(returnItems.reduce((s, i) => s + i.lineTotal, 0));
+    const grandTotal = roundRupee(returnItems.reduce((s, i) => s + i.lineTotal, 0));
 
     // GST credit note: same tax split as the invoice (IGST when it was inter-state).
     const interState = Number(sale.igstAmount || 0) > 0;

@@ -46,6 +46,12 @@ function gstRows(doc) {
   return doc.gstAmount > 0 ? [['GST', doc.gstAmount]] : [];
 }
 
+/** Whole-rupee round off (final amount − taxable − GST), as a totals row when not zero. */
+function roundOffRows(doc, taxable) {
+  const ro = Math.round((Number(doc.grandTotal || 0) - Number(taxable || 0) - Number(doc.gstAmount || 0)) * 100) / 100;
+  return Math.abs(ro) >= 0.01 ? [['Round off', ro]] : [];
+}
+
 function partyFrom(name, contact) {
   if (!name) return null;
   return { name, phone: contact?.phone, address: [contact?.address, contact?.city, contact?.state].filter(Boolean).join(', '), gstin: contact?.gstNumber };
@@ -183,6 +189,7 @@ export function saleDocument(sale, customer) {
       ...(discount > 0 ? [['Discount', -discount]] : []),
       ['Taxable value', sale.taxableAmount],
       ...gstRows(sale),
+      ...roundOffRows(sale, sale.taxableAmount),
       ['Total', sale.grandTotal, true],
     ],
     footer: 'Thank you for your business. This is a computer-generated invoice.',
@@ -308,7 +315,7 @@ export function creditNoteDocument(note, customer) {
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: l.unitPrice, discount: null,
       taxable: l.taxableAmount, gstRate: l.gstPercentage, amount: l.lineTotal,
     })),
-    totals: [['Taxable value', note.subtotal], ...gstRows(note), ['Credit note value', note.grandTotal, true]],
+    totals: [['Taxable value', note.subtotal], ...gstRows(note), ...roundOffRows(note, note.subtotal), ['Credit note value', note.grandTotal, true]],
     footer: `Issued for goods returned${note.reason ? ` (${note.reason})` : ''}${note.invoiceNumber ? ` against invoice ${note.invoiceNumber}` : ''}. Output GST on that invoice is reduced by the tax shown.`,
     thanks: '',
     classic: {
@@ -377,6 +384,7 @@ export function purchaseDocument(kind, doc, supplier) {
     totals: [
       ...(taxable > 0 ? [['Taxable value', taxable]] : [['Subtotal', doc.subtotal]]),
       ...gstRows(doc),
+      ...roundOffRows(doc, taxable > 0 ? taxable : doc.subtotal),
       [kind === 'return' ? 'Debit note value' : 'Total', doc.grandTotal, true],
     ],
     footer: kind === 'return' && doc.reason ? `Reason: ${doc.reason}. ${spec.footer}` : spec.footer,

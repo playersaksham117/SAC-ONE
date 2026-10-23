@@ -259,8 +259,30 @@ export class PurchaseService {
     if (['received', 'closed', 'cancelled'].includes(existing.status)) {
       throw new AppError('Cannot edit purchase order in current status', 400);
     }
-    const enriched = enrichLines(data.items || []);
-    const { totals, items } = buildPurchaseTotals(enriched, data.supplierId || existing.supplierId);
+    const enriched = enrichLines(data.items || [], { allowInactive: existing.items.map((i) => i.productId) });
+    if (!enriched.length) throw new AppError('At least one line item is required', 400);
+    // Goods already received on this PO stay received; a line cannot go below them.
+    const received = new Map();
+    for (const i of existing.items) received.set(i.productId, (received.get(i.productId) || 0) + Number(i.receivedQty || 0));
+    const ordered = new Map();
+    for (const l of enriched) ordered.set(l.productId, (ordered.get(l.productId) || 0) + Number(l.quantity));
+    for (const [pid, got] of received) {
+      if (got > 0 && (ordered.get(pid) || 0) + 1e-9 < got) {
+        const name = existing.items.find((i) => i.productId === pid)?.productName || pid;
+        throw new AppError(`${name}: ${got} already received on this PO; the order cannot be less than that.`, 400, 'BELOW_RECEIVED');
+      }
+    }
+    const supplierId = data.supplierId || existing.supplierId;
+    if (supplierId !== existing.supplierId && [...received.values()].some((q) => q > 0)) {
+      throw new AppError('Goods are already received on this PO; the supplier cannot be changed.', 400);
+    }
+    const { totals, items } = buildPurchaseTotals(enriched, supplierId);
+    const left = new Map(received);
+    for (const it of items) {
+      const take = Math.min(left.get(it.productId) || 0, Number(it.quantity));
+      it.receivedQty = take;
+      left.set(it.productId, (left.get(it.productId) || 0) - take);
+    }
     const po = purchaseRepo.updateOrder(id, {
       supplierId: data.supplierId || existing.supplierId,
       orderDate: data.orderDate || existing.orderDate,

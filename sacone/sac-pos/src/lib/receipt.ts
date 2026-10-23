@@ -62,6 +62,12 @@ const billNumber = (sale: Sale, deviceCode?: string) =>
   sale.serverNumber ?? (deviceCode ? `${deviceCode}-${sale.number}` : sale.number);
 
 const discountTotal = (sale: Sale) => sale.totals.itemDiscountTotal + sale.totals.invoiceDiscount;
+/** Whole-rupee round off (total − taxable − GST); works for ERP bills too. */
+function roundOffRow(sale: Sale): string {
+  const t = sale.totals;
+  const ro = Math.round((t.grandTotal - t.taxableAmount - t.gstAmount) * 100) / 100;
+  return Math.abs(ro) >= 0.01 ? `<tr><td>Round off</td><td class="r">${ro > 0 ? '+' : '−'}${formatMoney(Math.abs(ro))}</td></tr>` : '';
+}
 
 function taxRows(sale: Sale) {
   const t = sale.totals;
@@ -125,6 +131,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     ${discountTotal(sale) > 0 ? `<tr><td>Discount</td><td class="r">−${formatMoney(discountTotal(sale))}</td></tr>` : ''}
     <tr><td>Taxable</td><td class="r">${formatMoney(t.taxableAmount)}</td></tr>
     ${taxRows(sale)}
+    ${roundOffRow(sale)}
     <tr class="total"><td>TOTAL</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
   </table><hr>
   ${isQuote(sale) ? '' : `<table>${paymentRows(sale)}</table>`}
@@ -216,6 +223,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       ${discountTotal(sale) > 0 ? `<tr><td>Discount</td><td class="r">−${formatMoney(discountTotal(sale))}</td></tr>` : ''}
       <tr><td>Taxable value</td><td class="r">${formatMoney(t.taxableAmount)}</td></tr>
       ${taxRows(sale)}
+      ${roundOffRow(sale)}
       <tr class="grand"><td>Total</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
     </table>
   </div>

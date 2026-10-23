@@ -302,17 +302,18 @@ export class PurchaseRepository {
         data.notes || null, now, id
       );
       db.prepare('DELETE FROM purchase_order_items WHERE purchase_order_id = ?').run(id);
+      // An edit keeps what was already received on each line.
       const insertItem = db.prepare(`
         INSERT INTO purchase_order_items (
           id, purchase_order_id, product_id, product_name, sku, hsn_code, quantity, unit_price,
           discount_percent, gst_percentage, taxable_amount, gst_amount, line_total, received_qty, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item, idx) => {
         insertItem.run(
           generateId(), id, item.productId, item.productName, item.sku || null, item.hsnCode || null,
           item.quantity, item.unitPrice, item.discountPercent || 0, item.gstPercentage || 0,
-          item.taxableAmount, item.gstAmount, item.lineTotal, idx
+          item.taxableAmount, item.gstAmount, item.lineTotal, item.receivedQty || 0, idx
         );
       });
     });

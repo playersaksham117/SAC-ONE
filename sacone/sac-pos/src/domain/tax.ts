@@ -8,6 +8,7 @@ import type { CartLine, CartTotals, ComputedLine } from './types';
  *  - line: unitPrice × qty − line discount → taxable
  *  - invoice discount is spread over lines pro-rata (last line takes the remainder)
  *  - same state (or unknown) → CGST + SGST halves, otherwise IGST
+ *  - the final amount in whole rupees (.50 and above up, below .50 down)
  */
 export function calculateCart(
   lines: CartLine[],
@@ -50,7 +51,8 @@ export function calculateCart(
 
   const taxableAmount = round2(computed.reduce((s, l) => s + l.taxableAmount, 0));
   const gstAmount = round2(computed.reduce((s, l) => s + l.gstAmount, 0));
-  const grandTotal = round2(computed.reduce((s, l) => s + l.lineTotal, 0));
+  const exactTotal = round2(computed.reduce((s, l) => s + l.lineTotal, 0));
+  const grandTotal = roundRupee(exactTotal);
   const sameState = !customerStateCode || !companyStateCode || String(customerStateCode) === String(companyStateCode);
 
   return {
@@ -63,9 +65,15 @@ export function calculateCart(
     sgstAmount: sameState ? round2(gstAmount / 2) : 0,
     igstAmount: sameState ? 0 : gstAmount,
     gstAmount,
+    roundOff: round2(grandTotal - exactTotal),
     grandTotal,
     taxSplit: sameState ? 'cgst_sgst' : 'igst',
   };
+}
+
+/** Final amounts in whole rupees: .50 and above goes up, below .50 goes down. */
+export function roundRupee(n: number): number {
+  return Math.round(round2(n));
 }
 
 /** Value of `qty` units of a sold line, pro-rata to what the customer paid for it. */

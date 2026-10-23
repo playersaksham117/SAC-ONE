@@ -454,7 +454,7 @@ export class SupplierService {
   createBill(supplierId, data, actor, req) {
     authService.checkPermission(actor.permissions, 'parties.suppliers.edit');
     const supplier = this.getById(supplierId, actor);
-    const grandTotal = round2(data.grandTotal);
+    const grandTotal = Math.round(round2(data.grandTotal)); // whole rupees, like every bill
     if (!Number.isFinite(grandTotal) || grandTotal <= 0) {
       throw new AppError('Bill amount must be positive', 400);
     }
