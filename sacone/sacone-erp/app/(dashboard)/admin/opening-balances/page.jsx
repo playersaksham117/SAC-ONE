@@ -58,6 +58,10 @@ function parseStockCsv(text) {
 }
 
 function OpeningStock({ onDone, onError }) {
+  const { session } = useAuth();
+  // Only the owner may correct opening stock already posted.
+  const isOwner = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
+  const [editing, setEditing] = useState(null); // { id, qty }
   const [warehouses, setWarehouses] = useState([]);
   const [warehouseId, setWarehouseId] = useState('');
   const [search, setSearch] = useState('');
@@ -101,6 +105,19 @@ function OpeningStock({ onDone, onError }) {
     } catch (e) { onError(e); } finally { setBusy(false); }
   };
 
+  const saveEdit = async (p) => {
+    const qty = Number(editing?.qty);
+    if (!(qty >= 0)) { onError(new Error('Opening quantity must be 0 or more')); return; }
+    if (!window.confirm(`Change the opening stock of ${p.name} from ${p.openingQty} to ${qty}? Stock in hand changes by ${Math.round((qty - p.openingQty) * 1000) / 1000}.`)) return;
+    setBusy(true);
+    try {
+      const res = await apiRequest('/api/opening-balances/stock', { method: 'PUT', body: JSON.stringify({ warehouseId, productId: p.id, openingQty: qty }) });
+      onDone(`Opening stock of ${p.name} corrected from ${res.previousOpeningQty} to ${res.openingQty}.`);
+      setEditing(null);
+      load();
+    } catch (e) { onError(e); } finally { setBusy(false); }
+  };
+
   if (!warehouses.length) return <Alert message="Create a warehouse first (Operations → Warehouse), then come back here." />;
 
   return (
@@ -138,7 +155,23 @@ function OpeningStock({ onDone, onError }) {
                     <div className="text-xs text-slate-500">{p.sku}{p.barcode ? ` · ${p.barcode}` : ''}</div>
                   </td>
                   <td className="px-4 py-2 text-right">{p.onHand}</td>
-                  <td className={`px-4 py-2 text-right ${p.openingQty ? 'text-amber-700' : 'text-slate-400'}`}>{p.openingQty || '—'}</td>
+                  <td className={`px-4 py-2 text-right ${p.openingQty ? 'text-amber-700' : 'text-slate-400'}`}>
+                    {editing?.id === p.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <input type="number" min="0" step="any" autoFocus className="input-field w-24 text-right" value={editing.qty}
+                          onChange={(e) => setEditing({ id: p.id, qty: e.target.value })} aria-label={`Corrected opening stock of ${p.name}`} />
+                        <button type="button" className="btn-primary !min-h-0 !px-2 !py-1 text-xs" disabled={busy || editing.qty === ''} onClick={() => saveEdit(p)}>Save</button>
+                        <button type="button" className="btn-secondary !min-h-0 !px-2 !py-1 text-xs" onClick={() => setEditing(null)}>✕</button>
+                      </div>
+                    ) : (
+                      <>
+                        {p.openingQty || '—'}
+                        {isOwner && p.openingQty > 0 && (
+                          <button type="button" className="ml-2 text-xs font-medium text-brand-700 hover:underline" onClick={() => setEditing({ id: p.id, qty: String(p.openingQty) })}>✏ Edit</button>
+                        )}
+                      </>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right">
                     <input type="number" min="0" step="any" className="input-field w-24 text-right" value={entries[p.id]?.quantity ?? ''} onChange={(e) => set(p.id, 'quantity', e.target.value)} placeholder="0" />
                   </td>
@@ -154,7 +187,7 @@ function OpeningStock({ onDone, onError }) {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">"Opening posted" shows stock already entered as opening for this warehouse; posting again adds to it. Cost price updates the product's purchase price (stock value).</p>
+        <p className="text-xs text-slate-500">"Opening posted" shows stock already entered as opening for this warehouse; posting again adds to it{isOwner ? ', and ✏ Edit corrects it (only the difference moves)' : ''}. Cost price updates the product's purchase price (stock value).</p>
         <button type="button" className="btn-primary" disabled={busy || !lines.length} onClick={() => post(lines, `${lines.length} product(s)`)}>
           {busy ? 'Posting…' : `Post opening stock (${lines.length})`}
         </button>

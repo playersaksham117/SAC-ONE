@@ -15,7 +15,7 @@ import { AppError } from '../core/http.js';
 import { generateId, nowIso } from '../core/utils.js';
 import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
-import { authService } from './index.js';
+import { authService, isFirmAdmin } from './index.js';
 import { inventoryMovementService } from './inventory.js';
 import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 
@@ -66,9 +66,9 @@ export class OpeningBalanceService {
     const items = getDatabase().prepare(`
       SELECT p.id, p.sku, p.name, p.barcode, p.purchase_price, p.selling_price,
              COALESCE(s.quantity_on_hand, 0) AS on_hand,
-             COALESCE((SELECT SUM(m.quantity_in) FROM inventory_movements m
-                       WHERE m.product_id = p.id AND m.warehouse_id = @wh
-                         AND m.movement_type = 'opening_stock' AND m.status = 'completed'), 0) AS opening_qty
+             COALESCE((SELECT SUM(m.quantity_in - m.quantity_out) FROM inventory_movements m
+                       WHERE m.product_id = p.id AND m.warehouse_id = @wh AND m.status = 'completed'
+                         AND (m.movement_type = 'opening_stock' OR m.reference_type = 'opening_stock_edit')), 0) AS opening_qty
       FROM products p
       LEFT JOIN stock_levels s ON s.product_id = p.id AND s.warehouse_id = @wh
       WHERE p.is_active = 1 AND p.item_type != 'service'  -- services have no stock
@@ -134,6 +134,56 @@ export class OpeningBalanceService {
       warehouse: { id: warehouse.id, name: warehouse.name },
       movementType: MOVEMENT_TYPES.OPENING_STOCK,
     };
+  }
+
+  /**
+   * Correct opening stock already posted (firm admin): set the opening quantity of a product in a
+   * warehouse to `openingQty`. Only the difference is posted: more → opening stock in; less → an
+   * opening-stock correction out (applied at once). Stock on hand and SAC-POS phones follow.
+   */
+  setOpeningStock({ warehouseId, productId, openingQty, unitCost } = {}, actor, req) {
+    authService.checkPermission(actor.permissions, 'inventory.movements.create');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can edit opening stock', 403, 'OWNER_ONLY');
+    const warehouse = warehouseId ? repos.warehouses.findById(warehouseId) : repos.warehouses.findDefault();
+    if (!warehouse?.isActive) throw new AppError('Choose an active warehouse', 400);
+    const product = productId ? repos.products.findById(productId) : null;
+    if (!product) throw new AppError('Product not found', 404);
+    if (product.itemType === 'service') throw new AppError(`${product.name} is a service and has no stock`, 400);
+    const target = Number(openingQty);
+    if (!Number.isFinite(target) || target < 0) throw new AppError('Opening quantity must be 0 or more', 400);
+    const cost = unitCost === '' || unitCost == null ? null : Number(unitCost);
+    if (cost !== null && !(cost >= 0)) throw new AppError('Cost must be 0 or more', 400);
+
+    const db = getDatabase();
+    const current = Number(db.prepare(`
+      SELECT COALESCE(SUM(quantity_in - quantity_out), 0) AS q FROM inventory_movements
+      WHERE product_id = ? AND warehouse_id = ? AND status = 'completed'
+        AND (movement_type = 'opening_stock' OR reference_type = 'opening_stock_edit')
+    `).get(product.id, warehouse.id).q);
+    const diff = round2(target - current);
+
+    db.transaction(() => {
+      if (cost !== null && Math.abs(cost - Number(product.purchasePrice || 0)) > 0.0001) {
+        db.prepare('UPDATE products SET purchase_price = ?, updated_at = ? WHERE id = ?').run(cost, nowIso(), product.id);
+      }
+      if (Math.abs(diff) < 0.000001) return;
+      const note = `Opening stock corrected from ${round2(current)} to ${round2(target)} by ${actor.user.fullName}`;
+      if (diff > 0) {
+        inventoryMovementService.recordOpeningStock({
+          productId: product.id, warehouseId: warehouse.id, quantity: diff,
+          referenceType: 'opening_stock_edit', reason: 'Opening stock corrected', notes: note,
+        }, actor, req);
+      } else {
+        inventoryMovementService.createMovement({
+          productId: product.id, warehouseId: warehouse.id, quantity: -diff,
+          movementType: MOVEMENT_TYPES.ADJUSTMENT_DECREASE, requiresApproval: false, allowNegative: true,
+          referenceType: 'opening_stock_edit', reason: 'Opening stock corrected', notes: note,
+        }, actor, req, { skipPermissionCheck: true });
+      }
+    })();
+
+    const row = this.stockSheet({ warehouseId: warehouse.id, search: product.sku || product.name }, actor).items.find((i) => i.id === product.id);
+    return { product: row || null, previousOpeningQty: round2(current), openingQty: round2(target), change: diff };
   }
 
   /* ───────────── customer / supplier opening dues ───────────── */

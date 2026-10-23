@@ -14,6 +14,11 @@ openingBalanceRouter.post('/stock', asyncHandler(async (req, res) => {
   sendSuccess(res, openingBalanceService.postOpeningStock(req.body || {}, req.actor, req), 201);
 }));
 
+// Owner only: correct the opening stock already posted for one product.
+openingBalanceRouter.put('/stock', asyncHandler(async (req, res) => {
+  sendSuccess(res, openingBalanceService.setOpeningStock(req.body || {}, req.actor, req));
+}));
+
 openingBalanceRouter.get('/parties', asyncHandler(async (req, res) => {
   sendSuccess(res, openingBalanceService.partySheet(req.query, req.actor));
 }));
