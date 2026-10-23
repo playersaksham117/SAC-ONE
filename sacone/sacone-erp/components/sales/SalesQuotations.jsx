@@ -5,6 +5,8 @@ import { apiRequest } from '../../lib/api';
 import { useLiveRefresh } from '../../lib/live';
 import { documentHtml, money as moneyFmt, quotationDocument } from '../../lib/bill-document';
 import DocumentDialog from '../documents/DocumentDialog';
+import EditQuotationDialog from './EditQuotationDialog';
+import { useAuth } from '../../lib/auth-context';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { Alert, LoadingState } from '../ui';
 import { EmptyPanel } from '../module-ui';
@@ -36,6 +38,10 @@ export default function SalesQuotations() {
   const [data, setData] = useState({ items: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [editId, setEditId] = useState(null);
+  const { checkPermission } = useAuth();
+  const canEdit = checkPermission('pos.quotations.edit');
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -70,6 +76,7 @@ export default function SalesQuotations() {
         <button type="button" className="btn-secondary" disabled={!rows.length} onClick={() => downloadCsv('quotations.csv', toCsv(rows, CSV_COLUMNS))}>⬇ CSV</button>
       </form>
       <Alert message={error} />
+      <Alert type="success" message={message} />
       {loading ? <LoadingState /> : rows.length === 0 ? (
         <EmptyPanel title="No quotations" description="On SAC-POS, switch the Sell screen to Quotation, add items and save. Quotations sync here." />
       ) : (
@@ -102,6 +109,9 @@ export default function SalesQuotations() {
                   </td>
                   <td className="px-4 py-3 text-right font-semibold">{money(q.grandTotal)}</td>
                   <td className="px-4 py-3 text-right">
+                    {canEdit && ['draft', 'sent'].includes(q.status) && (
+                      <button type="button" className="btn-secondary !min-h-0 mr-2 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(q.id); }}>✏ Edit</button>
+                    )}
                     <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(q.id)}>Print / Share</button>
                   </td>
                 </tr>
@@ -109,6 +119,13 @@ export default function SalesQuotations() {
             </tbody>
           </table>
         </div>
+      )}
+      {editId && (
+        <EditQuotationDialog
+          quotationId={editId}
+          onClose={() => setEditId(null)}
+          onSaved={(q) => { setEditId(null); setMessage(`Quotation ${q.quotationNumber} updated.`); load(true); }}
+        />
       )}
       {openId && <DocumentDialog title="Quotation" documentLabel="quotation" load={() => loadQuotation(openId)} onClose={() => setOpenId(null)} />}
     </div>

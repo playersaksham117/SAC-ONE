@@ -79,7 +79,8 @@ export class QuotationService {
         productId: product.id,
         productName: product.name,
         sku: product.sku,
-        hsnCode: product.hsnCode,
+        // HSN / SAC typed on the line (2–8 digits), else the product's code
+        hsnCode: /^\d{2,8}$/.test(String(item.hsnCode ?? '').trim()) ? String(item.hsnCode).trim() : product.hsnCode,
         unitAbbreviation: product.unitAbbreviation || product.unitName || null,
         quantity: item.quantity,
         unitPrice,
@@ -206,10 +207,13 @@ export class QuotationService {
     const customer = data.customerId
       ? customerRepo.findById(data.customerId)
       : (existing.customerId ? customerRepo.findById(existing.customerId) : null);
+    if (data.customerId && customer && !customer.isActive) throw new AppError('Customer not found', 400);
     const items = this.#enrichItems(data.items || [], actor);
     const totals = this.#computeTotals(data, customer, items);
+    // A new customer brings their own name / address; the same customer keeps any edits made for this quotation.
+    const sameCustomer = !data.customerId || data.customerId === existing.customerId;
     const snapshot = buildCustomerSnapshot(customer, {
-      ...existing.customerSnapshot,
+      ...(sameCustomer ? existing.customerSnapshot : {}),
       ...(data.customerSnapshot || {}),
     });
 
@@ -222,8 +226,8 @@ export class QuotationService {
         quotationDate: data.quotationDate || existing.quotationDate,
         validUntil: data.validUntil || existing.validUntil,
         ...totals,
-        notes: data.notes,
-        termsConditions: data.termsConditions,
+        notes: data.notes !== undefined ? data.notes : existing.notes,
+        termsConditions: data.termsConditions !== undefined ? data.termsConditions : existing.termsConditions,
         customerSnapshot: snapshot,
         updatedBy: actor.user.id,
       },
