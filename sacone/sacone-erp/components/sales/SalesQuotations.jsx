@@ -24,9 +24,12 @@ const CSV_COLUMNS = [
   { label: 'Customer', value: (q) => q.customerSnapshot?.name || q.customerName },
   { label: 'Customer PO', value: (q) => q.customerPoNumber },
   { label: 'Status', value: (q) => q.status },
-  { label: 'Taxable', value: (q) => q.taxableAmount },
+  { label: 'Taxable value', value: (q) => q.taxableAmount },
+  { label: 'CGST', value: (q) => q.cgstAmount },
+  { label: 'SGST', value: (q) => q.sgstAmount },
+  { label: 'IGST', value: (q) => q.igstAmount },
   { label: 'GST', value: (q) => q.gstAmount },
-  { label: 'Total', value: (q) => q.grandTotal },
+  { label: 'Net amount', value: (q) => q.grandTotal },
   { label: 'Invoice', value: (q) => q.convertedInvoiceNumber },
 ];
 
@@ -89,7 +92,9 @@ export default function SalesQuotations() {
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Valid until</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-right">Taxable value</th>
+                <th className="px-4 py-3 text-right">GST</th>
+                <th className="px-4 py-3 text-right">Net amount</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -106,6 +111,11 @@ export default function SalesQuotations() {
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS[q.status] || STATUS.draft}`}>{q.status}</span>
                     {q.convertedInvoiceNumber && <div className="mt-1 font-mono text-[11px] text-slate-500">{q.convertedInvoiceNumber}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">{money(q.taxableAmount)}</td>
+                  <td className="px-4 py-3 text-right text-slate-700" title={q.igstAmount > 0 ? `IGST ${money(q.igstAmount)}` : `CGST ${money(q.cgstAmount)} + SGST ${money(q.sgstAmount)}`}>
+                    {money(q.gstAmount)}
+                    <div className="text-[11px] text-slate-400">{q.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
                   </td>
                   <td className="px-4 py-3 text-right font-semibold">{money(q.grandTotal)}</td>
                   <td className="px-4 py-3 text-right">
