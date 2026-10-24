@@ -40,11 +40,12 @@ const KINDS = {
       { label: 'Against invoice', value: (n) => n.invoiceNumber },
       { label: 'Invoice date', value: (n) => String(n.invoiceDate || '').slice(0, 10) },
       { label: 'Customer', value: (n) => (n.customerIsWalkIn ? 'Walk-in' : n.customerName) },
-      { label: 'Taxable', value: (n) => n.subtotal },
+      { label: 'Taxable value', value: (n) => n.subtotal },
       { label: 'CGST', value: (n) => n.cgstAmount },
       { label: 'SGST', value: (n) => n.sgstAmount },
       { label: 'IGST', value: (n) => n.igstAmount },
-      { label: 'Total', value: (n) => n.grandTotal },
+      { label: 'GST', value: (n) => n.gstAmount },
+      { label: 'Net amount', value: (n) => n.grandTotal },
       { label: 'Set against dues', value: (n) => n.adjustedAmount },
       { label: 'Refunded', value: (n) => n.refundAmount },
       { label: 'Settled by', value: (n) => settledBy(n) },
@@ -67,11 +68,12 @@ const KINDS = {
       { label: 'Against bill', value: (n) => n.billNumber },
       { label: 'Supplier invoice', value: (n) => n.supplierInvoiceNumber },
       { label: 'Supplier', value: (n) => n.supplierName },
-      { label: 'Taxable', value: (n) => n.subtotal },
+      { label: 'Taxable value', value: (n) => n.taxableAmount ?? n.subtotal },
       { label: 'CGST', value: (n) => n.cgstAmount },
       { label: 'SGST', value: (n) => n.sgstAmount },
       { label: 'IGST', value: (n) => n.igstAmount },
-      { label: 'Total', value: (n) => n.grandTotal },
+      { label: 'GST', value: (n) => n.gstAmount },
+      { label: 'Net amount', value: (n) => n.grandTotal },
       { label: 'Set against bill', value: (n) => n.adjustedAmount },
       { label: 'Reason', value: (n) => n.reason },
       { label: 'Return ref', value: (n) => n.returnNumber },
@@ -206,9 +208,9 @@ export default function NotesPage() {
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Notes" value={String(rows.length)} compact />
-        <StatCard label="Taxable value" value={money(sum('subtotal'))} compact />
+        <StatCard label="Taxable value" value={money(sum(kind === 'credit' ? 'subtotal' : 'taxableAmount'))} compact />
         <StatCard label="GST" value={money(gst)} compact />
-        <StatCard label="Total" value={money(sum('grandTotal'))} compact />
+        <StatCard label="Net amount" value={money(sum('grandTotal'))} compact />
       </div>
 
       {loading ? <LoadingState /> : rows.length === 0 ? (
@@ -225,8 +227,9 @@ export default function NotesPage() {
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">{kind === 'credit' ? 'Against invoice' : 'Against bill'}</th>
                 <th className="px-4 py-3">{kind === 'credit' ? 'Customer' : 'Supplier'}</th>
+                <th className="px-4 py-3 text-right">Taxable value</th>
                 <th className="px-4 py-3 text-right">GST</th>
-                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-right">Net amount</th>
                 <th className="px-4 py-3">{kind === 'credit' ? 'Settled by' : 'Off the bill'}</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -238,7 +241,11 @@ export default function NotesPage() {
                   <td className="px-4 py-3 text-slate-500">{day(kind === 'credit' ? n.createdAt : n.returnDate)}</td>
                   <td className="px-4 py-3 font-mono text-xs">{(kind === 'credit' ? n.invoiceNumber : n.billNumber) || <span className="font-sans text-slate-400">direct</span>}</td>
                   <td className="px-4 py-3">{kind === 'credit' ? (n.customerIsWalkIn ? 'Walk-in' : n.customerName) : n.supplierName}</td>
-                  <td className="px-4 py-3 text-right text-slate-600">{money(n.gstAmount)}</td>
+                  <td className="px-4 py-3 text-right text-slate-700">{money(kind === 'credit' ? n.subtotal : (n.taxableAmount ?? n.subtotal))}</td>
+                  <td className="px-4 py-3 text-right text-slate-700" title={n.igstAmount > 0 ? `IGST ${money(n.igstAmount)}` : `CGST ${money(n.cgstAmount)} + SGST ${money(n.sgstAmount)}`}>
+                    {money(n.gstAmount)}
+                    <div className="text-[11px] text-slate-400">{n.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                  </td>
                   <td className="px-4 py-3 text-right font-semibold">{money(n.grandTotal)}</td>
                   <td className="px-4 py-3 text-slate-600">
                     {kind === 'credit'
