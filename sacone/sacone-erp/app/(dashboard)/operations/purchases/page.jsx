@@ -26,9 +26,9 @@ const PURCHASE_DOCS = {
       { label: 'PO #', value: (r) => r.poNumber }, { label: 'Supplier', value: (r) => r.supplierName },
       { label: 'Order date', value: (r) => r.orderDate }, { label: 'Expected', value: (r) => r.expectedDate },
       { label: 'Warehouse', value: (r) => r.warehouseName }, { label: 'Status', value: (r) => r.status },
-      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'CGST', value: (r) => r.cgstAmount },
-      { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
-      { label: 'Total', value: (r) => r.grandTotal },
+      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'Taxable value', value: (r) => r.taxableAmount },
+      { label: 'CGST', value: (r) => r.cgstAmount }, { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
+      { label: 'GST', value: (r) => r.gstAmount }, { label: 'Net amount', value: (r) => r.grandTotal },
     ],
   },
   bill: {
@@ -583,7 +583,9 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-right">Taxable value</th>
+                  <th className="px-4 py-3 text-right">GST</th>
+                  <th className="px-4 py-3 text-right">Net amount</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
@@ -593,7 +595,12 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3">{po.supplierName}</td>
                       <td className="px-4 py-3">{po.orderDate}</td>
                       <td className="px-4 py-3"><StatusBadge active={po.status !== 'cancelled'} labelActive={po.status} labelInactive={po.status} /></td>
-                      <td className="px-4 py-3 text-right">{money(po.grandTotal)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{money(po.taxableAmount)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700" title={po.igstAmount > 0 ? `IGST ${money(po.igstAmount)}` : `CGST ${money(po.cgstAmount)} + SGST ${money(po.sgstAmount)}`}>
+                        {money(po.gstAmount)}
+                        <div className="text-[11px] text-slate-400">{po.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">{money(po.grandTotal)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           {!['received', 'closed', 'cancelled'].includes(po.status) && checkPermission('purchases.orders.edit') && (
@@ -610,7 +617,7 @@ export default function PurchasesPage() {
                       </td>
                     </tr>
                   ))}
-                  {!orders.length && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No purchase orders</td></tr>}
+                  {!orders.length && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No purchase orders</td></tr>}
                 </tbody>
               </table>
             </div>

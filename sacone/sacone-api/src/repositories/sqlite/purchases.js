@@ -39,6 +39,7 @@ function mapPo(row, items = []) {
     warehouseName: row.warehouse_name || null,
     status: row.status,
     subtotal: Number(row.subtotal || 0),
+    taxableAmount: Math.round(Number(row.taxable_total ?? (Number(row.grand_total || 0) - Number(row.gst_amount || 0))) * 100) / 100,
     gstAmount: Number(row.gst_amount || 0),
     cgstAmount: Number(row.cgst_amount || 0),
     sgstAmount: Number(row.sgst_amount || 0),
@@ -199,7 +200,9 @@ const PURCHASE_RETURN_SELECT = `
 `;
 
 const PO_SELECT = `
-  SELECT po.*, s.name as supplier_name, w.name as warehouse_name
+  SELECT po.*, s.name as supplier_name, w.name as warehouse_name,
+    -- taxable value: from the lines (after discount)
+    COALESCE((SELECT SUM(i.taxable_amount) FROM purchase_order_items i WHERE i.purchase_order_id = po.id), po.grand_total - po.gst_amount) AS taxable_total
   FROM purchase_orders po
   LEFT JOIN suppliers s ON s.id = po.supplier_id
   LEFT JOIN warehouses w ON w.id = po.warehouse_id
