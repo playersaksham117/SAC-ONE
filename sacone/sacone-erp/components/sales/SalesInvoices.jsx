@@ -33,7 +33,8 @@ const INVOICE_COLUMNS = [
   { label: 'CGST', value: (s) => s.cgstAmount },
   { label: 'SGST', value: (s) => s.sgstAmount },
   { label: 'IGST', value: (s) => s.igstAmount },
-  { label: 'Total', value: (s) => s.grandTotal },
+  { label: 'GST', value: (s) => s.gstAmount },
+  { label: 'Net amount', value: (s) => s.grandTotal },
   { label: 'Paid', value: (s) => s.amountPaid },
   { label: 'Due', value: (s) => s.amountCredit },
   { label: 'Cashier', value: (s) => s.createdByName },
@@ -141,10 +142,11 @@ Reason (optional):`);
         )}
       </Toolbar>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Invoices" value={data.total} compact />
-        <StatCard label="Sales (shown)" value={money(sum('grandTotal'))} compact />
+        <StatCard label="Taxable (shown)" value={money(sum('taxableAmount'))} compact />
         <StatCard label="GST (shown)" value={money(sum('gstAmount'))} compact />
+        <StatCard label="Net sales (shown)" value={money(sum('grandTotal'))} compact />
         <StatCard label="Due (shown)" value={money(sum('amountCredit'))} tone={sum('amountCredit') > 0 ? 'warning' : 'default'} compact />
       </div>
 
@@ -159,7 +161,9 @@ Reason (optional):`);
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-right">Taxable value</th>
+                <th className="px-4 py-3 text-right">GST</th>
+                <th className="px-4 py-3 text-right">Net amount</th>
                 <th className="px-4 py-3 text-right">Due</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -178,6 +182,11 @@ Reason (optional):`);
                   <td className="px-4 py-3 text-slate-500">{day(s.createdAt)}</td>
                   <td className="px-4 py-3">{s.customerIsWalkIn ? 'Walk-in' : s.customerName}</td>
                   <td className="px-4 py-3 capitalize text-slate-600">{(s.paymentStatus || '').replace(/_/g, ' ')}{s.status !== 'completed' ? ` · ${s.status.replace(/_/g, ' ')}` : ''}</td>
+                  <td className="px-4 py-3 text-right text-slate-700">{money(s.taxableAmount)}</td>
+                  <td className="px-4 py-3 text-right text-slate-700" title={s.igstAmount > 0 ? `IGST ${money(s.igstAmount)}` : `CGST ${money(s.cgstAmount)} + SGST ${money(s.sgstAmount)}`}>
+                    {money(s.gstAmount)}
+                    <div className="text-[11px] text-slate-400">{s.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                  </td>
                   <td className="px-4 py-3 text-right font-semibold">{money(s.grandTotal)}</td>
                   <td className={`px-4 py-3 text-right ${s.amountCredit > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{s.amountCredit > 0 ? money(s.amountCredit) : '—'}</td>
                   <td className="px-4 py-3 text-right">
