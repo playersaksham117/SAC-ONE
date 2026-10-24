@@ -38,9 +38,9 @@ const PURCHASE_DOCS = {
       { label: 'Supplier', value: (r) => r.supplierName }, { label: 'Bill date', value: (r) => r.billDate },
       { label: 'Due date', value: (r) => r.dueDate }, { label: 'PO #', value: (r) => r.poNumber },
       { label: 'Warehouse', value: (r) => r.warehouseName }, { label: 'Stock posted', value: (r) => (r.stockPosted ? 'Yes' : 'No') },
-      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'CGST', value: (r) => r.cgstAmount },
-      { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
-      { label: 'Total', value: (r) => r.grandTotal }, { label: 'Paid', value: (r) => r.amountPaid },
+      { label: 'Subtotal', value: (r) => r.subtotal }, { label: 'Taxable value', value: (r) => r.taxableAmount },
+      { label: 'CGST', value: (r) => r.cgstAmount }, { label: 'SGST', value: (r) => r.sgstAmount }, { label: 'IGST', value: (r) => r.igstAmount },
+      { label: 'GST', value: (r) => r.gstAmount }, { label: 'Net amount', value: (r) => r.grandTotal }, { label: 'Paid', value: (r) => r.amountPaid },
       { label: 'Payable', value: (r) => r.amountPayable }, { label: 'Status', value: (r) => r.status },
     ],
   },
@@ -625,7 +625,9 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-left">Stock</th>
-                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-right">Taxable value</th>
+                  <th className="px-4 py-3 text-right">GST</th>
+                  <th className="px-4 py-3 text-right">Net amount</th>
                   <th className="px-4 py-3 text-right">Paid</th>
                   <th className="px-4 py-3 text-right">Due</th>
                   <th className="px-4 py-3 text-left">Status</th>
@@ -639,7 +641,12 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3">{b.supplierName}</td>
                       <td className="px-4 py-3">{b.billDate}</td>
                       <td className="px-4 py-3">{b.stockPosted ? '✓ IN' : '—'}</td>
-                      <td className="px-4 py-3 text-right">{money(b.grandTotal)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">{money(b.taxableAmount)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700" title={b.igstAmount > 0 ? `IGST ${money(b.igstAmount)}` : `CGST ${money(b.cgstAmount)} + SGST ${money(b.sgstAmount)}`}>
+                        {money(b.gstAmount)}
+                        <div className="text-[11px] text-slate-400">{b.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">{money(b.grandTotal)}</td>
                       <td className="px-4 py-3 text-right">{money(b.amountPaid)}</td>
                       <td className="px-4 py-3 text-right">{money(b.amountPayable)}</td>
                       <td className="px-4 py-3 capitalize">{b.status}</td>
@@ -649,7 +656,7 @@ export default function PurchasesPage() {
                       </td>
                     </tr>
                   ))}
-                  {!bills.length && <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No purchase bills</td></tr>}
+                  {!bills.length && <tr><td colSpan={12} className="px-4 py-8 text-center text-slate-400">No purchase bills</td></tr>}
                 </tbody>
               </table>
             </div>

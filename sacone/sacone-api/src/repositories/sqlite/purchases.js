@@ -91,6 +91,7 @@ function mapBill(row, items = []) {
     purchaseOrderId: row.purchase_order_id,
     poNumber: row.po_number || null,
     subtotal: Number(row.subtotal || 0),
+    taxableAmount: Math.round(Number(row.taxable_total ?? (Number(row.grand_total || 0) - Number(row.gst_amount || 0))) * 100) / 100,
     gstAmount: Number(row.gst_amount || 0),
     cgstAmount: Number(row.cgst_amount || 0),
     sgstAmount: Number(row.sgst_amount || 0),
@@ -202,7 +203,9 @@ const PO_SELECT = `
 `;
 
 const BILL_SELECT = `
-  SELECT b.*, s.name as supplier_name, w.name as warehouse_name, po.po_number
+  SELECT b.*, s.name as supplier_name, w.name as warehouse_name, po.po_number,
+    -- taxable value: from the lines; a bill entered without lines is total less GST
+    COALESCE((SELECT SUM(i.taxable_amount) FROM supplier_bill_items i WHERE i.bill_id = b.id), b.grand_total - b.gst_amount) AS taxable_total
   FROM supplier_bills b
   LEFT JOIN suppliers s ON s.id = b.supplier_id
   LEFT JOIN warehouses w ON w.id = b.warehouse_id
