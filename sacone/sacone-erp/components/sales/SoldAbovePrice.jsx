@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../lib/auth-context';
 import { downloadCsv, toCsv } from '../../lib/csv';
@@ -90,6 +90,7 @@ export default function SoldAbovePrice() {
     if (tab === 'lines') downloadCsv(`sold-above-price-${data.show}-${stamp}.csv`, toCsv(data.lines, LINE_COLUMNS));
     if (tab === 'products') downloadCsv(`sold-above-price-by-product-${stamp}.csv`, toCsv(data.byProduct, GROUP_COLUMNS('Item')));
     if (tab === 'staff') downloadCsv(`sold-above-price-by-staff-${stamp}.csv`, toCsv(data.byStaff, GROUP_COLUMNS('Billed by')));
+    if (tab === 'sales') downloadCsv(`sold-above-price-by-sale-${stamp}.csv`, toCsv(data.bySale || [], SALE_COLUMNS));
   };
 
   return (
@@ -143,6 +144,7 @@ export default function SoldAbovePrice() {
               tabs={[
                 { id: 'lines', label: 'Items sold', badge: data.lineCount },
                 { id: 'products', label: 'By item', badge: data.byProduct.length },
+                { id: 'sales', label: 'By sale', badge: data.saleCount ?? (data.bySale || []).length },
                 { id: 'staff', label: 'By staff', badge: data.byStaff.length },
               ]}
               active={tab}
@@ -202,12 +204,121 @@ export default function SoldAbovePrice() {
               </div>
             ))}
 
-            {tab !== 'lines' && (
-              <GroupTable rows={tab === 'products' ? data.byProduct : data.byStaff} label={tab === 'products' ? 'Item' : 'Billed by'} showSku={tab === 'products'} />
-            )}
+            {tab === 'products' && <GroupTable rows={data.byProduct} label="Item" showSku />}
+            {tab === 'staff' && <StaffTable rows={data.byStaff} />}
+            {tab === 'sales' && <SaleTable sales={data.bySale || []} showStaff />}
           </>
         )}
       </div>
+  );
+}
+
+const SALE_COLUMNS = [
+  { label: 'Date', value: (s) => day(s.date) },
+  { label: 'Invoice', value: (s) => s.invoiceNumber },
+  { label: 'Customer', value: (s) => s.customerName },
+  { label: 'Billed by', value: (s) => s.staffName },
+  { label: 'Agent', value: (s) => s.agentName },
+  { label: 'Lines above base', value: (s) => s.aboveLines },
+  { label: 'Lines', value: (s) => s.lines },
+  { label: 'Extra earned above base', value: (s) => s.extra },
+  { label: 'Given below base', value: (s) => s.short },
+  { label: 'Net vs base', value: (s) => s.net },
+  { label: 'Items', value: (s) => s.items.map((i) => `${i.productName} ${qty(i.quantity)} × ${signed(i.differencePerUnit)} = ${signed(i.difference)}`).join('; ') },
+];
+
+/** Sales with something sold above (or below) base: open one to see the items and how much each earned. */
+function SaleTable({ sales, showStaff, nested = false }) {
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (id) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  if (!sales.length) return <EmptyPanel title="Nothing here" description="No sale had an item sold above or below its base price in this period." />;
+  return (
+    <div className={nested ? '' : 'overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm'}>
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Date · Invoice</th>
+            <th className="px-3 py-2">Customer</th>
+            {showStaff && <th className="px-3 py-2">Billed by</th>}
+            <th className="px-3 py-2 text-right">Items above base</th>
+            <th className="px-3 py-2 text-right">Extra earned</th>
+            <th className="px-3 py-2 text-right">Net vs base</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {sales.map((s) => (
+            <Fragment key={s.saleId}>
+              <tr className="cursor-pointer hover:bg-slate-50" onClick={() => toggle(s.saleId)}>
+                <td className="px-3 py-2">
+                  <div className="font-mono text-xs font-semibold">{open.has(s.saleId) ? '▾' : '▸'} {s.invoiceNumber}</div>
+                  <div className="text-xs text-slate-500">{day(s.date)}</div>
+                </td>
+                <td className="px-3 py-2 text-slate-700">{s.customerName}</td>
+                {showStaff && <td className="px-3 py-2 text-xs text-slate-600">{s.staffName}{s.agentName && <div className="text-slate-400">agent {s.agentName}</div>}</td>}
+                <td className="px-3 py-2 text-right text-slate-600">{s.aboveLines} of {s.lines}</td>
+                <td className="px-3 py-2 text-right"><Delta value={s.extra} />{s.short ? <div className="text-[10px] text-rose-700">below {signed(s.short)}</div> : null}</td>
+                <td className="px-3 py-2 text-right"><Delta value={s.net} /></td>
+              </tr>
+              {open.has(s.saleId) && s.items.map((i) => (
+                <tr key={i.id} className="bg-slate-50/60 text-xs">
+                  <td className="py-1.5 pl-8 pr-3" colSpan={showStaff ? 4 : 3}>
+                    <span className="font-medium text-slate-800">{i.productName}</span>
+                    <span className="text-slate-500"> · {qty(i.quantity)} × sold {money(i.soldAt)} vs base {money(i.basePrice)}{i.basePriceSource === 'today' ? ' (today)' : ''} = <Delta value={i.differencePerUnit} /> each</span>
+                  </td>
+                  <td className="px-3 py-1.5 text-right"><Delta value={i.difference} /></td>
+                  <td />
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Per staff member: open a row to see their sales sold above base, each with its items. */
+function StaffTable({ rows }) {
+  const [open, setOpen] = useState(null);
+  if (!rows.length) return <EmptyPanel title="Nothing here" description="No sales in this period." />;
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="px-3 py-3">Billed by</th>
+            <th className="px-3 py-3 text-right">Sales above base</th>
+            <th className="px-3 py-3 text-right">Items above base</th>
+            <th className="px-3 py-3 text-right">Qty</th>
+            <th className="px-3 py-3 text-right">Extra earned</th>
+            <th className="px-3 py-3 text-right">Uplift</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((g) => (
+            <Fragment key={g.key}>
+              <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setOpen(open === g.key ? null : g.key)}>
+                <td className="px-3 py-2 font-medium text-slate-900">{open === g.key ? '▾' : '▸'} {g.label}</td>
+                <td className="px-3 py-2 text-right text-slate-600">{g.salesAbove ?? '—'}</td>
+                <td className="px-3 py-2 text-right text-slate-600">{g.aboveLines} of {g.lines}</td>
+                <td className="px-3 py-2 text-right">{qty(g.quantity)}</td>
+                <td className="px-3 py-2 text-right"><Delta value={g.extra} />{g.short ? <div className="text-[10px] text-rose-700">below {signed(g.short)}</div> : null}</td>
+                <td className="px-3 py-2 text-right text-slate-600">{g.upliftPercent > 0 ? '+' : ''}{g.upliftPercent}%</td>
+              </tr>
+              {open === g.key && (
+                <tr>
+                  <td colSpan={6} className="bg-slate-50 p-3">
+                    <div className="rounded-xl border border-slate-200 bg-white">
+                      <SaleTable sales={g.sales || []} nested />
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

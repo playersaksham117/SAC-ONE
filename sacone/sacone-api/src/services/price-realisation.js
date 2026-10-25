@@ -123,6 +123,46 @@ function groupBy(lines, keyOf, labelOf, { withSku = false } = {}) {
     .sort((a, b) => b.extra - a.extra || b.net - a.net);
 }
 
+/** One sale: its lines sold above / below base, with the extra earned (or given away) on each. */
+function saleGroup(lines) {
+  const first = lines[0];
+  const t = totalsOf(lines);
+  return {
+    saleId: first.saleId,
+    invoiceNumber: first.invoiceNumber,
+    date: first.date,
+    customerName: first.customerName,
+    staffId: first.staffId,
+    staffName: first.staffName,
+    agentName: first.agentName,
+    lines: t.lines,
+    aboveLines: t.aboveLines,
+    belowLines: t.belowLines,
+    baseValue: t.baseValue,
+    soldValue: t.soldValue,
+    extra: t.extra,
+    short: t.short,
+    net: t.net,
+    upliftPercent: t.upliftPercent,
+    items: lines.filter((l) => l.status !== 'at').map((l) => ({
+      id: l.id, productName: l.productName, sku: l.sku, quantity: l.quantity, basePrice: l.basePrice,
+      basePriceSource: l.basePriceSource, soldAt: l.soldAt, differencePerUnit: l.differencePerUnit, difference: l.difference, status: l.status,
+    })),
+  };
+}
+
+/** Sales with something sold above or below base, newest first. */
+function bySale(lines) {
+  const groups = new Map();
+  for (const l of lines) {
+    if (!groups.has(l.saleId)) groups.set(l.saleId, []);
+    groups.get(l.saleId).push(l);
+  }
+  return [...groups.values()].map(saleGroup)
+    .filter((s) => s.aboveLines > 0 || s.belowLines > 0)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 export const priceRealisationService = {
   report(query = {}, actor) {
     authService.checkPermission(actor.permissions, 'pos.sales.view');
@@ -141,7 +181,13 @@ export const priceRealisationService = {
       show,
       totals: totalsOf(all),
       byProduct: groupBy(all, (l) => l.productId, (l) => l.productName, { withSku: true }),
-      byStaff: groupBy(all, (l) => l.staffId || '—', (l) => l.staffName),
+      // each staff member's sales sold above / below base, with the items (newest first, up to 300)
+      byStaff: groupBy(all, (l) => l.staffId || '—', (l) => l.staffName).map((g) => {
+        const sales = bySale(all.filter((l) => (l.staffId || '—') === g.key));
+        return { ...g, salesAbove: sales.filter((s) => s.aboveLines > 0).length, sales: sales.slice(0, 300) };
+      }),
+      bySale: bySale(all).slice(0, limit),
+      saleCount: bySale(all).length,
       lines: shown.slice(0, limit),
       lineCount: shown.length,
       usesTodaysPrice: all.some((l) => l.basePriceSource === 'today'),

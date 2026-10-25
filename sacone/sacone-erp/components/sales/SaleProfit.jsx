@@ -31,8 +31,11 @@ const INVOICE_COLUMNS = [
   { label: 'Customer', value: (i) => i.customerName },
   { label: 'Sale value (ex-GST)', value: (i) => i.revenue },
   { label: 'Purchase cost (ex-GST)', value: (i) => i.cost },
-  { label: 'Profit / loss', value: (i) => i.profit },
-  { label: 'Margin %', value: (i) => i.marginPercent },
+  { label: 'Profit before commission', value: (i) => i.profit },
+  { label: 'Commission', value: (i) => i.commission },
+  { label: 'Agent', value: (i) => i.agentNames },
+  { label: 'Net profit / loss', value: (i) => i.netProfit },
+  { label: 'Net margin %', value: (i) => i.netMarginPercent },
   { label: 'Billed by', value: (i) => i.staffName },
 ];
 const LINE_COLUMNS = [
@@ -46,8 +49,9 @@ const LINE_COLUMNS = [
   { label: 'Cost from', value: (l) => l.costNote || l.costSource },
   { label: 'Sale value', value: (l) => l.revenue },
   { label: 'Cost', value: (l) => l.cost },
-  { label: 'Profit / loss', value: (l) => l.profit },
-  { label: 'Margin %', value: (l) => l.marginPercent },
+  { label: 'Profit before commission', value: (l) => l.profit },
+  { label: 'Commission share', value: (l) => l.commission },
+  { label: 'Net profit / loss', value: (l) => l.netProfit },
 ];
 const PRODUCT_COLUMNS = [
   { label: 'Item', value: (g) => g.label },
@@ -57,8 +61,10 @@ const PRODUCT_COLUMNS = [
   { label: 'Avg cost', value: (g) => g.avgCost },
   { label: 'Sale value', value: (g) => g.revenue },
   { label: 'Cost', value: (g) => g.cost },
-  { label: 'Profit / loss', value: (g) => g.profit },
-  { label: 'Margin %', value: (g) => g.marginPercent },
+  { label: 'Profit before commission', value: (g) => g.profit },
+  { label: 'Commission', value: (g) => g.commission },
+  { label: 'Net profit / loss', value: (g) => g.netProfit },
+  { label: 'Net margin %', value: (g) => g.netMarginPercent },
 ];
 
 /** The cost of one bill line (a service job) typed here; blank clears it back to purchase rates. */
@@ -142,7 +148,7 @@ export default function SaleProfit() {
     <div className="space-y-4">
       <PageHeader
         title="Profit / Loss per Sale"
-        description="Each invoice’s sale value against what its items cost to buy. Both before GST, after discounts; returned quantity is left out; no other expenses are deducted."
+        description="Each invoice’s sale value against what its items cost to buy, less the sales agent’s commission. Both before GST, after discounts; returned quantity is left out; no other expenses are deducted."
         actions={(
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={() => exportCsv(tab === 'products' ? 'products' : 'invoices')} disabled={!data}>⬇ Export CSV</button>
@@ -183,9 +189,10 @@ export default function SaleProfit() {
 
       {loading && !data ? <LoadingState /> : data && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Profit / loss" value={signed(t.profit)} hint={`${period}${session?.financialYear && !applied.dateFrom ? ` · FY ${session.financialYear.code}` : ''}`} tone={t.profit < 0 ? 'danger' : 'success'} compact />
-            <StatCard label="Margin" value={`${t.marginPercent}%`} hint={`${t.invoices} sales`} compact />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <StatCard label="Net profit / loss" value={signed(t.netProfit)} hint={`after commission · ${period}${session?.financialYear && !applied.dateFrom ? ` · FY ${session.financialYear.code}` : ''}`} tone={t.netProfit < 0 ? 'danger' : 'success'} compact />
+            <StatCard label="Commission" value={money(t.commission)} hint={`${t.commissionInvoices} sale(s) · before it ${signed(t.profit)}`} compact />
+            <StatCard label="Net margin" value={`${t.netMarginPercent}%`} hint={`${t.invoices} sales · ${t.marginPercent}% before commission`} compact />
             <StatCard label="Sale value vs cost" value={money(t.revenue)} hint={`cost ${money(t.cost)}`} compact />
             <StatCard label="Sales at a loss" value={String(t.lossInvoices)} hint={t.lossInvoices ? `lost ${signed(t.lossAmount)}` : 'none'} tone={t.lossInvoices ? 'warning' : 'default'} compact />
           </div>
@@ -222,14 +229,16 @@ export default function SaleProfit() {
                     <th className="px-3 py-3">Customer</th>
                     <th className="px-3 py-3 text-right">Sale value</th>
                     <th className="px-3 py-3 text-right">Purchase cost</th>
-                    <th className="px-3 py-3 text-right">Profit / loss</th>
-                    <th className="px-3 py-3 text-right">Margin</th>
+                    <th className="px-3 py-3 text-right">Profit</th>
+                    <th className="px-3 py-3 text-right">Commission</th>
+                    <th className="px-3 py-3 text-right">Net profit / loss</th>
+                    <th className="px-3 py-3 text-right">Net margin</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.invoices.map((i) => (
                     <Fragment key={i.saleId}>
-                      <tr className={`cursor-pointer hover:bg-slate-50 ${i.profit < 0 ? 'bg-rose-50/40' : ''}`} onClick={() => toggle(i.saleId)}>
+                      <tr className={`cursor-pointer hover:bg-slate-50 ${i.netProfit < 0 ? 'bg-rose-50/40' : ''}`} onClick={() => toggle(i.saleId)}>
                         <td className="px-3 py-2">
                           <div className="font-mono text-xs font-semibold">{open.has(i.saleId) ? '▾' : '▸'} {i.invoiceNumber}</div>
                           <div className="text-xs text-slate-500">{day(i.date)} · {i.lines.length} item{i.lines.length === 1 ? '' : 's'}</div>
@@ -238,7 +247,12 @@ export default function SaleProfit() {
                         <td className="px-3 py-2 text-right">{money(i.revenue)}</td>
                         <td className="px-3 py-2 text-right text-slate-600">{money(i.cost)}</td>
                         <td className="px-3 py-2 text-right"><PL value={i.profit} /></td>
-                        <td className={`px-3 py-2 text-right ${i.marginPercent < 0 ? 'text-rose-700' : 'text-slate-600'}`}>{i.marginPercent}%</td>
+                        <td className="px-3 py-2 text-right text-slate-600">
+                          {i.commission > 0 ? `−${money(i.commission)}` : '—'}
+                          {i.agentNames && <div className="text-[10px] text-slate-400">{i.agentNames}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold"><PL value={i.netProfit} /></td>
+                        <td className={`px-3 py-2 text-right ${i.netMarginPercent < 0 ? 'text-rose-700' : 'text-slate-600'}`}>{i.netMarginPercent}%</td>
                       </tr>
                       {open.has(i.saleId) && i.lines.map((l) => (
                         <tr key={l.id} className="bg-slate-50/60 text-xs">
@@ -252,6 +266,8 @@ export default function SaleProfit() {
                           <td className="px-3 py-1.5 text-right">{money(l.revenue)}</td>
                           <td className="px-3 py-1.5 text-right text-slate-600">{money(l.cost)}</td>
                           <td className="px-3 py-1.5 text-right"><PL value={l.profit} /></td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{l.commission > 0 ? `−${money(l.commission)}` : '—'}</td>
+                          <td className="px-3 py-1.5 text-right"><PL value={l.netProfit} /></td>
                           <td className="px-3 py-1.5 text-right text-slate-600">{l.marginPercent}%</td>
                         </tr>
                       ))}
@@ -274,8 +290,10 @@ export default function SaleProfit() {
                     <th className="px-3 py-3 text-right">Qty</th>
                     <th className="px-3 py-3 text-right">Avg sold at</th>
                     <th className="px-3 py-3 text-right">Avg cost</th>
-                    <th className="px-3 py-3 text-right">Profit / loss</th>
-                    <th className="px-3 py-3 text-right">Margin</th>
+                    <th className="px-3 py-3 text-right">Profit</th>
+                    <th className="px-3 py-3 text-right">Commission</th>
+                    <th className="px-3 py-3 text-right">Net profit / loss</th>
+                    <th className="px-3 py-3 text-right">Net margin</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -289,7 +307,9 @@ export default function SaleProfit() {
                       <td className="px-3 py-2 text-right">{money(g.avgSoldAt)}</td>
                       <td className="px-3 py-2 text-right text-slate-600">{money(g.avgCost)}</td>
                       <td className="px-3 py-2 text-right"><PL value={g.profit} /></td>
-                      <td className={`px-3 py-2 text-right ${g.marginPercent < 0 ? 'text-rose-700' : 'text-slate-600'}`}>{g.marginPercent}%</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{g.commission > 0 ? `−${money(g.commission)}` : '—'}</td>
+                      <td className="px-3 py-2 text-right font-semibold"><PL value={g.netProfit} /></td>
+                      <td className={`px-3 py-2 text-right ${g.netMarginPercent < 0 ? 'text-rose-700' : 'text-slate-600'}`}>{g.netMarginPercent}%</td>
                     </tr>
                   ))}
                 </tbody>

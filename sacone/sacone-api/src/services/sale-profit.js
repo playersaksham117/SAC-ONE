@@ -15,6 +15,10 @@ import { authService } from './index.js';
  * A cost typed on the bill line itself (services: what this job cost) always wins.
  * A purchase-bill rate is the bill line's taxable value ÷ quantity. When an item has no purchase
  * bill up to the sale date, the Product Master price is used and the line is marked so.
+ *
+ * Sales-agent commission on the sale (earned less reversed by returns; cancelled ones left out)
+ * is shown per sale and taken off for the net profit; by item it is split over the sale's lines
+ * by sale value.
  */
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -45,6 +49,25 @@ function saleLines({ dateFrom, dateTo, search }) {
     WHERE ${where.join(' AND ')}
     ORDER BY s.created_at DESC, si.sort_order ASC
   `).all(...params);
+}
+
+/** Commission per sale (earned − reversed, not cancelled) and the agents it went to. */
+function commissionsFor(saleIds) {
+  const out = new Map();
+  if (!saleIds.length) return out;
+  const rows = getDatabase().prepare(`
+    SELECT sc.sale_id, MAX(0, sc.commission_earned - sc.commission_reversed) AS amount, a.name AS agent_name
+    FROM sale_commissions sc
+    LEFT JOIN sales_agents a ON a.id = sc.sales_agent_id
+    WHERE sc.status != 'cancelled' AND sc.sale_id IN (SELECT value FROM json_each(?))
+  `).all(JSON.stringify(saleIds));
+  for (const r of rows) {
+    const c = out.get(r.sale_id) || { amount: 0, agents: [] };
+    c.amount += Number(r.amount || 0);
+    if (r.agent_name && Number(r.amount) > 0) c.agents.push(r.agent_name);
+    out.set(r.sale_id, c);
+  }
+  return out;
 }
 
 /** Purchase-bill rates per product, oldest first, with running quantity and cost for averages. */
@@ -161,25 +184,44 @@ export const saleProfitService = {
       });
     }
 
+    const commissions = commissionsFor([...invoices.keys()]);
     const all = [...invoices.values()]
       .filter((i) => i.lines.length)
       .map((i) => {
         const revenue = sum(i.lines, 'revenue');
         const cost = sum(i.lines, 'cost');
         const profit = round2(revenue - cost);
-        return { ...i, revenue, cost, profit, marginPercent: pct(profit, revenue), missingCost: i.lines.some((l) => l.costSource === 'none' || l.costSource === 'service') };
+        const c = commissions.get(i.saleId);
+        const commission = round2(c?.amount || 0);
+        // the sale's commission split over its lines by sale value (last line takes the remainder)
+        let left = commission;
+        const lines = i.lines.map((l, idx) => {
+          const share = idx === i.lines.length - 1 ? round2(left) : (revenue > 0 ? round2((commission * l.revenue) / revenue) : 0);
+          left = round2(left - share);
+          return { ...l, commission: share, netProfit: round2(l.profit - share) };
+        });
+        const netProfit = round2(profit - commission);
+        return {
+          ...i, lines, revenue, cost, profit, marginPercent: pct(profit, revenue),
+          commission, agentNames: c?.agents?.length ? [...new Set(c.agents)].join(', ') : null,
+          netProfit, netMarginPercent: pct(netProfit, revenue),
+          missingCost: i.lines.some((l) => l.costSource === 'none' || l.costSource === 'service'),
+        };
       });
 
     const byProduct = new Map();
     for (const l of all.flatMap((i) => i.lines)) {
-      const g = byProduct.get(l.productId) || { key: l.productId, label: l.productName, sku: l.sku, quantity: 0, revenue: 0, cost: 0 };
-      g.quantity += l.quantity; g.revenue += l.revenue; g.cost += l.cost;
+      const g = byProduct.get(l.productId) || { key: l.productId, label: l.productName, sku: l.sku, quantity: 0, revenue: 0, cost: 0, commission: 0 };
+      g.quantity += l.quantity; g.revenue += l.revenue; g.cost += l.cost; g.commission += l.commission;
       byProduct.set(l.productId, g);
     }
 
     const revenue = sum(all, 'revenue');
     const cost = sum(all, 'cost');
-    const shown = show === 'all' ? all : all.filter((i) => (show === 'loss' ? i.profit < 0 : i.profit >= 0));
+    const commission = sum(all, 'commission');
+    const netProfit = round2(revenue - cost - commission);
+    // a loss is a loss after the agent's commission
+    const shown = show === 'all' ? all : all.filter((i) => (show === 'loss' ? i.netProfit < 0 : i.netProfit >= 0));
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 1000, 1), 5000);
     return {
       period: { dateFrom: q.dateFrom || null, dateTo: q.dateTo || null },
@@ -191,8 +233,12 @@ export const saleProfitService = {
         cost,
         profit: round2(revenue - cost),
         marginPercent: pct(revenue - cost, revenue),
-        lossInvoices: all.filter((i) => i.profit < 0).length,
-        lossAmount: round2(all.filter((i) => i.profit < 0).reduce((s, i) => s + i.profit, 0)),
+        commission,
+        commissionInvoices: all.filter((i) => i.commission > 0).length,
+        netProfit,
+        netMarginPercent: pct(netProfit, revenue),
+        lossInvoices: all.filter((i) => i.netProfit < 0).length,
+        lossAmount: round2(all.filter((i) => i.netProfit < 0).reduce((s, i) => s + i.netProfit, 0)),
         missingCostLines: all.flatMap((i) => i.lines).filter((l) => l.costSource === 'none').length,
         serviceCostMissing: all.flatMap((i) => i.lines).filter((l) => l.costSource === 'service').length,
         masterPriceLines: basis === 'master' ? 0 : all.flatMap((i) => i.lines).filter((l) => l.costSource === 'master').length,
@@ -202,14 +248,16 @@ export const saleProfitService = {
       byProduct: [...byProduct.values()]
         .map((g) => {
           const profit = round2(g.revenue - g.cost);
+          const netProfit = round2(profit - g.commission);
           return {
             ...g, quantity: round3(g.quantity), revenue: round2(g.revenue), cost: round2(g.cost), profit,
             marginPercent: pct(profit, g.revenue),
+            commission: round2(g.commission), netProfit, netMarginPercent: pct(netProfit, g.revenue),
             avgSoldAt: g.quantity ? round2(g.revenue / g.quantity) : 0,
             avgCost: g.quantity ? round2(g.cost / g.quantity) : 0,
           };
         })
-        .sort((a, b) => a.profit - b.profit),
+        .sort((a, b) => a.netProfit - b.netProfit),
     };
   },
 };
