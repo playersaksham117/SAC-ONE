@@ -10,7 +10,7 @@ export default function ReportsPage() {
       <div className="mx-auto max-w-7xl space-y-5">
         <PageHeader
           title="Reports"
-          description="Cross-module report hub. The CEO Dashboard and Income & Expense are in the SACONE Owner app."
+          description="Cross-module report hub."
         />
         <ReportsHub />
       </div>

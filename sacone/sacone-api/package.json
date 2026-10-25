@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "db:setup": "node src/database/run-setup.js",
     "db:reset": "node src/database/reset.js",
+    "owner-key": "node src/scripts/owner-key.js",
     "mongo:setup": "node src/database/mongodb/setup.js",
     "mongo:reset": "node src/database/mongodb/reset.js",
     "export:json": "node src/scripts/export-json.js",

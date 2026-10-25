@@ -1,4 +1,5 @@
 import { posPins } from '../services/pos-pins.js';
+import { ownerKeyService } from '../services/owner-key.js';
 import { Router } from 'express';
 import { asyncHandler, sendSuccess } from '../core/http.js';
 import { authenticate } from '../middleware/auth.js';
@@ -19,6 +20,11 @@ router.post('/login', asyncHandler(async (req, res) => {
   const { email, password, firmId, financialYear } = req.body || {};
   const result = await authService.login(email, password, req, { firmId, financialYear });
   sendSuccess(res, result);
+}));
+
+// SACONE Owner: private owner key → a group-owner session (no ERP login).
+router.post('/owner-key', asyncHandler(async (req, res) => {
+  sendSuccess(res, ownerKeyService.signIn(req.body?.key, req));
 }));
 
 router.post('/logout', signedIn(), asyncHandler(async (req, res) => {

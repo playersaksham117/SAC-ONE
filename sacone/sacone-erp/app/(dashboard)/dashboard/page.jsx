@@ -8,13 +8,11 @@ import {
   ERP_MODULES,
   HOME_PERMISSION,
   NAV_SECTIONS,
-  OWNER_PERMISSIONS,
   QUICK_ACCESS_DEFAULTS,
   getVisibleSections,
   searchModules,
 } from '../../../lib/navigation';
 import { getRecentModuleIds } from '../../../lib/recent-modules';
-import { useOwnerAppUrl } from '../../../lib/app-urls';
 import HomeSectionCard, { ModuleCard, toneFor } from '../../../components/HomeSectionCard';
 
 function greeting(date) {
@@ -55,7 +53,6 @@ function FilterChip({ active, onClick, label, count, dot }) {
 export default function HomePage() {
   const router = useRouter();
   const { session, checkPermission } = useAuth();
-  const ownerUrl = useOwnerAppUrl();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [recentIds, setRecentIds] = useState([]);
@@ -94,7 +91,6 @@ export default function HomePage() {
   const now = new Date();
   const firstName = session?.user?.fullName?.split(' ')[0] || 'there';
   const company = session?.company?.businessName;
-  const canOwner = OWNER_PERMISSIONS.some((p) => checkPermission(p));
 
   const onSearchKey = (e) => {
     if (e.key === 'Enter' && results[0]) router.push(results[0].href);
@@ -156,21 +152,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {canOwner && !searching && (
-          <a
-            href={ownerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex items-center gap-4 rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50 via-white to-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md sm:p-5"
-          >
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 text-2xl text-white shadow-sm">👑</span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-slate-900">SACONE Owner</span>
-              <span className="block text-sm text-slate-500">CEO Dashboard and Income &amp; Expense, kept in their own app.</span>
-            </span>
-            <span className="hidden shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition group-hover:bg-emerald-700 sm:inline">Open ↗</span>
-          </a>
-        )}
 
         {sections.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">

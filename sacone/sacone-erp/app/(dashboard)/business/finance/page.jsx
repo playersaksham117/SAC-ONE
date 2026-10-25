@@ -298,7 +298,7 @@ export default function BankingPage() {
       <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
         <PageHeader
           title="Banking & Cash"
-          description="Cash, bank and UPI books, bank statement import & reconciliation, party payment links and payment accounts. Income & Expense is in the SACONE Owner app."
+          description="Cash, bank and UPI books, bank statement import & reconciliation, party payment links and payment accounts."
           actions={(
             <div className="flex flex-wrap gap-2">
               {canEdit && tab === 'accounts' && (

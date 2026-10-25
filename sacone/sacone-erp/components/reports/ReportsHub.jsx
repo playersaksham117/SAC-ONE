@@ -3,31 +3,8 @@
 import Link from 'next/link';
 import { useAuth } from '../../lib/auth-context';
 import { GridCard, SectionCard } from '../module-ui';
-import { useOwnerAppUrl } from '../../lib/app-urls';
 
 const REPORT_LINKS = [
-  {
-    id: 'ceo',
-    title: 'CEO Dashboard',
-    description: 'Executive KPIs, profit, cash flow, ageing and alerts.',
-    href: '/ceo',
-    ownerApp: true,
-    external: true,
-    icon: '📈',
-    permission: 'reports.ceo_dashboard.view',
-    hint: 'Opens in SACONE Owner ↗',
-  },
-  {
-    id: 'income-expense',
-    title: 'Income & Expense Reports',
-    description: 'Income and expense summaries by category and payment mode.',
-    href: '/income-expense',
-    ownerApp: true,
-    external: true,
-    icon: '💸',
-    permission: 'finance.ledger.view',
-    hint: 'Opens in SACONE Owner ↗',
-  },
   {
     id: 'banking',
     title: 'Cash & Bank Books',
@@ -69,7 +46,6 @@ const REPORT_LINKS = [
 
 export default function ReportsHub() {
   const { checkPermission } = useAuth();
-  const ownerUrl = useOwnerAppUrl();
 
   const available = REPORT_LINKS.filter((r) => !r.comingSoon && checkPermission(r.permission));
   const upcoming = REPORT_LINKS.filter((r) => r.comingSoon);
@@ -82,7 +58,7 @@ export default function ReportsHub() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {available.map((r) => (
-              <Link key={r.id} href={r.ownerApp ? `${ownerUrl}${r.href}` : r.href} className="block h-full" {...(r.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+              <Link key={r.id} href={r.href} className="block h-full" {...(r.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
                 <GridCard className="h-full">
                   <div className="flex items-start gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg">{r.icon}</span>

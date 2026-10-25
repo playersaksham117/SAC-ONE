@@ -16,14 +16,18 @@ npm run dev        # http://localhost:3001
 
 `start-all.bat` in `sacone/` starts it together with the API and ERP.
 
-Sign in with your SACONE ERP login. You need at least one of these permissions:
+SACONE Owner is not linked from the ERP. It opens only with your private **owner key**
+(no ERP login), which signs you in as the group owner (all firms, live data). Make or change
+the key on the server PC:
 
-| Permission | Opens |
-|------------|-------|
-| `reports.ceo_dashboard.view` | CEO Dashboard |
-| `finance.ledger.view` (+ `.create` / `.edit` / `.approve` / `.delete`) | Income & Expense |
+```bash
+cd sacone-api
+npm run owner-key            # new key, shown once (the old key stops working)
+npm run owner-key -- status  # is a key set (last 4 characters)
+npm run owner-key -- off     # remove it: SACONE Owner cannot be opened
+```
 
-Other roles see a "No owner access" screen.
+Only a SHA-256 hash of the key is stored; wrong keys are locked out for 10 minutes after 5 tries.
 
 ## Configuration
 

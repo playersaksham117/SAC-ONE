@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/auth-context';
-import { getSidebarNavigation, findModuleByPath, OWNER_PERMISSIONS } from '../lib/navigation';
-import { useOwnerAppUrl } from '../lib/app-urls';
+import { getSidebarNavigation, findModuleByPath } from '../lib/navigation';
 import { LiveIndicator } from '../lib/live';
 import { recordModuleVisit } from '../lib/recent-modules';
 import ChangePasswordDialog from './ChangePasswordDialog';
@@ -51,9 +50,8 @@ function NavLink({ item, active, onNavigate }) {
   );
 }
 
-function Sidebar({ sections, pathname, isHome, session, logout, onNavigate, canOwner }) {
+function Sidebar({ sections, pathname, isHome, session, logout, onNavigate }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const ownerUrl = useOwnerAppUrl();
   return (
     <>
       <Link
@@ -87,18 +85,6 @@ function Sidebar({ sections, pathname, isHome, session, logout, onNavigate, canO
       </nav>
 
       <div className="border-t border-slate-800 p-4">
-        {canOwner && (
-          <a
-            href={ownerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-3 flex items-center gap-2 rounded-lg bg-emerald-600/15 px-3 py-2 text-sm font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-600/25 hover:text-emerald-200"
-          >
-            <span>👑</span>
-            <span className="flex-1">SACONE Owner</span>
-            <span className="text-xs">↗</span>
-          </a>
-        )}
         <div className="mb-3 rounded-lg bg-slate-800 px-3 py-2">
           <div className="truncate text-sm font-medium">{session?.user?.fullName}</div>
           <div className="truncate text-xs text-slate-400">{session?.user?.roleName}</div>
@@ -143,8 +129,7 @@ export default function AppShell({ children }) {
     };
   }, [drawerOpen]);
 
-  const canOwner = OWNER_PERMISSIONS.some((p) => checkPermission(p));
-  const sidebarProps = { sections: sidebarSections, pathname, isHome, session, logout, canOwner };
+  const sidebarProps = { sections: sidebarSections, pathname, isHome, session, logout };
 
   return (
     <div className="flex min-h-screen bg-slate-100">

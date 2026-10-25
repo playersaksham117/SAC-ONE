@@ -68,10 +68,11 @@ export function AuthProvider({ children }) {
     }
   }, [loading, session, pathname, router]);
 
-  const login = async (email, password) => {
-    const data = await apiRequest('/api/auth/login', {
+  /** Sign in with the private owner key (no ERP login). */
+  const login = async (key) => {
+    const data = await apiRequest('/api/auth/owner-key', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ key }),
     });
     setToken(data.token);
     const nextSession = {
