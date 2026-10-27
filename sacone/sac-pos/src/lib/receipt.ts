@@ -404,7 +404,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   @page{size:${size} portrait;margin:${page.m}mm}
   *{box-sizing:border-box} html,body{margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;color:#000}
-  .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 1.5}mm;display:flex;flex-direction:column}
+  .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 3.5}mm;display:flex;flex-direction:column}
   .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '1.5px 3px' : '3px 5px'}}
   .vr{border-right:1px solid #000} .b{font-weight:700} .c{text-align:center} .r{text-align:right} .u{text-decoration:underline}
   .head{position:relative;text-align:center;width:100%}

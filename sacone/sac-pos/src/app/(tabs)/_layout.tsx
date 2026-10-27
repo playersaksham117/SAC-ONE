@@ -19,6 +19,8 @@ export default function TabsLayout() {
   const canViewQuotes = useCan('viewQuotes');
   const canQuotes = canMakeQuotes || canViewQuotes;
   const canReturns = useCan('returns');
+  const canCollect = useCan('collectPayment');
+  const heldCount = useLedger((s) => s.held.length);
   const unsynced = useLedger(useShallow((s) => pendingCount(s)));
   const wide = useWide();
 
@@ -55,6 +57,17 @@ export default function TabsLayout() {
       {/* web POS / wide screens: Quotations and Returns get their own place in the rail (phones: Sales tabs) */}
       <Tabs.Screen name="quotes" options={{ title: 'Quotations', tabBarIcon: icon('document-text'), href: wide && canQuotes ? undefined : null }} />
       <Tabs.Screen name="returns" options={{ title: 'Returns', tabBarIcon: icon('return-down-back'), href: wide && canReturns ? undefined : null }} />
+      <Tabs.Screen name="collections" options={{ title: 'Collections', tabBarIcon: icon('wallet'), href: wide && (canCollect || canCustomers) ? undefined : null }} />
+      <Tabs.Screen
+        name="held"
+        options={{
+          title: 'Held',
+          tabBarIcon: icon('pause-circle'),
+          href: wide && canSell ? undefined : null,
+          tabBarBadge: heldCount || undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.warning, fontSize: 10 },
+        }}
+      />
       <Tabs.Screen name="customers" options={{ title: 'Customers', tabBarIcon: icon('people'), href: canCustomers ? undefined : null }} />
       <Tabs.Screen name="stock" options={{ title: 'Stock', tabBarIcon: icon('cube'), href: canStock ? undefined : null }} />
       <Tabs.Screen

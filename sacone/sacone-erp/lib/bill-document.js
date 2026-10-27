@@ -638,7 +638,7 @@ function classicHtml(model, company, size, invoice = {}) {
   html,body{margin:0;padding:0}
   /* Explicit line heights: the PDF (html2canvas) misplaces text with line-height:normal. */
   body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;line-height:1.3;color:#000}
-  .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 1.5}mm;display:flex;flex-direction:column}
+  .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 3.5}mm;display:flex;flex-direction:column}
   .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '2px 3px 3px' : '4px 6px 6px'}}
   .vr{border-right:1px solid #000}
   .b{font-weight:700} .c{text-align:center} .r{text-align:right} .u{text-decoration:underline}

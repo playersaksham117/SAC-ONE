@@ -22,7 +22,11 @@ export async function printDocument(job: PrintJob): Promise<void> {
   const pt = (n: number) => `${Math.round((n / 72) * 25.4 * 10) / 10}mm`;
   const m = job.margins;
   const pageCss = `@page { ${job.width && job.height ? `size: ${pt(job.width)} ${pt(job.height)};` : ''} margin: ${m ? `${pt(m.top ?? 0)} ${pt(m.right ?? 0)} ${pt(m.bottom ?? 0)} ${pt(m.left ?? 0)}` : '0'}; }`;
-  const html = job.html.includes('</head>')
+  // A bill that sets its own @page (size + margin) is laid out for exactly that page: adding
+  // other margins would push a one-page bill onto a second page.
+  const html = /@page\s*\{/.test(job.html)
+    ? job.html
+    : job.html.includes('</head>')
     ? job.html.replace('</head>', `<style>${pageCss}</style></head>`)
     : `<!doctype html><html><head><meta charset="utf-8"><style>${pageCss}</style></head><body>${job.html}</body></html>`;
 
