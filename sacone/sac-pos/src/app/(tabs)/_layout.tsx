@@ -41,10 +41,11 @@ export default function TabsLayout() {
             tabBarPosition: 'left' as const,
             tabBarVariant: 'material' as const,
             tabBarLabelPosition: 'below-icon' as const,
-            tabBarStyle: { backgroundColor: colors.surface, borderRightColor: colors.border, width: 124, paddingTop: 12 },
+            // compact, so every entry down to Customers, Stock and More fits a laptop screen
+            tabBarStyle: { backgroundColor: colors.surface, borderRightColor: colors.border, width: 124, paddingTop: 8 },
             tabBarActiveBackgroundColor: colors.primarySoft,
-            tabBarItemStyle: { borderRadius: 14, marginHorizontal: 6, marginVertical: 2, paddingVertical: 8 },
-            tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+            tabBarItemStyle: { borderRadius: 14, marginHorizontal: 6, marginVertical: 1, paddingVertical: 0 },
+            tabBarLabelStyle: { fontSize: 10.5, fontWeight: '700' },
           }
           : {
             tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 62, paddingBottom: 8, paddingTop: 6 },
