@@ -30,7 +30,7 @@ foreach ($line in $lines) {
 
 if (-not $Remove) {
   $kept += $begin
-  $kept += "$ServerIp`t$Domain erp.$Domain owner.$Domain api.$Domain"
+  $kept += "$ServerIp`t$Domain erp.$Domain owner.$Domain pos.$Domain api.$Domain"
   $kept += $end
 }
 
@@ -41,6 +41,6 @@ ipconfig /flushdns | Out-Null
 if ($Remove) {
   Write-Host "Removed the SACONE entries from $hostsFile"
 } else {
-  Write-Host "Added: $ServerIp -> $Domain, erp.$Domain, owner.$Domain, api.$Domain"
+  Write-Host "Added: $ServerIp -> $Domain, erp.$Domain, owner.$Domain, pos.$Domain, api.$Domain"
   Write-Host "Backup: $hostsFile.sacone.bak"
 }

@@ -1,4 +1,3 @@
-import * as Print from 'expo-print';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
@@ -7,6 +6,7 @@ import { LABEL_SIZES, barcodeValue, labelSettingsFrom, labelsHtml, type LabelPro
 import { searchProducts, useCatalog } from '../store/catalog';
 import { useDevice } from '../store/device';
 import { Banner, Button, Card, Chip, Header, Row, Screen, SearchBar, SectionTitle, Stepper, colors, font, space } from '../ui/components';
+import { printDocument } from '../lib/printDocument';
 
 /** SAC-POS catalogue item → the product shape the label layout uses (same as the ERP). */
 const toLabel = (p: Product): LabelProduct => ({
@@ -64,7 +64,7 @@ export default function Labels() {
       const page = sizeInfo.cols
         ? { width: 595, height: 842 }
         : { width: Math.round(sizeInfo.w * PT_PER_MM), height: Math.round(sizeInfo.h * PT_PER_MM) };
-      await Print.printAsync({ html, ...page, margins: { left: 0, top: 0, right: 0, bottom: 0 } });
+      await printDocument({ html, ...page, margins: { left: 0, top: 0, right: 0, bottom: 0 } });
     } catch (e) {
       setError((e as Error).message);
     } finally {

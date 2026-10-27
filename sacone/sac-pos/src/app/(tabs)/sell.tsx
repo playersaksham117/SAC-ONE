@@ -1,15 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { FlatList, Platform, Pressable, ScrollView, Text, View, type TextInput } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { formatMoney, formatQty } from '../../domain/money';
 import type { Product } from '../../domain/types';
 import { usePendingQty, useSyncBadge } from '../../lib/useSyncInfo';
 import { useCartTotals } from '../../lib/useCartTotals';
 import { useCart } from '../../store/cart';
-import { searchProducts, useCatalog } from '../../store/catalog';
+import { findByCode, searchProducts, useCatalog } from '../../store/catalog';
+import { CartPanel } from '../cart';
+import { useHotkeys, useProductColumns, useWide } from '../../ui/layout';
 import { useLedger } from '../../store/ledger';
 import { useCan, useCurrentUser } from '../../store/session';
 import { syncNow } from '../../sync/engine';
@@ -39,6 +41,15 @@ export default function Sell() {
   const badge = useSyncBadge();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const wide = useWide();
+  const columns = useProductColumns();
+  const searchRef = useRef<TextInput>(null);
+  // F2: search (or scan) · F9: checkout — counter PCs with a keyboard and USB scanner
+  const hotkeys = useMemo(() => ({
+    F2: () => searchRef.current?.focus(),
+    F9: () => { if (useCart.getState().lines.length && useCart.getState().mode !== 'quotation') router.push('/checkout'); },
+  }), []);
+  useHotkeys(hotkeys, wide);
 
   const categories = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -58,6 +69,55 @@ export default function Sell() {
   const addProduct = (p: Product) => {
     add(p, 1);
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  };
+
+  /** Enter in the search box: a USB scanner's barcode (or an exact SKU) adds the item at once. */
+  const submitSearch = () => {
+    const code = query.trim();
+    if (!code) return;
+    const hit = findByCode(products, code) ?? (results.length === 1 ? results[0] : null);
+    if (hit) {
+      addProduct(hit);
+      setQuery('');
+    }
+  };
+
+  /** A product as a tile in the grid (wide screens). */
+  const renderTile = ({ item }: { item: Product }) => {
+    const available = item.available - (pending[item.id] || 0);
+    const inCart = qtyInCart[item.id];
+    return (
+      <Pressable
+        onPress={() => addProduct(item)}
+        onLongPress={() => setQtyFor(item)}
+        delayLongPress={350}
+        testID={`product-${item.sku}`}
+        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+          flex: 1, margin: space.xs, minHeight: 132, backgroundColor: colors.surface, padding: space.md, borderRadius: radius.lg,
+          borderWidth: inCart ? 2 : 1, borderColor: inCart ? colors.primary : hovered ? colors.primary : colors.border,
+          opacity: pressed ? 0.85 : 1, justifyContent: 'space-between',
+        })}
+      >
+        <View>
+          <Text style={{ fontSize: font.md, fontWeight: '700', color: colors.text }} numberOfLines={2}>{item.name}</Text>
+          <Text style={{ fontSize: font.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>{item.sku} · GST {item.gstRate}%</Text>
+        </View>
+        <View style={{ marginTop: space.sm }}>
+          {item.itemType === 'service'
+            ? <Badge tone="info" label="Service" />
+            : <Badge tone={stockTone(available)} label={available <= 0 ? 'Out of stock' : `${formatQty(available)} ${item.unit}`} />}
+          <Row style={{ justifyContent: 'space-between', marginTop: space.sm }}>
+            <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(item.price)}</Text>
+            {inCart ? (
+              <Pressable onPress={() => setQtyFor(item)} hitSlop={8} accessibilityLabel={`Change quantity of ${item.name}`}
+                style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 }}>
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}</Text>
+              </Pressable>
+            ) : <Ionicons name="add-circle" size={24} color={colors.primary} />}
+          </Row>
+        </View>
+      </Pressable>
+    );
   };
 
   const renderItem = ({ item }: { item: Product }) => {
@@ -110,8 +170,29 @@ export default function Sell() {
     );
   };
 
+  const productList = (
+    <FlatList
+      key={wide ? `grid-${columns}` : 'list'}
+      data={results}
+      keyExtractor={(p) => p.id}
+      renderItem={wide ? renderTile : renderItem}
+      numColumns={wide ? columns : 1}
+      contentContainerStyle={{ padding: wide ? space.md : space.lg, paddingBottom: !wide && totals.n ? 110 : 40 }}
+      keyboardShouldPersistTaps="handled"
+      ListEmptyComponent={(
+        <Empty
+          icon="cube-outline"
+          title={Object.keys(products).length ? 'No matching products' : 'No products yet'}
+          message={Object.keys(products).length ? 'Try another name, SKU or barcode.' : 'Products and stock download from SACONE ERP automatically. Tap sync to fetch now.'}
+        />
+      )}
+    />
+  );
+
   return (
-    <Screen padded={false}>
+    <Screen padded={false} full={wide}>
+      <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
+      <View style={{ flex: 1 }}>
       <Header
         title="Sell"
         subtitle={`${user?.name ?? ''} · ${badge.label}`}
@@ -141,9 +222,12 @@ export default function Sell() {
         ) : null}
         <ExchangeNotice />
         <SearchBar
+          inputRef={searchRef}
+          autoFocus={wide}
+          onSubmitEditing={submitSearch}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search name, SKU or barcode"
+          placeholder={wide ? 'Search or scan a barcode  (F2)' : 'Search name, SKU or barcode'}
           right={<IconButton icon="barcode-outline" label="Scan barcode" tone="primary" onPress={() => router.push('/scan')} />}
         />
         {categories.length ? (
@@ -154,22 +238,17 @@ export default function Sell() {
         ) : null}
       </View>
 
-      <FlatList
-        data={results}
-        keyExtractor={(p) => p.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ padding: space.lg, paddingBottom: totals.n ? 110 : 40 }}
-        keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={(
-          <Empty
-            icon="cube-outline"
-            title={Object.keys(products).length ? 'No matching products' : 'No products yet'}
-            message={Object.keys(products).length ? 'Try another name, SKU or barcode.' : 'Products and stock download from SACONE ERP automatically. Tap sync to fetch now.'}
-          />
-        )}
-      />
+      {productList}
+      </View>
 
-      {totals.n ? (
+      {wide ? (
+        <View style={{ width: 420, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.bg }}>
+          <CartPanel />
+        </View>
+      ) : null}
+      </View>
+
+      {!wide && totals.n ? (
         <Pressable
           testID="open-cart"
           onPress={() => router.push('/cart')}

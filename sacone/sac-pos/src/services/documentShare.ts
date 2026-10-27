@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import { Platform, Share } from 'react-native';
 import { NativeDocumentShare } from '../../modules/document-share';
 import { isExpiredShareFile } from '../domain/share';
+import { printDocument } from '../lib/printDocument';
 
 /**
  * DocumentShareService: turns an already-rendered document into a temporary PDF in
@@ -105,7 +106,7 @@ export async function shareDocument(
   html: string, page: PdfPage, fileName: string, options: ShareOptions = {},
 ): Promise<ShareResult> {
   if (Platform.OS === 'web') {
-    await Print.printAsync({ html });
+    await printDocument({ html, width: page.width, height: page.height, margins: page.margins });
     return { messageCopied: false };
   }
   return sharePdf(await createPdf(html, page, fileName), options);

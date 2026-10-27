@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
   View, type StyleProp, type TextInputProps, type ViewStyle,
@@ -12,21 +12,24 @@ export type IconName = ComponentProps<typeof Ionicons>['name'];
 
 /* ───────────── layout ───────────── */
 
-export function Screen({ children, scroll = false, padded = true, edges = ['top'] as const, footer }: {
+export function Screen({ children, scroll = false, padded = true, edges = ['top'] as const, footer, full = false }: {
   children: ReactNode; scroll?: boolean; padded?: boolean; edges?: readonly ('top' | 'bottom' | 'left' | 'right')[]; footer?: ReactNode;
+  /** Use the whole width (wide Sell screen) instead of a centred column. */
+  full?: boolean;
 }) {
+  const column = full ? styles.full : styles.column;
   const content = scroll ? (
-    <ScrollView contentContainerStyle={[styles.column, padded && styles.padded, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[column, padded && styles.padded, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.column, { flex: 1 }, padded && styles.padded]}>{children}</View>
+    <View style={[column, { flex: 1 }, padded && styles.padded]}>{children}</View>
   );
   return (
     <SafeAreaView style={styles.screen} edges={edges}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {content}
-        {footer ? <View style={styles.column}>{footer}</View> : null}
+        {footer ? <View style={column}>{footer}</View> : null}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -141,10 +144,12 @@ export function Field({ label, error, hint, style, ...input }: TextInputProps & 
   );
 }
 
-export function SearchBar({ value, onChangeText, placeholder, right, autoFocus, onSubmitEditing }: {
+export function SearchBar({ value, onChangeText, placeholder, right, autoFocus, onSubmitEditing, inputRef }: {
   value: string; onChangeText: (v: string) => void; placeholder: string; right?: ReactNode; autoFocus?: boolean;
   /** Enter / a hardware scanner's carriage return. */
   onSubmitEditing?: () => void;
+  /** To focus the box from a keyboard shortcut (F2 on SAC-POS web). */
+  inputRef?: Ref<TextInput>;
 }) {
   return (
     <View style={styles.search}>
@@ -160,6 +165,8 @@ export function SearchBar({ value, onChangeText, placeholder, right, autoFocus, 
         autoFocus={autoFocus}
         returnKeyType="search"
         onSubmitEditing={onSubmitEditing}
+        ref={inputRef}
+        blurOnSubmit={false}
       />
       {value ? <IconButton icon="close-circle" label="Clear" onPress={() => onChangeText('')} size={18} /> : null}
       {right}
@@ -319,6 +326,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   /** Phones use the full width; tablets, landscape and web get a centred, readable column. */
   column: { width: '100%', maxWidth: 760, alignSelf: 'center' },
+  full: { width: '100%' },
   padded: { paddingHorizontal: space.lg },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md, gap: space.sm },
   headerBack: { marginLeft: -6, padding: 2 },

@@ -11,6 +11,7 @@ import type { Quotation, Sale } from '../domain/types';
 import { DocumentShareService } from '../services/documentShare';
 import { signStampImages } from '../store/signStamp';
 import { lineNote, quoteNote } from '../domain/warranty';
+import { printDocument } from './printDocument';
 
 /**
  * Bill documents in four paper sizes.
@@ -514,12 +515,12 @@ export function billHtml(
 
 /** System print dialog: any printer the phone can reach, including Bluetooth/Wi-Fi thermal printers. */
 export async function printBill(html: string, size: PaperSize) {
-  await Print.printAsync(isSheet(size) ? { html, ...PAGE[size] } : { html, margins: NO_MARGINS });
+  await printDocument(isSheet(size) ? { html, ...PAGE[size] } : { html, margins: NO_MARGINS });
 }
 
 /** Open the PDF in the system viewer (Save as PDF / Save to Files). On web: browser "Save as PDF". */
 export async function savePdf(html: string, size: PdfSize, number: string) {
-  if (Platform.OS === 'web') return Print.printAsync({ html });
+  if (Platform.OS === 'web') return printDocument({ html, ...PAGE[size] });
   return Print.printAsync({ uri: await DocumentShareService.createPdf(html, PAGE[size], shareFileName(number)) });
 }
 

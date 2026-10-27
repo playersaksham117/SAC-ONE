@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, font, space } from './theme';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
@@ -11,6 +12,25 @@ export function PinPad({ value, onChange, length = 6, onSubmit, submitLabel = 'O
     if (k === 'del') onChange(value.slice(0, -1));
     else if (k && value.length < length) onChange(value + k);
   };
+
+  // SAC-POS web: type the PIN on the keyboard (digits, Backspace, Enter) unless a text box has focus
+  const latest = useRef({ value, onChange, onSubmit, length });
+  latest.current = { value, onChange, onSubmit, length };
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+      const cur = latest.current;
+      // keep the new value at once: fast typing sends keys before the screen has re-rendered
+      const set = (next: string) => { cur.value = next; cur.onChange(next); };
+      if (/^[0-9]$/.test(e.key)) { if (cur.value.length < cur.length) set(cur.value + e.key); e.preventDefault(); }
+      else if (e.key === 'Backspace') { set(cur.value.slice(0, -1)); e.preventDefault(); }
+      else if (e.key === 'Enter' && cur.onSubmit) { cur.onSubmit(); e.preventDefault(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   return (
     <View>
       <View style={styles.dots} accessibilityLabel={`${value.length} digits entered`}>

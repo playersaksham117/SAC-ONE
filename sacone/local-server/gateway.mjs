@@ -3,6 +3,7 @@
  *
  *   http://erp.sacone.local    → ERP      (localhost:3000)   also http://sacone.local
  *   http://owner.sacone.local  → Owner    (localhost:3001)
+ *   http://pos.sacone.local    → SAC-POS web (localhost:3002)
  *   http://api.sacone.local    → API      (localhost:4000)   SAC-POS server URL
  *
  * Any other host (e.g. http://192.168.1.20 from a phone) opens the ERP.
@@ -37,6 +38,7 @@ const PORT = Number.parseInt(setting('GATEWAY_PORT', '80'), 10);
 const APPS = {
   erp: { name: 'SACONE ERP', port: Number.parseInt(setting('ERP_PORT', '3000'), 10) },
   owner: { name: 'SACONE Owner', port: Number.parseInt(setting('OWNER_PORT', '3001'), 10) },
+  pos: { name: 'SAC-POS web', port: Number.parseInt(setting('POS_WEB_PORT', '3002'), 10) },
   api: { name: 'SACONE API', port: Number.parseInt(setting('PORT', '4000'), 10) },
 };
 
@@ -44,6 +46,7 @@ function appFor(hostHeader = '') {
   const host = hostHeader.split(':')[0].toLowerCase();
   if (host === `api.${DOMAIN}`) return APPS.api;
   if (host === `owner.${DOMAIN}`) return APPS.owner;
+  if (host === `pos.${DOMAIN}`) return APPS.pos;
   return APPS.erp;
 }
 
@@ -118,5 +121,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`SACONE gateway on port ${PORT}`);
   console.log(`  ERP    http://erp.${DOMAIN}${suffix}   (also http://${DOMAIN}${suffix})`);
   console.log(`  Owner  http://owner.${DOMAIN}${suffix}`);
+  console.log(`  POS    http://pos.${DOMAIN}${suffix}   (SAC-POS web)`);
   console.log(`  API    http://api.${DOMAIN}${suffix}`);
 });

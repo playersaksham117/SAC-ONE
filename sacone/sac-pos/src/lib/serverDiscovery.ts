@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 const LAN_OR_TAILSCALE = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/;
 
@@ -13,8 +14,21 @@ export function devServerHost(): string | null {
   return LAN_OR_TAILSCALE.test(host) ? host : null;
 }
 
+/**
+ * SAC-POS web: the SACONE API runs on the PC that served this page — api.<domain> behind the
+ * local gateway (pos.sacone.local → api.sacone.local), otherwise the same host on port 4000.
+ */
+function webServerUrl(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const { protocol, hostname, port } = window.location;
+  if (hostname.startsWith('pos.')) return `${protocol}//api.${hostname.slice(4)}${port ? `:${port}` : ''}`;
+  return `${protocol}//${hostname}:4000`;
+}
+
 /** Server URLs worth trying instead of `current`: same port, on the PC that served the app. */
 export function serverUrlCandidates(current: string | null): string[] {
+  const web = webServerUrl();
+  if (web) return web === current ? [] : [web];
   const host = devServerHost();
   if (!host) return [];
   let port = '4000';

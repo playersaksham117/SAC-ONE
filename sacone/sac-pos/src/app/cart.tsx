@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { formatMoney, formatQty } from '../domain/money';
 import type { CartLine } from '../domain/types';
 import { validateLine } from '../domain/validation';
@@ -62,7 +62,7 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
         </View>
         <Text style={{ fontWeight: '800', fontSize: font.md, color: colors.text }}>{formatMoney(lineGross)}</Text>
       </Row>
-      <Row style={{ marginTop: space.sm, justifyContent: 'space-between' }}>
+      <Row style={{ marginTop: space.sm, justifyContent: 'space-between', flexWrap: 'wrap', rowGap: space.sm }}>
         <Stepper value={line.quantity} onChange={(v) => setQty(line.productId, v)} />
         <Pressable onPress={() => setSerialOpen(!serialOpen)} hitSlop={8}>
           <Row gap={4}>
@@ -147,6 +147,15 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
 }
 
 export default function Cart() {
+  return <CartView />;
+}
+
+/** The cart beside the products on the wide Sell screen (SAC-POS web, tablets). */
+export function CartPanel() {
+  return <CartView embedded />;
+}
+
+function CartView({ embedded = false }: { embedded?: boolean }) {
   const { totals, customer, lines, invoiceDiscount } = useCartTotals();
   const canOverride = useCan('overridePrice');
   const canCost = useCan('enterCost');
@@ -173,7 +182,7 @@ export default function Cart() {
       : 'All items will be removed.';
     if (await confirm('Clear cart?', message, 'Clear', true)) {
       useCart.getState().clear();
-      router.back();
+      if (!embedded) router.back();
     }
   };
 
@@ -184,11 +193,19 @@ export default function Cart() {
     }
     try {
       holdCurrentBill();
-      router.back();
+      if (!embedded) router.back();
     } catch (e) {
       notify('Cannot hold', (e as Error).message);
     }
   };
+
+  if (!lines.length && embedded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', padding: space.lg }}>
+        <Empty icon="cart-outline" title={quoting ? 'Quotation is empty' : 'Cart is empty'} message="Click products (or scan a barcode) to add them. F2 search · F9 checkout." />
+      </View>
+    );
+  }
 
   if (!lines.length) {
     return (
@@ -199,11 +216,7 @@ export default function Cart() {
     );
   }
 
-  return (
-    <Screen
-      padded={false}
-      scroll
-      footer={(
+  const footer = (
         <View style={{ padding: space.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
           {quoting ? (
             <>
@@ -220,10 +233,10 @@ export default function Cart() {
             </Row>
           )}
         </View>
-      )}
-    >
-      <Header title={quoting ? 'Quotation' : 'Cart'} subtitle={`${lines.length} item(s)`} onBack={() => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />
-      <View style={{ paddingHorizontal: space.lg }}>
+  );
+  const title = <Header title={quoting ? 'Quotation' : 'Cart'} subtitle={`${lines.length} item(s)`} onBack={embedded ? undefined : () => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />;
+  const body = (
+      <View style={{ paddingHorizontal: space.lg, paddingBottom: space.lg }}>
         <ExchangeNotice />
         {quoting ? <Banner tone="info" messages={['Quotation: no stock or money moves. Customers can be walk-in.']} /> : null}
         {!quoting && fromQuotation ? <Banner tone="info" messages={[`From quotation ${fromQuotation.number}: completing this sale marks it converted.`]} /> : null}
@@ -274,6 +287,21 @@ export default function Cart() {
           <KeyValue label="Total" value={formatMoney(totals.grandTotal)} bold />
         </Card>
       </View>
+  );
+
+  if (embedded) {
+    return (
+      <View style={{ flex: 1 }}>
+        {title}
+        <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">{body}</ScrollView>
+        {footer}
+      </View>
+    );
+  }
+  return (
+    <Screen padded={false} scroll footer={footer}>
+      {title}
+      {body}
     </Screen>
   );
 }

@@ -7,6 +7,7 @@ This PC is the server. The data lives in a local SQLite database
 |-----|-----|----------------|
 | http://erp.sacone.local (or http://sacone.local) | SACONE ERP | 3000 |
 | http://owner.sacone.local | SACONE Owner (CEO Dashboard, Income & Expense) | 3001 |
+| http://pos.sacone.local | SAC-POS web (counter PC / laptop / tablet) | 3002 |
 | http://api.sacone.local | API; also the server URL for SAC-POS phones | 4000 |
 
 `http://localhost:3000` and `http://<this PC's IP>:3000` keep working too. Every app works out

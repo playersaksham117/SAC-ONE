@@ -6,6 +6,7 @@ import { availableUpdate, useAppUpdate } from '../../lib/appUpdate';
 import { pendingCount, useLedger } from '../../store/ledger';
 import { useCan, useSession } from '../../store/session';
 import { colors } from '../../ui/theme';
+import { useWide } from '../../ui/layout';
 
 export default function TabsLayout() {
   const signedIn = useSession((s) => Boolean(s.currentUserId));
@@ -15,6 +16,7 @@ export default function TabsLayout() {
   const canCustomers = useCan('viewCustomers');
   const canStock = useCan('viewStock');
   const unsynced = useLedger(useShallow((s) => pendingCount(s)));
+  const wide = useWide();
 
   if (!signedIn) return <Redirect href="/login" />;
 
@@ -27,8 +29,21 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textFaint,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 62, paddingBottom: 8, paddingTop: 6 },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        // counter PCs / tablets: a navigation rail on the left; phones: tabs at the bottom
+        ...(wide
+          ? {
+            tabBarPosition: 'left' as const,
+            tabBarVariant: 'material' as const,
+            tabBarLabelPosition: 'below-icon' as const,
+            tabBarStyle: { backgroundColor: colors.surface, borderRightColor: colors.border, width: 124, paddingTop: 12 },
+            tabBarActiveBackgroundColor: colors.primarySoft,
+            tabBarItemStyle: { borderRadius: 14, marginHorizontal: 6, marginVertical: 2, paddingVertical: 8 },
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+          }
+          : {
+            tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, height: 62, paddingBottom: 8, paddingTop: 6 },
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+          }),
       }}
     >
       <Tabs.Screen name="sell" options={{ title: 'Sell', tabBarIcon: icon('cart'), href: canSell ? undefined : null }} />
