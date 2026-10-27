@@ -16,6 +16,7 @@ import {
   Badge, Banner, Button, Card, Chip, Divider, Empty, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper,
   colors, font, radius, space,
 } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 function NumberInput({ value, onCommit, label, testID }: { value: number; onCommit: (v: number) => void; label: string; testID?: string }) {
   const [text, setText] = useState(String(value));
@@ -182,7 +183,7 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
       : 'All items will be removed.';
     if (await confirm('Clear cart?', message, 'Clear', true)) {
       useCart.getState().clear();
-      if (!embedded) router.back();
+      if (!embedded) goBack();
     }
   };
 
@@ -193,7 +194,7 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
     }
     try {
       holdCurrentBill();
-      if (!embedded) router.back();
+      if (!embedded) goBack();
     } catch (e) {
       notify('Cannot hold', (e as Error).message);
     }
@@ -210,8 +211,8 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
   if (!lines.length) {
     return (
       <Screen>
-        <Header title="Cart" onBack={() => router.back()} />
-        <Empty icon="cart-outline" title="Cart is empty" message="Tap products on the Sell screen to add them." action={<Button title="Back to products" onPress={() => router.back()} />} />
+        <Header title="Cart" onBack={() => goBack()} />
+        <Empty icon="cart-outline" title="Cart is empty" message="Tap products on the Sell screen to add them." action={<Button title="Back to products" onPress={() => goBack()} />} />
       </Screen>
     );
   }
@@ -234,7 +235,7 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
           )}
         </View>
   );
-  const title = <Header title={quoting ? 'Quotation' : 'Cart'} subtitle={`${lines.length} item(s)`} onBack={embedded ? undefined : () => router.back()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />;
+  const title = <Header title={quoting ? 'Quotation' : 'Cart'} subtitle={`${lines.length} item(s)`} onBack={embedded ? undefined : () => goBack()} right={<IconButton icon="trash-outline" label="Clear cart" tone="danger" onPress={clear} />} />;
   const body = (
       <View style={{ paddingHorizontal: space.lg, paddingBottom: space.lg }}>
         <ExchangeNotice />

@@ -13,6 +13,7 @@ import { useCan, useSession } from '../../store/session';
 import { confirm, notify } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Banner, Button, Card, Chip, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, Segmented, colors, font, space } from '../../ui/components';
+import { goBack } from '../../lib/nav';
 
 /** A quotation made on this phone: print / PDF / share, and turn it into a sale. */
 export default function QuotationDetail() {
@@ -29,7 +30,7 @@ export default function QuotationDetail() {
   if (!quote) {
     return (
       <Screen>
-        <Header title="Quotation" onBack={() => router.back()} />
+        <Header title="Quotation" onBack={() => goBack()} />
         <Empty title="Quotation not found" message="It may have been cleaned up after syncing (kept on the phone for 30 days)." />
       </Screen>
     );
@@ -57,7 +58,7 @@ export default function QuotationDetail() {
 
   return (
     <Screen padded={false} scroll>
-      <Header title={done ? 'Quotation saved' : 'Quotation'} subtitle={number} onBack={() => router.back()} />
+      <Header title={done ? 'Quotation saved' : 'Quotation'} subtitle={number} onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         {done ? (
           <Card style={{ alignItems: 'center', backgroundColor: colors.primarySoft, borderColor: colors.primarySoft, marginBottom: space.md }}>
@@ -114,7 +115,7 @@ export default function QuotationDetail() {
           {canSell && quote.status === 'open' ? (
             <Button title="Convert to sale" icon="cart-outline" size="lg" onPress={convert} testID="convert-quotation" />
           ) : null}
-          {done ? <Button title="New quotation" icon="add-circle-outline" variant="secondary" onPress={() => (router.canGoBack() ? router.back() : router.replace('/sell'))} /> : null}
+          {done ? <Button title="New quotation" icon="add-circle-outline" variant="secondary" onPress={() => (router.canGoBack() ? goBack() : router.replace('/sell'))} /> : null}
         </View>
       </View>
     </Screen>

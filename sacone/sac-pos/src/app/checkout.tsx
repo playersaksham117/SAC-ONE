@@ -18,6 +18,7 @@ import { DispatchSection } from '../ui/DispatchSection';
 import { billTimestamp, daysAgo, isAdminRole, istToday } from '../domain/billDate';
 import { parsePoDate } from '../domain/po';
 import { useCurrentUser } from '../store/session';
+import { goBack } from '../lib/nav';
 
 const METHODS: { method: PaymentMethod; label: string; icon: 'cash-outline' | 'qr-code-outline' | 'card-outline' | 'time-outline' }[] = [
   { method: 'cash', label: 'Cash', icon: 'cash-outline' },
@@ -194,7 +195,7 @@ export default function Checkout() {
         </View>
       )}
     >
-      <Header title="Payment" subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => router.back()} />
+      <Header title="Payment" subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         <Card style={{ alignItems: 'center', backgroundColor: colors.dark, borderColor: colors.dark }}>
           <Text style={{ color: '#94A3B8', fontWeight: '600' }}>{exchange ? 'To collect after exchange' : 'Amount payable'}</Text>

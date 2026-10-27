@@ -15,6 +15,10 @@ export default function TabsLayout() {
   const canSales = useCan('viewSales');
   const canCustomers = useCan('viewCustomers');
   const canStock = useCan('viewStock');
+  const canMakeQuotes = useCan('quote');
+  const canViewQuotes = useCan('viewQuotes');
+  const canQuotes = canMakeQuotes || canViewQuotes;
+  const canReturns = useCan('returns');
   const unsynced = useLedger(useShallow((s) => pendingCount(s)));
   const wide = useWide();
 
@@ -48,6 +52,9 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="sell" options={{ title: 'Sell', tabBarIcon: icon('cart'), href: canSell ? undefined : null }} />
       <Tabs.Screen name="sales" options={{ title: 'Sales', tabBarIcon: icon('receipt'), href: canSales ? undefined : null }} />
+      {/* web POS / wide screens: Quotations and Returns get their own place in the rail (phones: Sales tabs) */}
+      <Tabs.Screen name="quotes" options={{ title: 'Quotations', tabBarIcon: icon('document-text'), href: wide && canQuotes ? undefined : null }} />
+      <Tabs.Screen name="returns" options={{ title: 'Returns', tabBarIcon: icon('return-down-back'), href: wide && canReturns ? undefined : null }} />
       <Tabs.Screen name="customers" options={{ title: 'Customers', tabBarIcon: icon('people'), href: canCustomers ? undefined : null }} />
       <Tabs.Screen name="stock" options={{ title: 'Stock', tabBarIcon: icon('cube'), href: canStock ? undefined : null }} />
       <Tabs.Screen

@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import { formatMoney, round2 } from '../../domain/money';
-import { lineRefundValue } from '../../domain/tax';
+import { formatMoney } from '../../domain/money';
+import { lineRefundValue, roundRupee } from '../../domain/tax';
 import type { Approval, RefundMethod } from '../../domain/types';
 import { validateReturn } from '../../domain/validation';
 import { ValidationError, createReturn } from '../../services/pos';
@@ -14,6 +14,7 @@ import { confirm } from '../../ui/dialogs';
 import {
   Banner, Button, Card, Chip, Empty, Field, Header, Row, Screen, SectionTitle, Segmented, Stepper, colors, font, space,
 } from '../../ui/components';
+import { goBack } from '../../lib/nav';
 
 const REFUNDS: { value: RefundMethod; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -38,7 +39,8 @@ export default function ReturnScreen() {
 
   const value = useMemo(() => {
     if (!sale) return 0;
-    return round2(Object.entries(qty).reduce((s, [pid, q]) => {
+    // whole rupees, like the ERP's credit note
+    return roundRupee(Object.entries(qty).reduce((s, [pid, q]) => {
       const line = sale.totals.lines.find((l) => l.productId === pid);
       return s + (line ? lineRefundValue(line, q) : 0);
     }, 0));
@@ -47,7 +49,7 @@ export default function ReturnScreen() {
   if (!sale || !allowed) {
     return (
       <Screen>
-        <Header title="Return / exchange" onBack={() => router.back()} />
+        <Header title="Return / exchange" onBack={() => goBack()} />
         <Empty icon="lock-closed-outline" title={!allowed ? 'Not allowed' : 'Bill not found'} message={!allowed ? 'Your ERP role does not include "POS Returns – create".' : undefined} />
       </Screen>
     );
@@ -77,7 +79,7 @@ export default function ReturnScreen() {
         if (router.canDismiss()) router.dismissAll();
         router.replace('/sell');
       } else {
-        router.back();
+        goBack();
       }
     } catch (e) {
       setErrors(e instanceof ValidationError ? e.result.errors.map((x) => x.message) : [(e as Error).message]);
@@ -101,7 +103,7 @@ export default function ReturnScreen() {
         </View>
       )}
     >
-      <Header title="Return / exchange" subtitle={`Bill ${sale.serverNumber ?? sale.number}${sale.customer ? ` · ${sale.customer.name}` : ''}`} onBack={() => router.back()} />
+      <Header title="Return / exchange" subtitle={`Bill ${sale.serverNumber ?? sale.number}${sale.customer ? ` · ${sale.customer.name}` : ''}`} onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         <View style={{ marginTop: space.md }}>
           <Segmented<Mode>

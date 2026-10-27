@@ -10,6 +10,7 @@ import { confirm } from '../ui/dialogs';
 import { useDevice } from '../store/device';
 import { syncNow } from '../sync/engine';
 import { Banner, Button, Card, Header, KeyValue, Screen, colors, font, space } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -77,7 +78,7 @@ export default function Connect() {
     }
   };
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
+  const back = () => (router.canGoBack() ? goBack() : router.replace('/'));
   const left = paired ? unsyncedOnPhone() : null;
 
   return (

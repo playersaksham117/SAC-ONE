@@ -1,9 +1,9 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { sync, type WarrantyCheck, type WarrantyPeriod } from '../api/sacone';
 import { deviceConfig } from '../store/device';
 import { Badge, Banner, Button, Card, Header, Row, Screen, SearchBar, colors, font, space } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
@@ -36,7 +36,7 @@ export default function Warranty() {
 
   return (
     <Screen scroll padded={false}>
-      <Header title="Warranty check" subtitle="Invoice number or serial number" onBack={() => router.back()} />
+      <Header title="Warranty check" subtitle="Invoice number or serial number" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         <SearchBar value={q} onChangeText={setQ} placeholder="Scan or type invoice / serial no." onSubmitEditing={check} autoFocus />
         <Button title="Check" icon="shield-checkmark-outline" onPress={check} loading={busy} disabled={q.trim().length < 2} style={{ marginTop: space.sm }} />

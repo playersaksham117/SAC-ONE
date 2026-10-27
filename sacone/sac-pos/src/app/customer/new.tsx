@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { CustomerDraft } from '../../domain/validation';
@@ -6,6 +6,7 @@ import { ValidationError, createCustomer } from '../../services/pos';
 import { useCart } from '../../store/cart';
 import { useCan } from '../../store/session';
 import { Banner, Button, Card, Empty, Field, Header, Screen, space } from '../../ui/components';
+import { goBack } from '../../lib/nav';
 
 export default function NewCustomer() {
   const { pick } = useLocalSearchParams<{ pick?: string }>();
@@ -17,7 +18,7 @@ export default function NewCustomer() {
   if (!allowed) {
     return (
       <Screen>
-        <Header title="New customer" onBack={() => router.back()} />
+        <Header title="New customer" onBack={() => goBack()} />
         <Empty icon="lock-closed-outline" title="Not allowed" message='Your ERP role needs "Customers – create".' />
       </Screen>
     );
@@ -31,8 +32,8 @@ export default function NewCustomer() {
     try {
       const c = createCustomer(d);
       if (pick) useCart.getState().setCustomer(c.id);
-      router.back();
-      if (pick) router.back();
+      goBack();
+      if (pick) goBack();
     } catch (e) {
       if (e instanceof ValidationError) {
         const map: Record<string, string> = {};
@@ -47,7 +48,7 @@ export default function NewCustomer() {
 
   return (
     <Screen padded={false} scroll>
-      <Header title="New customer" subtitle="Saved now, sent to SACONE on next sync" onBack={() => router.back()} />
+      <Header title="New customer" subtitle="Saved now, sent to SACONE on next sync" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         {general ? <Banner tone="danger" messages={[general]} /> : null}
         <Card>

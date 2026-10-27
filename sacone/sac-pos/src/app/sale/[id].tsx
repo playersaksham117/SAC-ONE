@@ -14,6 +14,7 @@ import { notify } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import { Banner, Button, Card, Chip, Divider, Empty, Header, KeyValue, Row, Screen, SectionTitle, Segmented, colors, font, space } from '../../ui/components';
 import { poLabel } from '../../domain/po';
+import { goBack } from '../../lib/nav';
 
 const METHOD: Record<string, string> = { cash: 'Cash', upi: 'UPI', bank: 'Card / Bank', credit: 'Credit (due)' };
 
@@ -33,7 +34,7 @@ export default function SaleDetail() {
   if (!sale) {
     return (
       <Screen>
-        <Header title="Bill" onBack={() => router.back()} />
+        <Header title="Bill" onBack={() => goBack()} />
         <Empty title="Bill not found" message="It may have been cleaned up after syncing (bills are kept on the phone for 30 days)." />
       </Screen>
     );
@@ -66,7 +67,7 @@ export default function SaleDetail() {
 
   return (
     <Screen padded={false} scroll>
-      <Header title={done ? 'Sale complete' : 'Bill'} subtitle={sale.serverNumber ?? sale.number} onBack={() => router.back()} />
+      <Header title={done ? 'Sale complete' : 'Bill'} subtitle={sale.serverNumber ?? sale.number} onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         {sale.cancelledInErp ? (
           <Card style={{ backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft, marginBottom: space.md }}>

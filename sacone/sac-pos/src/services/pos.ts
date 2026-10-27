@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { round2 } from '../domain/money';
 import { can } from '../domain/permissions';
-import { calculateCart, lineRefundValue } from '../domain/tax';
+import { calculateCart, lineRefundValue, roundRupee } from '../domain/tax';
 import type { Approval, Customer, CustomerPayment, Payment, Quotation, RefundMethod, Sale, SaleReturn } from '../domain/types';
 import { compactNotes, type CashDrawer } from '../domain/cash';
 import {
@@ -218,7 +218,7 @@ export function createReturn(
     lines,
     refundMethod,
     reason: reason.trim(),
-    total: round2(lines.reduce((s, l) => s + l.amount, 0)),
+    total: roundRupee(lines.reduce((s, l) => s + l.amount, 0)), // whole rupees, like the ERP's credit note
     type,
     approvedBy: approval,
     sync: 'pending',

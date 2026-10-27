@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 import { parsePairingCode } from '../domain/pairing';
 import { Badge, Button, Empty, Header, Screen, font, space } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 /** Scan the pairing QR shown in SACONE ERP → POS Devices, then confirm on the Connect screen. */
 export default function PairScan() {
@@ -28,11 +29,11 @@ export default function PairScan() {
     }
   };
 
-  if (!permission) return <Screen><Header title="Scan connection QR" onBack={() => router.back()} /></Screen>;
+  if (!permission) return <Screen><Header title="Scan connection QR" onBack={() => goBack()} /></Screen>;
   if (!permission.granted) {
     return (
       <Screen>
-        <Header title="Scan connection QR" onBack={() => router.back()} />
+        <Header title="Scan connection QR" onBack={() => goBack()} />
         <Empty
           icon="camera-outline"
           title="Camera access needed"
@@ -58,7 +59,7 @@ export default function PairScan() {
           : <Text style={{ color: '#fff', textAlign: 'center', fontSize: font.md }}>Point at the QR code in SACONE ERP → POS Devices</Text>}
       </View>
       <View style={{ position: 'absolute', top: 50, left: space.lg }}>
-        <Button title="Close" size="sm" variant="secondary" onPress={() => router.back()} />
+        <Button title="Close" size="sm" variant="secondary" onPress={() => goBack()} />
       </View>
     </View>
   );

@@ -6,6 +6,7 @@ import { searchCustomers, useCatalog } from '../store/catalog';
 import { useCan } from '../store/session';
 import { CustomerRow } from '../ui/CustomerRow';
 import { Button, Empty, Header, Screen, SearchBar, space } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 export default function CustomerPicker() {
   const customers = useCatalog((s) => s.customers);
@@ -17,12 +18,12 @@ export default function CustomerPicker() {
 
   const pick = (id: string | null) => {
     useCart.getState().setCustomer(id);
-    router.back();
+    goBack();
   };
 
   return (
     <Screen padded={false}>
-      <Header title="Select customer" onBack={() => router.back()} />
+      <Header title="Select customer" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
         <SearchBar value={q} onChangeText={setQ} placeholder="Name, mobile or GSTIN" autoFocus />
         <Button title="Walk-in customer (no details)" variant="secondary" icon="walk-outline" onPress={() => pick(null)} />

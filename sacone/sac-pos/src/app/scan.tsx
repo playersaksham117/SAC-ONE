@@ -1,11 +1,11 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 import { useCart } from '../store/cart';
 import { findByCode, useCatalog } from '../store/catalog';
 import { Badge, Button, Empty, Header, Screen, font, space } from '../ui/components';
+import { goBack } from '../lib/nav';
 
 export default function Scan() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -26,11 +26,11 @@ export default function Scan() {
     setLast({ ok: true, text: `Added ${product.name}` });
   };
 
-  if (!permission) return <Screen><Header title="Scan" onBack={() => router.back()} /></Screen>;
+  if (!permission) return <Screen><Header title="Scan" onBack={() => goBack()} /></Screen>;
   if (!permission.granted) {
     return (
       <Screen>
-        <Header title="Scan barcode" onBack={() => router.back()} />
+        <Header title="Scan barcode" onBack={() => goBack()} />
         <Empty
           icon="camera-outline"
           title="Camera access needed"
@@ -56,10 +56,10 @@ export default function Scan() {
             <Badge tone={last.ok ? 'success' : 'danger'} label={last.text} />
           </View>
         ) : <Text style={{ color: '#fff', textAlign: 'center', fontSize: font.md }}>Point at a barcode — items are added to the cart</Text>}
-        <Button title={`Done · ${useCart.getState().lines.length} item(s) in cart`} onPress={() => router.back()} />
+        <Button title={`Done · ${useCart.getState().lines.length} item(s) in cart`} onPress={() => goBack()} />
       </View>
       <View style={{ position: 'absolute', top: 50, left: space.lg }}>
-        <Button title="Close" size="sm" variant="secondary" onPress={() => router.back()} />
+        <Button title="Close" size="sm" variant="secondary" onPress={() => goBack()} />
       </View>
     </View>
   );

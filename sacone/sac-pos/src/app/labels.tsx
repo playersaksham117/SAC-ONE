@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { Product } from '../domain/types';
@@ -7,6 +7,7 @@ import { searchProducts, useCatalog } from '../store/catalog';
 import { useDevice } from '../store/device';
 import { Banner, Button, Card, Chip, Header, Row, Screen, SearchBar, SectionTitle, Stepper, colors, font, space } from '../ui/components';
 import { printDocument } from '../lib/printDocument';
+import { goBack } from '../lib/nav';
 
 /** SAC-POS catalogue item → the product shape the label layout uses (same as the ERP). */
 const toLabel = (p: Product): LabelProduct => ({
@@ -75,7 +76,7 @@ export default function Labels() {
   return (
     <Screen scroll padded={false}
       footer={<View style={{ padding: space.lg }}><Button title={`Print ${total} label${total === 1 ? '' : 's'}`} icon="print-outline" size="lg" loading={busy} disabled={!total} onPress={print} testID="print-labels" /></View>}>
-      <Header title="Print barcode labels" subtitle="Details as set in ERP → Settings → Barcode labels" onBack={() => router.back()} />
+      <Header title="Print barcode labels" subtitle="Details as set in ERP → Settings → Barcode labels" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         {error ? <Banner tone="danger" messages={[error]} /> : null}
         <SearchBar value={q} onChangeText={setQ} placeholder="Scan barcode or search product" onSubmitEditing={onSubmit} autoFocus={!params.productId} />

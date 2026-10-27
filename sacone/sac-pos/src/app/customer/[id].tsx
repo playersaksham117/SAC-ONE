@@ -13,6 +13,7 @@ import { DocSyncBadge } from '../../ui/SyncBadge';
 import {
   Banner, Button, Card, Chip, Empty, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, radius, space,
 } from '../../ui/components';
+import { goBack } from '../../lib/nav';
 
 const METHODS: { m: CustomerPayment['method']; label: string }[] = [
   { m: 'cash', label: 'Cash' }, { m: 'upi', label: 'UPI' }, { m: 'bank', label: 'Card / Bank' },
@@ -36,7 +37,7 @@ export default function CustomerDetail() {
   if (!c) {
     return (
       <Screen>
-        <Header title="Customer" onBack={() => router.back()} />
+        <Header title="Customer" onBack={() => goBack()} />
         <Empty title="Customer not found" />
       </Screen>
     );
@@ -58,7 +59,7 @@ export default function CustomerDetail() {
 
   return (
     <Screen padded={false} scroll>
-      <Header title={c.name} subtitle={[c.phone, c.code].filter(Boolean).join(' · ')} onBack={() => router.back()} />
+      <Header title={c.name} subtitle={[c.phone, c.code].filter(Boolean).join(' · ')} onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
         {local?.sync === 'review' ? <Banner tone="danger" messages={[local.syncError ?? 'ERP rejected this customer']} /> : null}
         <Row gap={space.sm}>
