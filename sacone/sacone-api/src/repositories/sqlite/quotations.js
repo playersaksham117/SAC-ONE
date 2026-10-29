@@ -106,11 +106,11 @@ export class QuotationRepository {
     return this.findById(row.id);
   }
 
-  /** Copy each line's product short description and warranty / guarantee onto the quotation. */
+  /** Copy each line's product warranty / guarantee onto the quotation (short descriptions are typed per quotation). */
   #snapshotLines(quotationId) {
     const col = (c) => `(SELECT p.${c} FROM products p WHERE p.id = pos_quotation_items.product_id)`;
     getDatabase().prepare(`
-      UPDATE pos_quotation_items SET short_description = ${col('short_description')},
+      UPDATE pos_quotation_items SET
         warranty_value = ${col('warranty_value')}, warranty_unit = ${col('warranty_unit')},
         guarantee_value = ${col('guarantee_value')}, guarantee_unit = ${col('guarantee_unit')}
       WHERE quotation_id = ?

@@ -78,7 +78,7 @@ export const useCart = create<CartState>()(
           const line: CartLine = {
             productId: p.id, name: p.name, sku: p.sku, barcode: p.barcode, hsn: p.hsn, unit: p.unit,
             quantity: clampQty(qty), unitPrice: p.price, listPrice: p.price, discountAmount: 0, gstRate: p.gstRate,
-            warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: p.shortDescription ?? null, itemType: p.itemType,
+            warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: null, itemType: p.itemType, // typed per bill in the cart, not taken from the product
           };
           return { lines: [...s.lines, line] };
         });

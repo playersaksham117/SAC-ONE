@@ -730,7 +730,7 @@ export class ProductService {
     const headers = [
       'sku', 'name', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
       'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
-      'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee', 'short_description',
+      'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee',
     ];
 
     const escape = (value) => {
@@ -746,7 +746,6 @@ export class ProductService {
       p.reorderLevel, p.minimumStock, p.imageUrl || '', p.description || '',
       p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0, p.itemType === 'service' ? 'service' : 'product',
       periodText(p.warrantyValue, p.warrantyUnit).toLowerCase(), periodText(p.guaranteeValue, p.guaranteeUnit).toLowerCase(),
-      p.shortDescription || '',
     ].map(escape).join(','));
 
     return `${headers.join(',')}\n${rows.join('\n')}`;

@@ -5,7 +5,7 @@ import CsvImportDialog from '../common/CsvImportDialog';
 const COLUMNS = [
   'sku', 'name', 'item_type', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
   'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock', 'image_url', 'description', 'is_active', 'web_store_published',
-  'warranty', 'guarantee', 'short_description',
+  'warranty', 'guarantee',
 ];
 const TEMPLATE = [
   COLUMNS.join(','),
@@ -30,7 +30,7 @@ export default function ProductCsvImport({ onClose, onImported }) {
         <>
           Required: <code>sku</code>, <code>name</code>. Optional: item_type (product / service), barcode, category, brand, unit, model_variant, hsn_code,
           gst_percentage, mrp, selling_price, purchase_price, reorder_level, minimum_stock, image_url, description, is_active, web_store_published,
-          warranty and guarantee (e.g. 1 year, 18 months, 90 days), short_description.
+          warranty and guarantee (e.g. 1 year, 18 months, 90 days).
           An existing SKU is updated; a new SKU is created; a blank SKU gets one made automatically. New categories, brands and units are added automatically.
         </>
       )}

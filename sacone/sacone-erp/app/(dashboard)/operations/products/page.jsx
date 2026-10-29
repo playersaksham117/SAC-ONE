@@ -25,7 +25,6 @@ const EMPTY_PRODUCT = {
   reorderLevel: 0,
   minimumStock: 0,
   itemType: 'goods',
-  shortDescription: '',
   warrantyValue: '',
   warrantyUnit: 'years',
   guaranteeValue: '',
@@ -401,7 +400,6 @@ export default function ProductsPage() {
         reorderLevel: full.reorderLevel || 0,
         minimumStock: full.minimumStock || 0,
         itemType: full.itemType || 'goods',
-        shortDescription: full.shortDescription || '',
         warrantyValue: full.warrantyValue || '',
         warrantyUnit: full.warrantyUnit || 'years',
         guaranteeValue: full.guaranteeValue || '',
@@ -825,7 +823,6 @@ export default function ProductsPage() {
                               {product.modelVariant ? `${product.modelVariant} · ` : ''}
                               {product.barcode || 'No barcode'}
                             </div>
-                            {product.shortDescription && <div className="max-w-xs truncate text-xs text-slate-500">{product.shortDescription}</div>}
                             {(product.warrantyValue || product.guaranteeValue) && (
                               <div className="text-xs text-emerald-700">
                                 {[product.warrantyValue && `🛡 ${periodText(periodOf(product.warrantyValue, product.warrantyUnit))} warranty`,
@@ -944,10 +941,6 @@ export default function ProductsPage() {
                 required
               />
               <p className="mt-1 text-xs text-slate-500">Enter the complete product description in one field.</p>
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">Short description <span className="font-normal text-slate-400">(one line, printed under the item on A4 / A5 invoices and quotations)</span></label>
-              <input className="input-field" maxLength={150} placeholder="e.g. 1200 mm sweep, 75 W, 5-star, copper motor" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} />
             </div>
             <div className="md:col-span-2">
               <label className="label">SKU *</label>

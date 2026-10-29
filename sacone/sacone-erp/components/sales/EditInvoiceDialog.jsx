@@ -116,7 +116,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const addItem = () => {
     const p = products.find((x) => x.id === pick);
     if (!p) return;
-    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, hsnCode: p.hsnCode || '', quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0, serials: '', description: p.shortDescription || '', cost: '' }] }));
+    setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, hsnCode: p.hsnCode || '', quantity: 1, unitPrice: p.sellingPrice, discountAmount: 0, serials: '', description: '', cost: '' }] }));
     setPick('');
   };
 
