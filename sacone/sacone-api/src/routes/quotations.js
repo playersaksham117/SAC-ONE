@@ -27,6 +27,11 @@ quotationRouter.put('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, quotationService.update(req.params.id, req.body, req.actor, req));
 }));
 
+/** Only the short description of each line (by line order). */
+quotationRouter.put('/:id/descriptions', asyncHandler(async (req, res) => {
+  sendSuccess(res, quotationService.setDescriptions(req.params.id, req.body || {}, req.actor));
+}));
+
 quotationRouter.post('/:id/cancel', asyncHandler(async (req, res) => {
   sendSuccess(res, quotationService.cancel(req.params.id, req.actor, req));
 }));

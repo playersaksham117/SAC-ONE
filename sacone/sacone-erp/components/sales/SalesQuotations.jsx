@@ -6,6 +6,7 @@ import { useLiveRefresh } from '../../lib/live';
 import { documentHtml, money as moneyFmt, quotationDocument } from '../../lib/bill-document';
 import DocumentDialog from '../documents/DocumentDialog';
 import EditQuotationDialog from './EditQuotationDialog';
+import ShortDescriptionDialog from './ShortDescriptionDialog';
 import { useAuth } from '../../lib/auth-context';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { Alert, LoadingState } from '../ui';
@@ -43,6 +44,7 @@ export default function SalesQuotations() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [editId, setEditId] = useState(null);
+  const [descId, setDescId] = useState(null);
   const { checkPermission } = useAuth();
   const canEdit = checkPermission('pos.quotations.edit');
 
@@ -122,6 +124,9 @@ export default function SalesQuotations() {
                     {canEdit && ['draft', 'sent'].includes(q.status) && (
                       <button type="button" className="btn-secondary !min-h-0 mr-2 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setEditId(q.id); }}>✏ Edit</button>
                     )}
+                    {canEdit && q.status !== 'cancelled' && (
+                      <button type="button" className="btn-secondary !min-h-0 mr-2 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setDescId(q.id); }}>Short description</button>
+                    )}
                     <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(q.id)}>Print / Share</button>
                   </td>
                 </tr>
@@ -129,6 +134,13 @@ export default function SalesQuotations() {
             </tbody>
           </table>
         </div>
+      )}
+      {descId && (
+        <ShortDescriptionDialog
+          quotationId={descId}
+          onClose={() => setDescId(null)}
+          onSaved={(q) => { setDescId(null); setMessage(`Short description saved on ${q.quotationNumber}.`); load(true); }}
+        />
       )}
       {editId && (
         <EditQuotationDialog

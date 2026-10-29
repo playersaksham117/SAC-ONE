@@ -117,6 +117,12 @@ export class QuotationRepository {
     `).run(quotationId);
   }
 
+  /** Mark a quotation changed (phones and lists pick it up), e.g. after its descriptions change. */
+  touch(id, userId) {
+    getDatabase().prepare('UPDATE pos_quotations SET updated_at = ?, updated_by = ? WHERE id = ?').run(nowIso(), userId || null, id);
+    return this.findById(id);
+  }
+
   /** Per-quotation line descriptions (the work quoted for this customer), by line order. */
   setLineDescriptions(quotationId, descriptions) {
     const db = getDatabase();

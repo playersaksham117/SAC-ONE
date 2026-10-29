@@ -196,6 +196,20 @@ export class QuotationService {
     return quote;
   }
 
+  /**
+   * Only the short description of each line (by line order), printed under the item. Prices,
+   * totals and status stay; allowed on any quotation that is not cancelled.
+   */
+  setDescriptions(id, data, actor) {
+    authService.checkPermission(actor.permissions, 'pos.quotations.edit');
+    const existing = quoteRepo.findById(id);
+    if (!existing || existing.status === 'cancelled') throw new AppError('Quotation not found', 404);
+    if (!Array.isArray(data?.descriptions)) throw new AppError('descriptions must be a list, one per line', 400);
+    const list = data.descriptions.map((d) => String(d ?? '').replace(/\s+/g, ' ').trim().slice(0, 500));
+    quoteRepo.setLineDescriptions(id, list);
+    return quoteRepo.touch(id, actor.user.id);
+  }
+
   update(id, data, actor, req) {
     authService.checkPermission(actor.permissions, 'pos.quotations.edit');
     const existing = quoteRepo.findById(id);
