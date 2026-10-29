@@ -10,6 +10,7 @@ import SupplierPaymentPanel from '../../../../components/parties/SupplierPayment
 import OutstandingPanel from '../../../../components/parties/OutstandingPanel';
 import PartyStatementView from '../../../../components/parties/PartyStatementView';
 import PartyCsvImport from '../../../../components/parties/PartyCsvImport';
+import AgingBar, { AgingDetail } from '../../../../components/parties/AgingBar';
 import CustomerActivity from '../../../../components/crm/CustomerActivity';
 import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
 import { CustomerInvoices, CustomerPayments, CustomerSalesHistory } from '../../../../components/customers/CustomerInvoicePanels';
@@ -20,13 +21,52 @@ function money(n) {
 
 const EMPTY_CUSTOMER = {
   code: '', name: '', phone: '', email: '', gstNumber: '', gstStateCode: '',
-  address: '', city: '', state: '', creditLimit: '', notes: '', isActive: true, sourceChannel: 'manual',
+  address: '', city: '', state: '', creditLimit: '', creditDays: '', notes: '', isActive: true, sourceChannel: 'manual',
 };
 
 const EMPTY_SUPPLIER = {
   code: '', name: '', contactName: '', phone: '', email: '', gstNumber: '', gstStateCode: '',
-  address: '', city: '', state: '', paymentTerms: '', notes: '', isActive: true,
+  address: '', city: '', state: '', paymentTerms: '', creditDays: '', notes: '', isActive: true,
 };
+
+/** Sort choices for the list (the server sorts every match, then pages). */
+const SORTS = [
+  ['name', 'Name'],
+  ['code', 'ID'],
+  ['balance', 'Outstanding'],
+  ['overdue', 'Overdue amount'],
+  ['daysOverdue', 'Days overdue'],
+  ['creditDays', 'Credit days'],
+  ['recent', 'Date added'],
+];
+const DUE_FILTERS = [
+  ['', 'All'],
+  ['dues', 'With dues'],
+  ['overdue', 'Overdue'],
+  ['notDue', 'Due, not overdue yet'],
+  ['d1_30', 'Overdue 1–30 days'],
+  ['d31_60', 'Overdue 31–60 days'],
+  ['d61_90', 'Overdue 61–90 days'],
+  ['d90plus', 'Overdue 90+ days'],
+  ['clear', 'No dues'],
+];
+const ddmmyyyy = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB') : '');
+
+/** A sortable column header: click to sort by it, click again to flip the direction. */
+function SortTh({ label, field, sort, dir, setSort, setDir, right = false }) {
+  const active = sort === field;
+  return (
+    <th className={`px-3 py-2 ${right ? 'text-right' : ''}`}>
+      <button
+        type="button"
+        className={`uppercase ${active ? 'font-bold text-slate-900' : ''}`}
+        onClick={() => { if (active) setDir(dir === 'asc' ? 'desc' : 'asc'); else { setSort(field); setDir(field === 'name' || field === 'code' ? 'asc' : 'desc'); } }}
+      >
+        {label}{active ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}
+      </button>
+    </th>
+  );
+}
 
 export default function PartiesPage() {
   const { checkPermission, session } = useAuth();
@@ -50,6 +90,10 @@ export default function PartiesPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [due, setDue] = useState('');
+  const [sort, setSort] = useState('name');
+  const [dir, setDir] = useState('asc');
+  const [listInfo, setListInfo] = useState({ total: 0, totals: null });
   const [selected, setSelected] = useState(null);
   const [detailTab, setDetailTab] = useState('summary');
   const [summary, setSummary] = useState(null);
@@ -76,15 +120,20 @@ export default function PartiesPage() {
       const q = new URLSearchParams({
         search,
         includeInactive: includeInactive ? 'true' : 'false',
-        limit: '200',
+        limit: '500',
+        sort,
+        dir,
       });
+      if (due) q.set('due', due);
       if (tab === 'customers' && canViewCustomers) {
         if (creditFilter) q.set('credit', creditFilter);
         const data = await apiRequest(`/api/customers?${q}`);
         setCustomers(data.items || []);
+        setListInfo({ total: data.total || 0, totals: data.totals || null });
       } else if (tab === 'suppliers' && canViewSuppliers) {
         const data = await apiRequest(`/api/suppliers?${q}`);
         setSuppliers(data.items || []);
+        setListInfo({ total: data.total || 0, totals: data.totals || null });
       }
     } catch (err) {
       setError(err.message);
@@ -100,7 +149,7 @@ export default function PartiesPage() {
     setHistory([]);
     setStatement(null);
     setDetailTab('summary');
-  }, [tab, includeInactive, creditFilter]);
+  }, [tab, includeInactive, creditFilter, due, sort, dir]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -122,6 +171,7 @@ export default function PartiesPage() {
         city: row.city || '',
         state: row.state || '',
         creditLimit: row.creditLimit ?? '',
+        creditDays: row.creditDays ?? '',
         notes: row.notes || '',
         isActive: row.isActive,
         sourceChannel: row.sourceChannel || 'manual',
@@ -139,6 +189,7 @@ export default function PartiesPage() {
         city: row.city || '',
         state: row.state || '',
         paymentTerms: row.paymentTerms || '',
+        creditDays: row.creditDays ?? '',
         notes: row.notes || '',
         isActive: row.isActive,
       });
@@ -176,10 +227,12 @@ export default function PartiesPage() {
         ? {
             ...form,
             creditLimit: form.creditLimit === '' ? 0 : Number(form.creditLimit),
+            creditDays: form.creditDays === '' ? null : Number(form.creditDays),
             code: form.code || undefined,
           }
         : {
             ...form,
+            creditDays: form.creditDays === '' ? null : Number(form.creditDays),
             code: form.code || undefined,
           };
 
@@ -482,7 +535,18 @@ export default function PartiesPage() {
             <option value="approved">Credit approved</option>
           </select>
         )}
+        <select className="input-field max-w-[13rem]" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Dues">
+          {DUE_FILTERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select className="input-field max-w-[12rem]" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
+          {SORTS.map(([v, l]) => <option key={v} value={v}>Sort: {l}</option>)}
+        </select>
+        <button type="button" className="btn-secondary" title="Sort direction" onClick={() => setDir(dir === 'asc' ? 'desc' : 'asc')}>
+          {dir === 'asc' ? '↑ Low to high / A–Z' : '↓ High to low / Z–A'}
+        </button>
       </div>
+
+      <AgingBar totals={listInfo.totals} due={due} onDue={setDue} label={tab === 'customers' ? 'Receivable' : 'Payable'} />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -490,10 +554,12 @@ export default function PartiesPage() {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">ID</th>
-                  <th className="px-3 py-2">Name</th>
+                  <SortTh label="ID" field="code" sort={sort} dir={dir} setSort={setSort} setDir={setDir} />
+                  <SortTh label="Name" field="name" sort={sort} dir={dir} setSort={setSort} setDir={setDir} />
                   <th className="px-3 py-2">Phone</th>
-                  <th className="px-3 py-2">{tab === 'customers' ? 'Outstanding' : 'Payable'}</th>
+                  <SortTh label="Credit days" field="creditDays" sort={sort} dir={dir} setSort={setSort} setDir={setDir} />
+                  <SortTh label={tab === 'customers' ? 'Outstanding' : 'Payable'} field="balance" sort={sort} dir={dir} setSort={setSort} setDir={setDir} right />
+                  <SortTh label="Overdue" field="overdue" sort={sort} dir={dir} setSort={setSort} setDir={setDir} right />
                   <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
@@ -516,14 +582,26 @@ export default function PartiesPage() {
                       {row.sourceChannel === 'pos' && <span className="ml-1 text-[10px] uppercase text-slate-400">SAC-POS</span>}
                     </td>
                     <td className="px-3 py-2">{row.phone || '—'}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-slate-600">{row.isWalkIn ? '—' : `${row.creditDays ?? 30}${row.creditDays == null ? ' (default)' : ''}`}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {money(tab === 'customers' ? row.outstandingBalance : row.outstandingPayable)}
+                      {row.aging?.oldestDueDate && row.balance > 0 && row.aging.overdue <= 0 && (
+                        <div className="text-[11px] text-slate-400">due {ddmmyyyy(row.aging.oldestDueDate)}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {row.aging?.overdue > 0 ? (
+                        <>
+                          <span className="font-semibold text-red-700">{money(row.aging.overdue)}</span>
+                          <div className="text-[11px] text-red-500">{row.aging.maxDaysOverdue} days late</div>
+                        </>
+                      ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2"><StatusBadge active={row.isActive} /></td>
                   </tr>
                 ))}
                 {!list.length && (
-                  <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">No records</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">No records</td></tr>
                 )}
               </tbody>
             </table>
@@ -599,7 +677,8 @@ export default function PartiesPage() {
                   {tab === 'customers' ? (
                     <>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Outstanding</div><div className="font-semibold">{money(summary.outstandingBalance)}</div></div>
-                      <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Credit limit</div><div className="font-semibold">{money(summary.customer?.creditLimit)}</div></div>
+                      <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Credit limit · days</div><div className="font-semibold">{money(summary.customer?.creditLimit)} · {summary.customer?.creditDays ?? 30} days</div></div>
+                      <AgingDetail aging={summary.aging} creditDays={summary.customer?.creditDays} />
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Invoices</div><div className="font-semibold">{summary.invoiceCount}</div></div>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Sales total</div><div className="font-semibold">{money(summary.salesTotal)}</div></div>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Paid</div><div className="font-semibold">{money(summary.paidTotal)}</div></div>
@@ -608,7 +687,8 @@ export default function PartiesPage() {
                   ) : (
                     <>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Outstanding payable</div><div className="font-semibold">{money(summary.outstandingPayable)}</div></div>
-                      <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Payment terms</div><div className="font-semibold">{summary.supplier?.paymentTerms || '—'}</div></div>
+                      <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Credit days · terms</div><div className="font-semibold">{summary.supplier?.creditDays ?? 30} days{summary.supplier?.paymentTerms ? ` · ${summary.supplier.paymentTerms}` : ''}</div></div>
+                      <AgingDetail aging={summary.aging} creditDays={summary.supplier?.creditDays} />
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Bills</div><div className="font-semibold">{summary.billCount}</div></div>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Purchases</div><div className="font-semibold">{money(summary.purchaseTotal)}</div></div>
                       <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-500">Payments</div><div className="font-semibold">{money(summary.paymentTotal)}</div></div>
@@ -694,6 +774,10 @@ export default function PartiesPage() {
           {tab === 'customers' ? (
             <>
               <input className="input-field" placeholder="Credit limit" type="number" value={form.creditLimit} onChange={(e) => setForm((p) => ({ ...p, creditLimit: e.target.value }))} />
+              <label className="text-sm">
+                <span className="text-xs text-slate-500">Credit days (bill date + days = due date; blank = 30)</span>
+                <input className="input-field mt-1" type="number" min="0" max="365" step="1" placeholder="30" value={form.creditDays ?? ''} onChange={(e) => setForm((p) => ({ ...p, creditDays: e.target.value }))} />
+              </label>
               {canApproveCredit && !editingId && (
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={Boolean(form.creditApproved)} onChange={(e) => setForm((p) => ({ ...p, creditApproved: e.target.checked }))} />
@@ -708,7 +792,16 @@ export default function PartiesPage() {
               </select>
             </>
           ) : (
-            <input className="input-field sm:col-span-2" placeholder="Payment terms (e.g. Net 30)" value={form.paymentTerms || ''} onChange={(e) => setForm((p) => ({ ...p, paymentTerms: e.target.value }))} />
+            <>
+              <label className="text-sm">
+                <span className="text-xs text-slate-500">Credit days (bill date + days = due date; blank = 30)</span>
+                <input className="input-field mt-1" type="number" min="0" max="365" step="1" placeholder="30" value={form.creditDays ?? ''} onChange={(e) => setForm((p) => ({ ...p, creditDays: e.target.value }))} />
+              </label>
+              <label className="text-sm">
+                <span className="text-xs text-slate-500">Payment terms (note)</span>
+                <input className="input-field mt-1" placeholder="e.g. Net 30, 2% cash discount" value={form.paymentTerms || ''} onChange={(e) => setForm((p) => ({ ...p, paymentTerms: e.target.value }))} />
+              </label>
+            </>
           )}
           <textarea className="input-field sm:col-span-2" rows={2} placeholder="Notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} />
           {editingId && (

@@ -138,6 +138,7 @@ function phoneSale(s) {
     customerPo: s.customerPoNumber ? { number: s.customerPoNumber, date: s.customerPoDate || null } : null,
     transport: s.transport || null,
     shipTo: s.shipTo || null,
+    dueDate: s.amountCredit > 0 ? s.dueDate || null : null,
   };
 }
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -682,6 +683,8 @@ export class PosSyncService {
       customerPoNumber: str(sale.customer_po_number).slice(0, 60) || undefined,
       customerPoDate: str(sale.customer_po_number) && /^\d{4}-\d{2}-\d{2}$/.test(str(sale.customer_po_date))
         ? str(sale.customer_po_date) : undefined,
+      // credit due date chosen on the phone (checked at checkout; otherwise from credit days)
+      dueDate: str(sale.due_date) || undefined,
       // GST bills: transport / dispatch details and a separate Shipped To (consignee).
       // A malformed block is dropped rather than failing the sale.
       transport: (() => { try { return transportFrom(sale.transport); } catch { return null; } })(),
@@ -985,6 +988,7 @@ export class PosSyncService {
         city: c.city,
         state: c.state,
         credit_limit: Number(c.credit_limit || 0),
+        credit_days: c.credit_days ?? null,
         outstanding: Number(c.outstanding_balance || 0),
         credit_approved: Boolean(c.credit_approved),
         is_active: Boolean(c.is_active),

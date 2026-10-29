@@ -15,7 +15,7 @@ import { useCart } from '../store/cart';
 import { Badge, Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
 import { emptyShipTo, emptyTransport, readShipTo, readTransport } from '../domain/dispatch';
 import { DispatchSection } from '../ui/DispatchSection';
-import { billTimestamp, daysAgo, isAdminRole, istToday } from '../domain/billDate';
+import { DEFAULT_CREDIT_DAYS, addDays, billTimestamp, daysAgo, isAdminRole, istToday } from '../domain/billDate';
 import { parsePoDate } from '../domain/po';
 import { useCurrentUser } from '../store/session';
 import { goBack } from '../lib/nav';
@@ -61,6 +61,9 @@ function NoteCounter({ counts, onChange }: { counts: NoteCounts; onChange: (next
     </View>
   );
 }
+
+/** '2026-11-28' → '28 Nov 2026'. */
+const dueLabel = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
 interface Row_ { method: PaymentMethod; amount: string; reference: string }
 
@@ -113,6 +116,11 @@ export default function Checkout() {
   const transportCheck = gstFirm && transportOn ? readTransport(transportDraft) : { value: null, error: null };
   const shipCheck = gstFirm && shipOn ? readShipTo(shipDraft) : { value: null, error: null };
   const [submitError, setSubmitError] = useState<string[]>([]);
+  // Credit (udhar) bills: pay-by date = bill date + the customer's credit days, or a chosen number of days.
+  const customerDays = customer?.creditDays ?? DEFAULT_CREDIT_DAYS;
+  const [creditDays, setCreditDays] = useState<number | null>(null); // null = the customer's own
+  const dueDays = creditDays ?? customerDays;
+  const dueDate = addDays((isAdmin && billDate) || istToday(), dueDays);
 
   const payments: Payment[] = useMemo(
     () => (due > 0 ? rows : [])
@@ -162,6 +170,7 @@ export default function Checkout() {
         transport: transportCheck.value,
         shipTo: shipCheck.value,
         billDate: isAdmin ? billDate : null,
+        dueDate: payments.some((p) => p.method === 'credit') ? dueDate : null,
       });
       done.current = true;
       // close the cart and this payment screen for good, then show the finished bill over Sell
@@ -301,6 +310,24 @@ export default function Checkout() {
               autoCapitalize="characters"
               style={{ height: 44, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 10, color: colors.text }}
             />
+          </Card>
+        )}
+
+        {payments.some((p) => p.method === 'credit') && (
+          <Card style={{ marginTop: space.md }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={{ fontWeight: '700', color: colors.text }}>Credit due date</Text>
+              <Text style={{ fontWeight: '800', color: colors.warning }}>{dueLabel(dueDate)}</Text>
+            </Row>
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
+              {formatMoney(payments.filter((p) => p.method === 'credit').reduce((s, p) => s + p.amount, 0))} to be paid in {dueDays} day{dueDays === 1 ? '' : 's'} · printed on the bill
+            </Text>
+            <Row gap={6} style={{ marginTop: space.sm, flexWrap: 'wrap' }}>
+              <Chip label={`${customerDays} days${customer?.creditDays != null ? ' (customer)' : ''}`} active={creditDays === null} onPress={() => setCreditDays(null)} />
+              {[7, 15, 30, 45, 60, 90].filter((d) => d !== customerDays).map((d) => (
+                <Chip key={d} label={`${d} days`} active={creditDays === d} onPress={() => setCreditDays(d)} />
+              ))}
+            </Row>
           </Card>
         )}
 

@@ -150,6 +150,7 @@ export default function SaleDetail() {
           <KeyValue label="Total" value={formatMoney(t.grandTotal)} bold />
           <Divider />
           {sale.payments.map((p, i) => <KeyValue key={i} label={`${METHOD[p.method]}${p.reference ? ` · ${p.reference}` : ''}`} value={formatMoney(p.amount)} muted />)}
+          {sale.amountDue > 0 && sale.dueDate ? <KeyValue label="Credit due date" value={new Date(`${sale.dueDate}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} bold /> : null}
           {sale.tendered ? <KeyValue label="Cash received" value={formatMoney(sale.tendered)} muted /> : null}
           {sale.change ? <KeyValue label="Change given" value={formatMoney(sale.change)} muted /> : null}
           {sale.cashDrawer && formatNotes(sale.cashDrawer.received) ? (

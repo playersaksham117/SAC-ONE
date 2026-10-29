@@ -21,3 +21,13 @@ export function billTimestamp(date: string | null | undefined, now = new Date())
 
 /** 'YYYY-MM-DD' that many days before today (IST), for quick chips. */
 export const daysAgo = (n: number, now = new Date()) => istToday(new Date(now.getTime() - n * 86400000));
+
+/** Credit days when the customer has none set in the ERP. */
+export const DEFAULT_CREDIT_DAYS = 30;
+
+/** 'YYYY-MM-DD' plus n days. */
+export function addDays(date: string, n: number): string {
+  const d = new Date(`${date.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}

@@ -169,6 +169,7 @@ export function saleDocument(sale, customer) {
       ['Invoice', sale.invoiceNumber],
       ...(sale.customerPoNumber ? [['P.O. No.', againstRef(sale.customerPoNumber, sale.customerPoDate)]] : []),
       ['Date', when(sale.createdAt)],
+      ...(sale.amountCredit > 0 && sale.dueDate ? [['Due date', ddmmyyyy(sale.dueDate)]] : []),
       ...transportMeta(sale.transport),
       ...(sale.shipTo?.name ? [['Ship to', [sale.shipTo.name, sale.shipTo.city, sale.shipTo.gstin && `GSTIN ${sale.shipTo.gstin}`].filter(Boolean).join(', ')]] : []),
       ...(sale.createdByName ? [['Cashier', sale.createdByName]] : []),
@@ -233,6 +234,7 @@ function saleClassic(sale, customer) {
     agent: sale.salesAgentName || '',
     poNumber: sale.customerPoNumber || '',
     poDate: ddmmyyyy(sale.customerPoDate),
+    dueDate: sale.amountCredit > 0 && sale.dueDate ? ddmmyyyy(sale.dueDate) : '',
     note: sale.notes || '',
     lines,
     totals: classicTotals(lines, sale.grandTotal),
@@ -682,6 +684,7 @@ function classicHtml(model, company, size, invoice = {}) {
       <div style="display:flex;justify-content:space-between"><span class="b">${esc(c.numberLabel)} ${esc(c.number)}</span><span class="b">Dated : ${esc(c.date)}</span></div>
       ${c.kind === 'sale' || c.poNumber ? `<div style="display:flex;justify-content:space-between"><span class="b">P.O. No. : ${esc(c.poNumber || '')}</span><span class="b">Dated : ${esc(c.poNumber ? c.poDate || '' : '')}</span></div>` : ''}
       <div class="b">${c.kind === 'sale' ? `E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}` : '&nbsp;'}</div>
+      ${c.dueDate ? `<div class="b">Credit due date : ${esc(c.dueDate)}</div>` : ''}
     </div>
     <div style="width:50%">
       <div class="b">Mode of Transport : ${esc(tr.mode || '')}</div>

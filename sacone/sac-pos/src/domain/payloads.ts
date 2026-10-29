@@ -25,6 +25,7 @@ export function salePayload(sale: Sale, userId: string) {
     notes: sale.notes ?? null,
     customer_po_number: sale.customerPo?.number ?? null,
     customer_po_date: sale.customerPo?.date ?? null,
+    due_date: sale.amountDue > 0 ? sale.dueDate ?? null : null,
     transport: transportPayload(sale.transport),
     ship_to: shipToPayload(sale.shipTo),
     cash_drawer: sale.cashDrawer ?? null,

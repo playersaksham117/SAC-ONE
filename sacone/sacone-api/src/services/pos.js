@@ -16,6 +16,7 @@ import { shipToFrom, transportFrom } from '../core/dispatch.js';
 import { assertSerialsFree, cleanSerials, saveSaleSerials } from './warranty.js';
 import { isDate, istDate, istToIso } from '../core/ist.js';
 import { stateCodeOf } from '../core/gst-state.js';
+import { addDays, DEFAULT_CREDIT_DAYS } from './aging.js';
 
 export { customerService };
 
@@ -266,6 +267,17 @@ function lineDetailOf(it) {
   return out;
 }
 
+
+/**
+ * Due date of a credit bill: the date chosen at billing (POS / ERP) when it is a real date from the
+ * bill date up to a year after it, else the bill date + the customer's credit days (blank = 30).
+ */
+function creditDueDate(chosen, completedAt, customer) {
+  const billDay = istDate(completedAt ? new Date(completedAt) : new Date());
+  const asked = String(chosen || '').slice(0, 10);
+  if (isDate(asked) && asked >= billDay && asked <= addDays(billDay, 366)) return asked;
+  return addDays(billDay, customer.creditDays ?? DEFAULT_CREDIT_DAYS);
+}
 export class SettingsService {
   list(actor) {
     authService.checkPermission(actor.permissions, 'core.system_settings.view');
@@ -660,15 +672,7 @@ export class PosService {
         grandTotal: totals.grandTotal,
         amountPaid,
         amountCredit,
-        dueDate: amountCredit > 0
-          ? (() => {
-            const daysMatch = String(customer.paymentTerms || '30').match(/(\d+)/);
-            const days = daysMatch ? parseInt(daysMatch[1], 10) : 30;
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            return d.toISOString().slice(0, 10);
-          })()
-          : null,
+        dueDate: amountCredit > 0 ? creditDueDate(data.dueDate, options.completedAt, customer) : null,
         notes: data.notes,
         heldBillId: data.heldBillId || null,
         createdBy: actor.user.id,
@@ -900,6 +904,8 @@ export class PosService {
         terminalRef: old.terminalRef || undefined,
         // A new bill date from the admin (checked in checkout).
         ...(data.billDate ? { billDate: data.billDate } : {}),
+        // the credit due date stays unless the edit sends a new one
+        dueDate: data.dueDate !== undefined ? data.dueDate : old.dueDate,
         // Transport and Ship-to stay with the invoice unless the edit sends new ones.
         transport: data.transport !== undefined ? data.transport : old.transport,
         shipTo: data.shipTo !== undefined ? data.shipTo : old.shipTo,

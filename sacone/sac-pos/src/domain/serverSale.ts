@@ -21,6 +21,7 @@ export interface ServerSale {
   customerPo: { number: string; date: string | null } | null;
   transport: Transport | null;
   shipTo: ShipTo | null;
+  dueDate?: string | null;
 }
 
 /** An ERP quotation (GET /api/v1/sync/documents). */
@@ -91,6 +92,7 @@ export function withServerSale(local: Sale, s: ServerSale): Sale {
     customerPo: s.customerPo,
     transport: s.transport,
     shipTo: s.shipTo,
+    dueDate: s.dueDate ?? null,
     cancelledInErp: undefined,
     returned,
   };

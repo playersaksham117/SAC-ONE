@@ -454,7 +454,7 @@ export class PosCatalogRepository {
     const where = 'WHERE c.is_walk_in = 0 AND c.updated_at > ?';
     const items = db.prepare(`
       SELECT c.id, c.code, c.name, c.phone, c.email, c.gst_number, c.gst_state_code, c.address,
-        c.city, c.state, c.credit_limit, c.outstanding_balance, c.credit_approved, c.is_active, c.updated_at
+        c.city, c.state, c.credit_limit, c.credit_days, c.outstanding_balance, c.credit_approved, c.is_active, c.updated_at
       FROM customers c ${where}
       ORDER BY c.updated_at ASC, c.id ASC LIMIT ? OFFSET ?
     `).all(since, limit, offset);

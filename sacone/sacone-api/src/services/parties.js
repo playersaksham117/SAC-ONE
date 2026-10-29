@@ -3,6 +3,7 @@ import { csvBool, csvNumber, parseCsv } from '../core/csv.js';
 import { repos } from '../repositories/index.js';
 import { isFirmAdmin, authService } from './index.js';
 import { stateCodeOf } from '../core/gst-state.js';
+import { addDays, creditDaysOf, customerAging, supplierAging, filterSortPage, istToday, EMPTY_AGING } from './aging.js';
 
 const customerRepo = repos.customers;
 const supplierRepo = repos.suppliers;
@@ -47,19 +48,39 @@ function importParties(csvText, { repo, map, create, update, label }) {
   return results;
 }
 
+/** Credit days from a form / CSV: whole days 0-365, blank = default (30). */
+function checkedCreditDays(value) {
+  const days = creditDaysOf(value);
+  if (Number.isNaN(days)) throw new AppError('Credit days must be a whole number from 0 to 365', 400);
+  return days;
+}
+
+/** List options shared by customers and suppliers: aging filter, sort and page. */
+const listOptions = (filters) => ({
+  due: filters.due || '',
+  sort: filters.sort || 'name',
+  dir: filters.dir === 'desc' ? 'desc' : 'asc',
+  limit: filters.limit ? Math.min(1000, parseInt(filters.limit, 10) || 100) : 100,
+  offset: filters.offset ? parseInt(filters.offset, 10) || 0 : 0,
+});
+
 const gstOf = (d) => (d.gst_number || d.gstin || d.gst || '').replace(/\s/g, '').toUpperCase() || undefined;
 const text = (v) => (String(v ?? '').trim() || undefined);
 
 export class CustomerService {
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'parties.customers.view');
-    return customerRepo.findAll({
+    // every match is aged, then filtered / sorted / paged (aging and dues are not plain columns)
+    const { items } = customerRepo.findAll({
       search: filters.search || '',
       credit: filters.credit || '',
       includeInactive: filters.includeInactive === 'true' || filters.includeInactive === true,
-      limit: filters.limit ? parseInt(filters.limit, 10) : 100,
-      offset: filters.offset ? parseInt(filters.offset, 10) : 0,
+      limit: -1,
+      offset: 0,
     });
+    const aging = customerAging(items);
+    const rows = items.map((c) => ({ ...c, balance: c.outstandingBalance, aging: aging.get(c.id) || EMPTY_AGING }));
+    return filterSortPage(rows, listOptions(filters));
   }
 
   /**
@@ -95,6 +116,7 @@ export class CustomerService {
     return {
       customer,
       outstandingBalance: customer.outstandingBalance,
+      aging: customerAging([customer]).get(customer.id) || EMPTY_AGING,
       ...customerRepo.getSummary(id),
     };
   }
@@ -159,6 +181,7 @@ export class CustomerService {
       city: data.city,
       state: data.state,
       creditLimit: data.creditLimit,
+      creditDays: checkedCreditDays(data.creditDays),
       notes: data.notes,
       sourceChannel,
       createdBy: actor.user.id,
@@ -202,6 +225,7 @@ export class CustomerService {
         city: text(d.city),
         state: text(d.state),
         creditLimit: csvNumber(d.credit_limit),
+        creditDays: text(d.credit_days),
         notes: text(d.notes),
         isActive: csvBool(d.is_active, undefined),
         creditApproved: csvBool(d.credit_approved, undefined),
@@ -271,7 +295,7 @@ export class CustomerService {
     if (data.sourceChannel && !SOURCE_CHANNELS.has(data.sourceChannel)) {
       throw new AppError('Invalid source channel', 400);
     }
-    const updated = customerRepo.update(id, data);
+    const updated = customerRepo.update(id, { ...data, creditDays: checkedCreditDays(data.creditDays) });
     auditRepo.create({
       userId: actor.user.id,
       userName: actor.user.fullName,
@@ -290,12 +314,15 @@ export class CustomerService {
 export class SupplierService {
   list(filters, actor) {
     authService.checkPermission(actor.permissions, 'parties.suppliers.view');
-    return supplierRepo.findAll({
+    const { items } = supplierRepo.findAll({
       search: filters.search || '',
       includeInactive: filters.includeInactive === 'true' || filters.includeInactive === true,
-      limit: filters.limit ? parseInt(filters.limit, 10) : 100,
-      offset: filters.offset ? parseInt(filters.offset, 10) : 0,
+      limit: -1,
+      offset: 0,
     });
+    const aging = supplierAging(items);
+    const rows = items.map((s) => ({ ...s, balance: s.outstandingPayable, aging: aging.get(s.id) || EMPTY_AGING }));
+    return filterSortPage(rows, listOptions(filters));
   }
 
   lookup(query, actor, { limit } = {}) {
@@ -318,6 +345,7 @@ export class SupplierService {
     return {
       supplier,
       outstandingPayable: supplier.outstandingPayable,
+      aging: supplierAging([supplier]).get(supplier.id) || EMPTY_AGING,
       ...supplierRepo.getSummary(id),
     };
   }
@@ -373,6 +401,7 @@ export class SupplierService {
       city: data.city,
       state: data.state,
       paymentTerms: data.paymentTerms,
+      creditDays: checkedCreditDays(data.creditDays),
       notes: data.notes,
       createdBy: actor.user.id,
     });
@@ -397,7 +426,7 @@ export class SupplierService {
     if (data.code && supplierRepo.codeExists(data.code, id)) {
       throw new AppError('Supplier code already exists', 409);
     }
-    const updated = supplierRepo.update(id, data);
+    const updated = supplierRepo.update(id, { ...data, creditDays: checkedCreditDays(data.creditDays) });
     auditRepo.create({
       userId: actor.user.id,
       userName: actor.user.fullName,
@@ -431,6 +460,7 @@ export class SupplierService {
         city: text(d.city),
         state: text(d.state),
         paymentTerms: text(d.payment_terms || d.terms),
+        creditDays: text(d.credit_days),
         notes: text(d.notes),
         isActive: csvBool(d.is_active, undefined),
       }),
@@ -463,7 +493,8 @@ export class SupplierService {
       supplierId: supplier.id,
       billNumber: data.billNumber,
       billDate: data.billDate,
-      dueDate: data.dueDate,
+      // blank due date: bill date + the supplier's credit days
+      dueDate: data.dueDate || (supplier.creditDays != null ? addDays(data.billDate || istToday(), supplier.creditDays) : null),
       subtotal: data.subtotal != null ? round2(data.subtotal) : grandTotal,
       gstAmount: round2(data.gstAmount || 0),
       grandTotal,

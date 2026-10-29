@@ -42,6 +42,8 @@ export interface Customer {
   city?: string | null;
   state?: string | null;
   creditLimit: number;
+  /** Days a credit bill may stay unpaid (set in the ERP); null = 30. */
+  creditDays?: number | null;
   outstanding: number;
   /** Credit (udhar) allowed: the firm admin approved this customer in SACONE ERP. */
   creditApproved?: boolean;
@@ -148,6 +150,8 @@ export interface Sale extends SyncMeta {
   /** GST bills: transport / dispatch details and a consignee other than the buyer. */
   transport?: Transport | null;
   shipTo?: ShipTo | null;
+  /** Credit bills: the date the due amount should be paid by ('YYYY-MM-DD'). */
+  dueDate?: string | null;
   returned: Record<string, number>;   // productId → qty returned
   /** The bill was cancelled in the ERP after it synced. */
   cancelledInErp?: boolean;

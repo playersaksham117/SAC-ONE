@@ -74,7 +74,7 @@ export interface ServerProduct {
 export interface ServerCustomer {
   uuid: string; code: string; name: string; phone: string | null; email: string | null; gstin: string | null;
   gst_state_code: string | null; address: string | null; city: string | null; state: string | null;
-  credit_limit: number; outstanding: number; credit_approved?: boolean; is_active: boolean; updated_at: string;
+  credit_limit: number; credit_days?: number | null; outstanding: number; credit_approved?: boolean; is_active: boolean; updated_at: string;
 }
 
 export interface Page {

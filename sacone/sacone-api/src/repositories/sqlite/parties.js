@@ -22,6 +22,7 @@ function mapCustomer(row) {
     shippingState: row.shipping_state,
     shippingPostal: row.shipping_postal_code,
     creditLimit: Number(row.credit_limit || 0),
+    creditDays: row.credit_days ?? null,
     outstandingBalance: Number(row.outstanding_balance || 0),
     creditApproved: Boolean(row.credit_approved),
     creditApprovedAt: row.credit_approved_at || null,
@@ -51,6 +52,7 @@ function mapSupplier(row) {
     city: row.city,
     state: row.state,
     paymentTerms: row.payment_terms,
+    creditDays: row.credit_days ?? null,
     outstandingPayable: Number(row.outstanding_payable || 0),
     isActive: Boolean(row.is_active),
     notes: row.notes,
@@ -201,9 +203,9 @@ export class CustomerRepository {
     getDatabase().prepare(`
       INSERT INTO customers (
         id, code, name, phone, email, gst_number, gst_state_code, address, city, state,
-        credit_limit, outstanding_balance, is_walk_in, is_active, source_channel, notes,
+        credit_limit, credit_days, outstanding_balance, is_walk_in, is_active, source_channel, notes,
         created_at, updated_at, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.code,
@@ -216,6 +218,7 @@ export class CustomerRepository {
       data.city || null,
       data.state || null,
       Number(data.creditLimit || 0),
+      data.creditDays ?? null,
       data.isWalkIn ? 1 : 0,
       data.sourceChannel || 'manual',
       data.notes || null,
@@ -232,7 +235,7 @@ export class CustomerRepository {
     getDatabase().prepare(`
       UPDATE customers SET
         code = ?, name = ?, phone = ?, email = ?, gst_number = ?, gst_state_code = ?,
-        address = ?, city = ?, state = ?, credit_limit = ?, is_active = ?,
+        address = ?, city = ?, state = ?, credit_limit = ?, credit_days = ?, is_active = ?,
         source_channel = ?, notes = ?, primary_sales_agent_id = ?, updated_at = ?
       WHERE id = ?
     `).run(
@@ -246,6 +249,7 @@ export class CustomerRepository {
       data.city !== undefined ? data.city : existing.city,
       data.state !== undefined ? data.state : existing.state,
       data.creditLimit !== undefined ? Number(data.creditLimit) : existing.creditLimit,
+      data.creditDays !== undefined ? data.creditDays : existing.creditDays,
       data.isActive !== undefined ? (data.isActive ? 1 : 0) : (existing.isActive ? 1 : 0),
       data.sourceChannel !== undefined ? data.sourceChannel : existing.sourceChannel,
       data.notes !== undefined ? data.notes : existing.notes,
@@ -502,9 +506,9 @@ export class SupplierRepository {
     getDatabase().prepare(`
       INSERT INTO suppliers (
         id, code, name, contact_name, phone, email, gst_number, gst_state_code,
-        address, city, state, payment_terms, outstanding_payable, is_active, notes,
+        address, city, state, payment_terms, credit_days, outstanding_payable, is_active, notes,
         created_at, updated_at, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?)
     `).run(
       id,
       data.code,
@@ -518,6 +522,7 @@ export class SupplierRepository {
       data.city || null,
       data.state || null,
       data.paymentTerms || null,
+      data.creditDays ?? null,
       data.notes || null,
       now,
       now,
@@ -532,7 +537,7 @@ export class SupplierRepository {
     getDatabase().prepare(`
       UPDATE suppliers SET
         code = ?, name = ?, contact_name = ?, phone = ?, email = ?, gst_number = ?, gst_state_code = ?,
-        address = ?, city = ?, state = ?, payment_terms = ?, is_active = ?, notes = ?, updated_at = ?
+        address = ?, city = ?, state = ?, payment_terms = ?, credit_days = ?, is_active = ?, notes = ?, updated_at = ?
       WHERE id = ?
     `).run(
       data.code ?? existing.code,
@@ -546,6 +551,7 @@ export class SupplierRepository {
       data.city !== undefined ? data.city : existing.city,
       data.state !== undefined ? data.state : existing.state,
       data.paymentTerms !== undefined ? data.paymentTerms : existing.paymentTerms,
+      data.creditDays !== undefined ? data.creditDays : existing.creditDays,
       data.isActive !== undefined ? (data.isActive ? 1 : 0) : (existing.isActive ? 1 : 0),
       data.notes !== undefined ? data.notes : existing.notes,
       nowIso(),

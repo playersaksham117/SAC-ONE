@@ -14,7 +14,7 @@ import { useDevice } from '../store/device';
 import { pendingQty, useLedger } from '../store/ledger';
 import { currentUser } from '../store/session';
 import { syncNow } from '../sync/engine';
-import { billTimestamp, isAdminRole, istToday } from '../domain/billDate';
+import { DEFAULT_CREDIT_DAYS, addDays, billTimestamp, isAdminRole, istToday } from '../domain/billDate';
 
 /**
  * POS use-cases. Every action re-checks the user's ERP permissions (not just the UI)
@@ -87,11 +87,13 @@ export function checkCheckout(payments: Payment[]): CheckResult {
 
 export function completeSale(
   customerPayments: Payment[],
-  { tendered, cashDrawer, customerPo, transport, shipTo, billDate }: {
+  { tendered, cashDrawer, customerPo, transport, shipTo, billDate, dueDate }: {
     tendered?: number; cashDrawer?: CashDrawer | null; customerPo?: Sale['customerPo'];
     transport?: Sale['transport']; shipTo?: Sale['shipTo'];
     /** 'YYYY-MM-DD' chosen by an admin; anyone else always bills today. */
     billDate?: string | null;
+    /** Credit bills: pay-by date ('YYYY-MM-DD'); blank = bill date + the customer's credit days. */
+    dueDate?: string | null;
   } = {},
 ): Sale {
   const user = requireUser('sell');
@@ -131,6 +133,7 @@ export function completeSale(
     customerPo: customerPo?.number ? customerPo : null,
     transport: transport ?? null,
     shipTo: shipTo ?? null,
+    dueDate: amountDue > 0 ? dueDate || addDays(billDate || istToday(), customer?.creditDays ?? DEFAULT_CREDIT_DAYS) : null,
     returned: {},
     sync: 'pending',
   };

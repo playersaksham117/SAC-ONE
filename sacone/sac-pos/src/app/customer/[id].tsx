@@ -64,7 +64,7 @@ export default function CustomerDetail() {
         {local?.sync === 'review' ? <Banner tone="danger" messages={[local.syncError ?? 'ERP rejected this customer']} /> : null}
         <Row gap={space.sm}>
           <StatTile label="Outstanding" value={formatMoney(c.outstanding)} tone={c.outstanding > 0 ? 'warning' : 'success'} icon="time-outline" />
-          <StatTile label={c.creditApproved ? 'Credit limit' : 'Credit'} value={!c.creditApproved ? 'Cash only' : c.creditLimit ? formatMoney(c.creditLimit) : 'No limit'} icon="shield-checkmark-outline" tone={c.creditApproved ? 'info' : 'warning'} />
+          <StatTile label={c.creditApproved ? 'Credit limit' : 'Credit'} value={!c.creditApproved ? 'Cash only' : `${c.creditLimit ? formatMoney(c.creditLimit) : 'No limit'} · ${c.creditDays ?? 30} days`} icon="shield-checkmark-outline" tone={c.creditApproved ? 'info' : 'warning'} />
         </Row>
 
         <Card style={{ marginTop: space.md }}>

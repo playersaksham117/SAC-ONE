@@ -50,6 +50,10 @@ const docTitle = (sale: Sale) => (isQuote(sale) ? 'QUOTATION' : 'TAX INVOICE');
 const validRow = (sale: Sale, cls = '') => (isQuote(sale) && sale.validUntil
   ? `<tr><td${cls}>Valid until</td><td class="r">${new Date(`${sale.validUntil}T00:00:00`).toLocaleDateString('en-IN')}</td></tr>` : '');
 
+/** Credit bills: the date the due amount is to be paid by. */
+const dueOf = (sale: Sale) => (!isQuote(sale) && sale.amountDue > 0.009 && sale.dueDate ? formatPoDate(sale.dueDate) : '');
+const dueRow = (sale: Sale, cls = '') => (dueOf(sale) ? `<tr><td${cls}>Due date</td><td class="b r">${esc(dueOf(sale))}</td></tr>` : '');
+
 /** A phone quotation shaped like a bill, so every layout can print it (no payments, no pay QR). */
 export function quotationForPrint(q: Quotation): Sale {
   return {
@@ -120,6 +124,7 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <table><tr><td>${isQuote(sale) ? 'Quotation' : 'Bill'}</td><td class="r">${esc(billNumber(sale, deviceCode))}</td></tr>
   ${sale.customerPo?.number ? `<tr><td>P.O. No.</td><td class="r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
   ${validRow(sale)}
+  ${dueRow(sale)}
   <tr><td>Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
   <tr><td>Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
   ${sale.customer ? `<tr><td>Customer</td><td class="r wrap">${esc(sale.customer.name)}${buyerAddress(sale).map((x) => `<br>${esc(x)}`).join('')}${sale.customer.phone ? `<br>${esc(sale.customer.phone)}` : ''}${sale.customer.gstin ? `<br>GSTIN ${esc(sale.customer.gstin)}` : ''}</td></tr>` : ''}
@@ -196,6 +201,7 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
       <table class="meta"><tr><td class="muted">${isQuote(sale) ? 'Quotation' : 'Invoice'}</td><td class="b r">${esc(billNumber(sale, deviceCode))}</td></tr>
       ${sale.customerPo?.number ? `<tr><td class="muted">P.O. No.</td><td class="b r">${esc(poLabel(sale.customerPo))}</td></tr>` : ''}
       ${validRow(sale, ' class="muted"')}
+      ${dueRow(sale, ' class="muted"')}
       <tr><td class="muted">Date</td><td class="r">${new Date(sale.createdAt).toLocaleString('en-IN')}</td></tr>
       <tr><td class="muted">Cashier</td><td class="r">${esc(sale.userName)}</td></tr>
       ${transportRows(sale).map(([k, v]) => `<tr><td class="muted">${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}</table>
@@ -441,6 +447,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
       <div style="display:flex;justify-content:space-between"><span class="b">${isQuote(sale) ? 'Quotation No.' : 'Invoice No.'} ${esc(billNumber(sale, deviceCode))}</span><span class="b">Dated : ${esc(date)}</span></div>
       ${isQuote(sale) ? '' : `<div style="display:flex;justify-content:space-between"><span class="b">P.O. No. : ${esc(sale.customerPo?.number || '')}</span><span class="b">Dated : ${esc(sale.customerPo?.number ? formatPoDate(sale.customerPo?.date) : '')}</span></div>`}
       <div class="b">E-Way Bill No. : ${esc(tr.ewayBillNumber || '')}</div>
+      ${dueOf(sale) ? `<div class="b">Credit due date : ${esc(dueOf(sale))}</div>` : ''}
     </div>
     <div style="width:50%">
       <div class="b">Mode of Transport : ${esc(tr.mode || '')}</div>

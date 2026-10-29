@@ -11,6 +11,7 @@ import { supplierService } from './parties.js';
 import { partyStatementService } from './party-statements.js';
 import { numberOldDebitNotes } from './notes.js';
 import { stateCodeOf } from '../core/gst-state.js';
+import { addDays } from './aging.js';
 
 const purchaseRepo = repos.purchases;
 const productRepo = repos.products;
@@ -468,12 +469,15 @@ export class PurchaseService {
     const doc = allocateDocNumber('purchase_bill');
     const warehouseId = data.warehouseId || null;
 
+    const billDate = data.billDate || new Date().toISOString().slice(0, 10);
+    const creditDays = repos.suppliers.findById(data.supplierId)?.creditDays;
     const bill = purchaseRepo.createBillWithItems({
       billNumber: doc.documentNumber,
       supplierId: data.supplierId,
       supplierInvoiceNumber: data.supplierInvoiceNumber || null,
-      billDate: data.billDate || new Date().toISOString().slice(0, 10),
-      dueDate: data.dueDate || null,
+      billDate,
+      // blank due date: bill date + the supplier's credit days
+      dueDate: data.dueDate || (creditDays != null ? addDays(billDate, creditDays) : null),
       warehouseId,
       purchaseOrderId: data.purchaseOrderId || null,
       subtotal: totals.subtotal,
