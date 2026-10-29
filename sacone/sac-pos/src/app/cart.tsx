@@ -75,8 +75,10 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
         </Pressable>
         <Pressable onPress={() => setDetailsOpen(!detailsOpen)} hitSlop={8}>
           <Row gap={4}>
-            <Ionicons name="create-outline" size={16} color={line.itemType === 'service' ? colors.primary : colors.textMuted} />
-            <Text style={{ color: line.itemType === 'service' ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>Details</Text>
+            <Ionicons name="create-outline" size={16} color={line.itemType === 'service' || line.shortDescription ? colors.primary : colors.textMuted} />
+            <Text style={{ color: line.itemType === 'service' || line.shortDescription ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>
+              Short description{line.shortDescription ? ' ✓' : ''}
+            </Text>
           </Row>
         </Pressable>
         {canOverride ? (
@@ -98,13 +100,14 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
         <View style={{ marginTop: space.sm, gap: space.sm }}>
           <View>
             <Text style={{ fontSize: font.xs, color: colors.textMuted, marginBottom: 4, fontWeight: '600' }}>
-              {line.itemType === 'service' ? 'Work done for this customer (prints on the bill)' : 'Description on this bill'}
+              {line.itemType === 'service'
+                ? 'Work done for this customer (prints on the bill)'
+                : 'Short description: prints under the item on this bill only (the product in the ERP is not changed)'}
             </Text>
             <TextInput
               value={descText}
-              onChangeText={setDescText}
-              onBlur={() => updateLine(line.productId, { shortDescription: descText.trim() || null })}
-              placeholder={line.itemType === 'service' ? 'e.g. AC gas refill + coil cleaning, 2 units, Sector 21' : 'Optional'}
+              onChangeText={(t) => { setDescText(t); updateLine(line.productId, { shortDescription: t.trim() || null }); }}
+              placeholder={line.itemType === 'service' ? 'e.g. AC gas refill + coil cleaning, 2 units, Sector 21' : 'e.g. 1200 mm, 75 W, 5-star, colour white'}
               placeholderTextColor={colors.textFaint}
               multiline
               maxLength={500}
