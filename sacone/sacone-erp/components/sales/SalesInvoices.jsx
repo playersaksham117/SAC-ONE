@@ -9,6 +9,7 @@ import { downloadCsv, toCsv } from '../../lib/csv';
 import PageHeader, { Alert, LoadingState } from '../ui';
 import DocumentDialog from '../documents/DocumentDialog';
 import EditInvoiceDialog from './EditInvoiceDialog';
+import ShortDescriptionDialog from './ShortDescriptionDialog';
 import CreditNoteDialog from '../notes/CreditNoteDialog';
 import { loadCreditNote } from '../../lib/note-documents';
 import { EmptyPanel, StatCard, Toolbar } from '../module-ui';
@@ -62,6 +63,8 @@ export default function SalesInvoices() {
   const [message, setMessage] = useState('');
   const { session, checkPermission } = useAuth();
   const canReturn = checkPermission('pos.returns.create');
+  const canDescribe = checkPermission('pos.sales.create');
+  const [descId, setDescId] = useState(null);
   // Only the owner may change or delete a bill.
   const isOwner = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
 
@@ -192,6 +195,9 @@ Reason (optional):`);
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
                       <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => setOpenId(s.id)}>Print / Share</button>
+                      {canDescribe && s.status !== 'voided' && (
+                        <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setDescId(s.id); }}>Short description</button>
+                      )}
                       {canReturn && ['completed', 'partially_returned'].includes(s.status) && (
                         <button type="button" className="btn-secondary !min-h-0 whitespace-nowrap !px-3 !py-1.5 text-xs" onClick={() => { setMessage(''); setReturnId(s.id); }}>Return</button>
                       )}
@@ -213,6 +219,13 @@ Reason (optional):`);
         </div>
       )}
 
+      {descId && (
+        <ShortDescriptionDialog
+          saleId={descId}
+          onClose={() => setDescId(null)}
+          onSaved={(saved) => { setDescId(null); setMessage(`Short description saved on ${saved.invoiceNumber}.`); }}
+        />
+      )}
       {editId && (
         <EditInvoiceDialog
           saleId={editId}

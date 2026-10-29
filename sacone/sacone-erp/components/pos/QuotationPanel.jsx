@@ -176,6 +176,7 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
           discountAmount: c.discountAmount,
           discountPercent: c.discountPercent,
           gstPercentage: c.gstPercentage,
+          description: c.description ?? '',
         })),
       };
       const quote = activeQuote
@@ -200,7 +201,7 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
 
   const editQuote = (q) => {
     setActiveQuote(q);
-    setCart(q.items.map((i) => ({ ...i, productId: i.productId })));
+    setCart(q.items.map((i) => ({ ...i, productId: i.productId, description: i.shortDescription || '' })));
     setInvoiceDiscount(q.invoiceDiscount);
     setNotes(q.notes || '');
     setTerms(q.termsConditions || '');
@@ -464,7 +465,11 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
             <tbody>
               {cart.map((line) => (
                 <tr key={line.productId} className="border-t border-slate-100">
-                  <td className="px-3 py-2">{line.productName}</td>
+                  <td className="px-3 py-2">
+                    {line.productName}
+                    <input className="input-field mt-1 !min-h-0 !py-1 text-xs" maxLength={500} placeholder="Short description (prints under the item)"
+                      value={line.description ?? ''} onChange={(e) => setCart((p) => p.map((c) => c.productId === line.productId ? { ...c, description: e.target.value } : c))} />
+                  </td>
                   <td className="px-3 py-2">
                     <input className="input-field w-20" type="number" min="0.001" value={line.quantity}
                       onChange={(e) => setCart((p) => p.map((c) => c.productId === line.productId ? { ...c, quantity: Number(e.target.value) } : c))} />

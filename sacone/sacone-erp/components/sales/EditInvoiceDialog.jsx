@@ -212,7 +212,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
                   <tr key={`${it.productId}-${idx}`}>
                     <td className="px-3 py-2">
                       {it.name}<div className="text-xs text-slate-400">{it.sku}</div>
-                      <textarea className="input-field mt-1 !min-h-0 text-xs" rows={2} maxLength={500} placeholder="Work / description on this bill (prints under the item)"
+                      <textarea className="input-field mt-1 !min-h-0 text-xs" rows={2} maxLength={500} placeholder="Short description on this bill (prints under the item)"
                         value={it.description ?? ''} onChange={(e) => setItem(idx, { description: e.target.value })} />
                       <textarea className="input-field mt-1 !min-h-0 font-mono text-xs" rows={1} placeholder="Serial no(s), one per line"
                         value={it.serials} onChange={(e) => setItem(idx, { serials: e.target.value })} />

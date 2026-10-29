@@ -29,6 +29,7 @@ export default function QuickBillPanel({
   const [salesAgentId, setSalesAgentId] = useState('');
   const [line, setLine] = useState(null);
   const [serials, setSerials] = useState('');
+  const [shortDesc, setShortDesc] = useState('');
   // Bill date: the firm admin / group owner may date a bill in the past (the server checks too).
   const { session } = useAuth();
   const isAdmin = ['owner_admin', 'firm_admin'].includes(session?.user?.roleSlug);
@@ -113,6 +114,7 @@ export default function QuickBillPanel({
       hasWarranty: Boolean(product.warrantyValue || product.guaranteeValue),
     });
     setSerials('');
+    setShortDesc('');
     setQuantity('1');
     setSearch('');
     setResults([]);
@@ -149,6 +151,7 @@ export default function QuickBillPanel({
   const resetLine = () => {
     setLine(null);
     setSerials('');
+    setShortDesc('');
     setQuantity('1');
     setDiscountPercent('');
     setTotals(null);
@@ -175,7 +178,8 @@ export default function QuickBillPanel({
           notes: 'Quick Bill',
           ...(isAdmin && billDate && billDate !== today ? { billDate } : {}),
           // Serial numbers of the units sold (one per line or comma separated), for warranty claims.
-          items: cartItems.map((i) => (serials.trim() ? { ...i, serialNumbers: serials } : i)),
+          // the short description typed for this bill prints under the item
+          items: cartItems.map((i) => ({ ...i, ...(serials.trim() ? { serialNumbers: serials } : {}), ...(shortDesc.trim() ? { description: shortDesc.trim() } : {}) })),
           payments: [{
             method: payMode,
             amount: totals.grandTotal,
@@ -331,6 +335,12 @@ export default function QuickBillPanel({
               />
             </label>
           </div>
+
+          <label className="block text-sm">
+            <span className="text-xs font-semibold uppercase text-slate-500">Short description (optional · prints under the item on this bill)</span>
+            <input className="input-field mt-1" maxLength={500} placeholder="e.g. 1200 mm, 75 W, 5-star, colour white"
+              value={shortDesc} onChange={(e) => setShortDesc(e.target.value)} />
+          </label>
 
           <label className="block text-sm">
             <span className="text-xs font-semibold uppercase text-slate-500">
