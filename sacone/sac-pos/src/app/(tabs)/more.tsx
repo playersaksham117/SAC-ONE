@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
 import { CAPABILITY_LABELS, can, type Capability } from '../../domain/permissions';
 import { useSyncBadge } from '../../lib/useSyncInfo';
@@ -201,7 +201,7 @@ export default function More() {
           <KeyValue label="Negative stock" value={info?.settings.allowNegativeStock ? 'Allowed' : 'Blocked'} muted />
           {can(user?.permissions, 'manageDevice') ? (
             <>
-              <Button title="Connect to another terminal (scan QR)" variant="secondary" icon="qr-code-outline" onPress={() => router.push('/pair-scan')} style={{ marginTop: space.sm }} />
+              <Button title={Platform.OS === 'web' ? 'Connect to another terminal (type key)' : 'Connect to another terminal (scan QR)'} variant="secondary" icon="qr-code-outline" onPress={() => router.push('/pair-scan')} style={{ marginTop: space.sm }} />
               <Button title="Disconnect device" variant="danger" icon="unlink-outline" onPress={disconnect} style={{ marginTop: space.sm }} />
             </>
           ) : (
