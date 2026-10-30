@@ -50,6 +50,8 @@ const DUE_FILTERS = [
   ['d90plus', 'Overdue 90+ days'],
   ['clear', 'No dues'],
 ];
+/** One line of the party's address: street, city, state and PIN. */
+const addressLine = (p) => [p?.address, p?.city, p?.state, p?.postalCode].filter((x) => String(x || '').trim()).join(', ');
 const ddmmyyyy = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB') : '');
 
 /** A sortable column header: click to sort by it, click again to flip the direction. */
@@ -549,7 +551,7 @@ export default function PartiesPage() {
       <AgingBar totals={listInfo.totals} due={due} onDue={setDue} label={tab === 'customers' ? 'Receivable' : 'Payable'} />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           {loading ? <LoadingState /> : (
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -570,7 +572,7 @@ export default function PartiesPage() {
                     className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 ${selected?.id === row.id ? 'bg-blue-50' : ''}`}
                     onClick={() => selectRow(row)}
                   >
-                    <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{row.code}</td>
                     <td className="px-3 py-2 font-medium">
                       {row.name}
                       {row.isWalkIn && <span className="ml-2 text-[10px] uppercase text-slate-400">Walk-in</span>}
@@ -580,6 +582,7 @@ export default function PartiesPage() {
                           : <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Cash only</span>
                       )}
                       {row.sourceChannel === 'pos' && <span className="ml-1 text-[10px] uppercase text-slate-400">SAC-POS</span>}
+                      {addressLine(row) && <div className="max-w-xs text-xs font-normal text-slate-500">{addressLine(row)}</div>}
                     </td>
                     <td className="px-3 py-2">{row.phone || '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{row.isWalkIn ? '—' : `${row.creditDays ?? 30}${row.creditDays == null ? ' (default)' : ''}`}</td>
@@ -615,7 +618,8 @@ export default function PartiesPage() {
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-lg font-semibold">{selected.name}</h3>
-                  <p className="font-mono text-xs text-slate-500">{selected.code}</p>
+                  <p className="font-mono text-xs text-slate-500">ID {selected.code}</p>
+                  {addressLine(selected) && <p className="text-xs text-slate-600">{addressLine(selected)}</p>}
                   {selected.gstNumber && <p className="text-xs text-slate-500">GSTIN {selected.gstNumber}</p>}
                 </div>
                 {canEdit && (
