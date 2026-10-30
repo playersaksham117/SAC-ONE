@@ -34,7 +34,7 @@ export interface ServerQuotation {
   status: string;
   preparedBy: string | null;
   notes: string | null;
-  customer: { id: string | null; name: string; phone: string | null; gstin: string | null; gstStateCode: string | null } | null;
+  customer: { id: string | null; name: string; phone: string | null; gstin: string | null; gstStateCode: string | null; address?: string | null; city?: string | null; state?: string | null } | null;
   customerPo: { number: string; date: string | null } | null;
   items: Omit<ServerSale['items'][number], 'quantityReturned' | 'serialNumbers'>[];
   subtotal: number; itemDiscountTotal: number; invoiceDiscount: number; taxableAmount: number;

@@ -143,6 +143,18 @@ function phoneSale(s) {
 }
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 
+/** Bill To address for a phone quotation: the quotation's snapshot, else the customer master. */
+function quoteAddress(snap, c) {
+  const has = Boolean(snap.billingAddress || snap.billingCity || snap.billingState);
+  const street = has ? snap.billingAddress : c?.address;
+  const pin = has ? snap.billingPostal : c?.postalCode;
+  return {
+    address: [street, pin].filter((x) => String(x || '').trim()).join(' - ') || null,
+    city: (has ? snap.billingCity : c?.city) || null,
+    state: (has ? snap.billingState : c?.state) || null,
+  };
+}
+
 /** An ERP quotation in the shape the phone keeps (same item / total fields as phoneSale). */
 function phoneQuotation(q) {
   const snap = q.customerSnapshot || {};
@@ -156,9 +168,10 @@ function phoneQuotation(q) {
     status: q.status,
     preparedBy: q.createdByName || null,
     notes: q.notes || null,
+    // the quotation's own Bill To address (edited in the ERP) first, else the customer's
     customer: c && !c.isWalkIn
-      ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c) }
-      : (snap.name ? { id: q.customerId || null, name: snap.name, phone: snap.phone || null, gstin: snap.gstNumber || null, gstStateCode: null } : null),
+      ? { id: c.id, name: c.name, phone: c.phone || null, gstin: c.gstNumber || null, gstStateCode: stateCodeOf(c), ...quoteAddress(snap, c) }
+      : (snap.name ? { id: q.customerId || null, name: snap.name, phone: snap.phone || null, gstin: snap.gstNumber || null, gstStateCode: null, ...quoteAddress(snap, null) } : null),
     customerPo: q.customerPoNumber ? { number: q.customerPoNumber, date: q.customerPoDate || null } : null,
     items: (q.items || []).map((i) => ({
       productId: i.productId, name: i.productName, sku: i.sku, hsn: i.hsnCode || null, unit: i.unitAbbreviation || 'pcs',
