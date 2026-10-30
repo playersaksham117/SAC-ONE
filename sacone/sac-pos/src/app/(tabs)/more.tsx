@@ -7,6 +7,7 @@ import { useSyncBadge } from '../../lib/useSyncInfo';
 import { daySummary } from '../../services/pos';
 import { useCart } from '../../store/cart';
 import { useCatalog } from '../../store/catalog';
+import { switchToSavedTerminal } from '../../lib/pairing';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
 import { useCurrentUser, useSession } from '../../store/session';
@@ -18,6 +19,52 @@ import { AppUpdateCard } from '../../ui/AppUpdateCard';
 import {
   Badge, Banner, Button, Card, Divider, Field, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, space,
 } from '../../ui/components';
+
+/**
+ * Firms set up on this device (one terminal each). Switching syncs first, then shows only the
+ * chosen firm; staff sign in again there. A firm is added with "Connect to another terminal".
+ */
+function FirmCard() {
+  const saved = useDevice((s) => s.saved);
+  const currentId = useDevice((s) => s.info?.device.id);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (saved.length < 2) return null;
+  const pick = async (id: string, firm: string) => {
+    if (id === currentId || busy) return;
+    if (!(await confirm(`Switch to ${firm}?`, 'Bills are synced first, then this device shows only that firm. Staff sign in again.', 'Switch'))) return;
+    setBusy(id);
+    setError(null);
+    try {
+      await switchToSavedTerminal(id);
+      router.replace('/login');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card style={{ marginTop: space.md }}>
+      <Text style={{ fontWeight: '800', color: colors.text, marginBottom: space.sm }}>Firm</Text>
+      {error ? <Text style={{ color: colors.danger, fontSize: font.xs, marginBottom: space.sm }}>{error}</Text> : null}
+      <Row gap={space.sm} style={{ flexWrap: 'wrap' }}>
+        {saved.map((t) => (
+          <Button
+            key={t.id}
+            title={t.firm}
+            icon={t.id === currentId ? 'checkmark-circle' : 'business-outline'}
+            variant={t.id === currentId ? 'primary' : 'secondary'}
+            size="sm"
+            loading={busy === t.id}
+            disabled={Boolean(busy)}
+            onPress={() => pick(t.id, t.firm)}
+          />
+        ))}
+      </Row>
+    </Card>
+  );
+}
 
 export default function More() {
   const user = useCurrentUser();
@@ -208,6 +255,7 @@ export default function More() {
             <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Only users with "POS Devices – edit" can re-pair this phone.</Text>
           )}
         </Card>
+        <FirmCard />
         <Text style={{ textAlign: 'center', color: colors.textFaint, fontSize: font.xs, marginTop: space.xl }}>SAC-POS 1.0 · SACONE</Text>
       </View>
     </Screen>

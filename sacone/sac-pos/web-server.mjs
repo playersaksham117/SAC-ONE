@@ -36,6 +36,13 @@ createServer((req, res) => {
     'X-Content-Type-Options': 'nosniff',
   });
   createReadStream(target).pipe(res);
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    // web:build replaces dist in place; the copy already running serves the new build
+    console.log(`SAC-POS web is already running on port ${PORT}; it now serves the new build. Nothing else to do.`);
+    process.exit(0);
+  }
+  throw err;
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`SAC-POS web on http://localhost:${PORT} (and this PC's LAN address, port ${PORT})`);
 });

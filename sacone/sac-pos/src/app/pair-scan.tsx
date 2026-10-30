@@ -83,6 +83,7 @@ function TypedPairing() {
 export default function PairScan() {
   const [permission, requestPermission] = useCameraPermissions();
   const [problem, setProblem] = useState<string | null>(null);
+  const [typing, setTyping] = useState(false);
   const done = useRef(false);
   const cooldown = useRef(0);
 
@@ -107,6 +108,16 @@ export default function PairScan() {
     return (
       <Screen scroll>
         <Header title="Connect to a terminal" onBack={() => goBack()} />
+        <View style={{ paddingHorizontal: space.lg, gap: space.md }}>
+          <TypedPairing />
+        </View>
+      </Screen>
+    );
+  }
+  if (typing) {
+    return (
+      <Screen scroll>
+        <Header title="Connect to a terminal" onBack={() => setTyping(false)} />
         <View style={{ paddingHorizontal: space.lg, gap: space.md }}>
           <TypedPairing />
         </View>
@@ -146,8 +157,9 @@ export default function PairScan() {
           ? <Badge tone="danger" label={problem} />
           : <Text style={{ color: '#fff', textAlign: 'center', fontSize: font.md }}>Point at the QR code in SACONE ERP → POS Devices</Text>}
       </View>
-      <View style={{ position: 'absolute', top: 50, left: space.lg }}>
+      <View style={{ position: 'absolute', top: 50, left: space.lg, right: space.lg, flexDirection: 'row', justifyContent: 'space-between' }}>
         <Button title="Close" size="sm" variant="secondary" onPress={() => goBack()} />
+        <Button title="Type key instead" size="sm" variant="secondary" icon="create-outline" onPress={() => setTyping(true)} />
       </View>
     </View>
   );
