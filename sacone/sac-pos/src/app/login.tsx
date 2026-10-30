@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
+import { switchToSavedTerminal } from '../lib/pairing';
 import { useDevice } from '../store/device';
 import { useSession, type Profile } from '../store/session';
 import { syncNow } from '../sync/engine';
@@ -24,7 +25,9 @@ export default function Login() {
   const profiles = useSession((s) => s.profiles);
   const { loginWithPin, unlock } = useSession.getState();
   const info = useDevice((s) => s.info);
+  const saved = useDevice((s) => s.saved);
   const list = useMemo(() => Object.values(profiles).filter((p) => p.pinHash), [profiles]);
+  const [switching, setSwitching] = useState<string | null>(null);
 
   const [mode, setMode] = useState<'pick' | 'unlock' | 'signin'>(list.length ? 'pick' : 'signin');
   const [selected, setSelected] = useState<Profile | null>(null);
@@ -74,8 +77,51 @@ export default function Login() {
     }
   };
 
+  // Firm choice: each firm has its own terminal; picking another one loads only that firm's data.
+  const pickFirm = async (id: string) => {
+    if (id === info?.device.id || switching) return;
+    setSwitching(id);
+    setError(null);
+    try {
+      await switchToSavedTerminal(id);
+      setSelected(null);
+      setPin('');
+      setMode('signin');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
   return (
     <Screen scroll>
+      {saved.length > 1 ? (
+        <Card style={{ marginTop: space.lg }}>
+          <Text style={{ fontSize: font.xs, color: colors.textMuted, fontWeight: '700', marginBottom: space.sm }}>FIRM</Text>
+          <Row gap={space.sm} style={{ flexWrap: 'wrap' }}>
+            {saved.map((t) => {
+              const active = t.id === info?.device.id;
+              return (
+                <Button
+                  key={t.id}
+                  title={t.firm}
+                  icon={active ? 'checkmark-circle' : 'business-outline'}
+                  variant={active ? 'primary' : 'secondary'}
+                  size="sm"
+                  loading={switching === t.id}
+                  disabled={Boolean(switching)}
+                  onPress={() => pickFirm(t.id)}
+                  testID={`firm-${t.id}`}
+                />
+              );
+            })}
+          </Row>
+          <Text style={{ fontSize: font.xs, color: colors.textFaint, marginTop: space.sm }}>
+            Only the chosen firm's products, customers and bills are shown. Switching syncs first, then loads the other firm.
+          </Text>
+        </Card>
+      ) : null}
       <View style={{ marginTop: space.xl, marginBottom: space.lg }}>
         <Text style={{ fontSize: font.xxl, fontWeight: '800', color: colors.text }}>Welcome</Text>
         <Text style={{ color: colors.textMuted, marginTop: 4 }}>

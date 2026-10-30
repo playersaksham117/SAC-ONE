@@ -66,3 +66,17 @@ export async function switchTerminal(pairing: Pairing): Promise<string> {
   useSession.getState().forgetAll();
   return url;
 }
+
+/**
+ * Sign-in firm choice: become this device's terminal of another firm it was connected to before
+ * (same rules as switchTerminal: everything synced first, the old firm's data cleared).
+ */
+export async function switchToSavedTerminal(id: string): Promise<void> {
+  const device = useDevice.getState();
+  const entry = device.saved.find((t) => t.id === id);
+  const key = entry ? await device.savedKey(id) : null;
+  if (!entry || !key) throw new Error('That firm is not set up on this device any more. A manager can add it: More → Connect to another terminal.');
+  const urls = [...new Set([entry.baseUrl, device.baseUrl].filter((u): u is string => Boolean(u)))];
+  await switchTerminal({ urls, key, deviceName: entry.deviceName, firm: entry.firm });
+  syncNow().catch(() => undefined);
+}

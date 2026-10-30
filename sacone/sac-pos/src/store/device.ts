@@ -8,6 +8,21 @@ import { secure } from '../storage/kv';
 import { jsonStorage } from './persist';
 
 const KEY_SECRET = 'sacpos.deviceKey';
+/** Keys of the other firms' terminals this device may switch to: { [terminal id]: key } (secure storage). */
+const SAVED_KEYS = 'sacpos.savedKeys';
+
+/** A firm's terminal this device has been connected to (no secret: the key is in secure storage). */
+export interface SavedTerminal {
+  id: string;
+  firm: string;
+  deviceName: string;
+  warehouse: string | null;
+  baseUrl: string;
+}
+
+async function readKeys(): Promise<Record<string, string>> {
+  try { return JSON.parse((await secure.get(SAVED_KEYS)) || '{}') as Record<string, string>; } catch { return {}; }
+}
 
 interface DeviceState {
   baseUrl: string | null;
@@ -16,6 +31,12 @@ interface DeviceState {
   info: PingResult | null;
   lastPingAt: string | null;
   secretLoaded: boolean;
+  /** Every firm's terminal connected here, so the sign-in screen can offer a firm choice. */
+  saved: SavedTerminal[];
+  /** Remember the current terminal (and its key) for the firm choice. */
+  remember: () => Promise<void>;
+  savedKey: (id: string) => Promise<string | null>;
+  forget: (id: string) => Promise<void>;
   loadSecret: () => Promise<void>;
   connect: (baseUrl: string, deviceKey: string) => Promise<PingResult>;
   /** Point this phone at a new server address (e.g. after the PC's IP changed); keeps the key. */
@@ -33,6 +54,33 @@ export const useDevice = create<DeviceState>()(
       info: null,
       lastPingAt: null,
       secretLoaded: false,
+      saved: [],
+
+      async remember() {
+        const { info, baseUrl, deviceKey } = get();
+        if (!info?.device?.id || !baseUrl || !deviceKey) return;
+        const entry: SavedTerminal = {
+          id: info.device.id,
+          firm: info.company?.businessName || info.device.name,
+          deviceName: info.device.name,
+          warehouse: info.warehouse?.name ?? null,
+          baseUrl,
+        };
+        const keys = await readKeys();
+        if (keys[entry.id] !== deviceKey) await secure.set(SAVED_KEYS, JSON.stringify({ ...keys, [entry.id]: deviceKey }));
+        const others = get().saved.filter((t) => t.id !== entry.id);
+        set({ saved: [...others, entry].sort((a, b) => a.firm.localeCompare(b.firm)) });
+      },
+
+      async savedKey(id) {
+        return (await readKeys())[id] ?? null;
+      },
+
+      async forget(id) {
+        const { [id]: _drop, ...rest } = await readKeys();
+        await secure.set(SAVED_KEYS, JSON.stringify(rest));
+        set({ saved: get().saved.filter((t) => t.id !== id) });
+      },
 
       async loadSecret() {
         const key = await secure.get(KEY_SECRET);
@@ -48,6 +96,7 @@ export const useDevice = create<DeviceState>()(
         const info = await sync.ping({ baseUrl, deviceKey, deviceId });
         await secure.set(KEY_SECRET, deviceKey);
         set({ baseUrl, deviceKey, deviceId, info, lastPingAt: new Date().toISOString() });
+        await get().remember().catch(() => undefined);
         return info;
       },
 
@@ -63,17 +112,21 @@ export const useDevice = create<DeviceState>()(
 
       setInfo(info) {
         set({ info, lastPingAt: new Date().toISOString() });
+        // terminals connected before the firm choice existed are added on their next ping
+        if (!get().saved.some((t) => t.id === info.device?.id)) get().remember().catch(() => undefined);
       },
 
       async disconnect() {
+        const id = get().info?.device?.id;
         await secure.remove(KEY_SECRET);
+        if (id) await get().forget(id).catch(() => undefined);
         set({ baseUrl: null, deviceKey: null, info: null, lastPingAt: null });
       },
     }),
     {
       name: 'sacpos.device',
       storage: jsonStorage,
-      partialize: (s) => ({ baseUrl: s.baseUrl, deviceId: s.deviceId, info: s.info, lastPingAt: s.lastPingAt }),
+      partialize: (s) => ({ baseUrl: s.baseUrl, deviceId: s.deviceId, info: s.info, lastPingAt: s.lastPingAt, saved: s.saved }),
     },
   ),
 );
