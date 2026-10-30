@@ -46,8 +46,10 @@ export async function request<T>(baseUrl: string, path: string, opts: RequestOpt
   } catch (e) {
     const aborted = (e as Error)?.name === 'AbortError';
     const where = baseUrl.trim().replace(/\/+$/, '');
+    // the device's own reason (e.g. "Network request failed", a blocked or malformed address) helps support
+    const why = (e as Error)?.message ? ` [${String((e as Error).message).slice(0, 120)}]` : '';
     throw new ApiError(
-      aborted ? `Server did not respond in time (${where})` : `Cannot reach the SACONE server at ${where}. Check the phone is on the same Wi-Fi and the address is current (More → Change server address).`,
+      aborted ? `Server did not respond in time (${where})` : `Cannot reach the SACONE server at ${where}. Check the phone is on the same Wi-Fi and the address is current (More → Change server address).${why}`,
       0,
       aborted ? 'TIMEOUT' : 'NETWORK',
     );
