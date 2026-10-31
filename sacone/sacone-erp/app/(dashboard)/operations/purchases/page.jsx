@@ -184,6 +184,7 @@ export default function PurchasesPage() {
   const [poPreview, setPoPreview] = useState(null);
 
   const [billForm, setBillForm] = useState({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: '', purchaseOrderId: '', notes: '' });
+  const [gstFilter, setGstFilter] = useState('');
   const [billLines, setBillLines] = useState([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]);
   const [billPreview, setBillPreview] = useState(null);
 
@@ -212,7 +213,7 @@ export default function PurchasesPage() {
       } else if (tab === 'orders') {
         setOrders((await apiRequest('/api/purchases/orders?limit=100')).items || []);
       } else if (tab === 'bills' || tab === 'log') {
-        setBills((await apiRequest('/api/purchases/bills?limit=100')).items || []);
+        setBills((await apiRequest(`/api/purchases/bills?limit=100${gstFilter ? `&gst=${gstFilter}` : ''}`)).items || []);
       } else if (tab === 'price-lists') {
         setPriceLists((await apiRequest('/api/purchases/price-lists?limit=50')).items || []);
       } else if (tab === 'returns') {
@@ -227,7 +228,7 @@ export default function PurchasesPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, ledgerSupplierId]);
+  }, [tab, ledgerSupplierId, gstFilter]);
 
   useEffect(() => {
     loadBootstrap().catch((e) => setError(e.message));
@@ -241,13 +242,14 @@ export default function PurchasesPage() {
     loadTab(true);
   });
 
-  const previewDoc = async (supplierId, lines, setter) => {
+  const previewDoc = async (supplierId, lines, setter, unregistered = false) => {
     if (!supplierId || !lines.some((l) => l.productId)) return;
     try {
       const data = await apiRequest('/api/purchases/preview', {
         method: 'POST',
         body: JSON.stringify({
           supplierId,
+          unregistered,
           items: lines.filter((l) => l.productId).map((l) => ({
             productId: l.productId,
             quantity: Number(l.quantity) || 1,
@@ -270,9 +272,9 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     if (!billModal) return;
-    const t = setTimeout(() => previewDoc(billForm.supplierId, billLines, setBillPreview), 300);
+    const t = setTimeout(() => previewDoc(billForm.supplierId, billLines, setBillPreview, Boolean(billForm.unregistered)), 300);
     return () => clearTimeout(t);
-  }, [billModal, billForm.supplierId, billLines]);
+  }, [billModal, billForm.supplierId, billLines, billForm.unregistered]);
 
   const savePo = async (e) => {
     e.preventDefault();
@@ -433,6 +435,22 @@ export default function PurchasesPage() {
     }
   };
 
+  // Owner: a bill from a supplier without GSTIN carries no GST / input credit (stock and cost stay).
+  const setRegistration = async (b, unregistered) => {
+    const msg = unregistered
+      ? `Mark ${b.billNumber} as from an unregistered supplier? GST is removed from the bill (no input credit); the total and the supplier balance change.`
+      : `Mark ${b.billNumber} as registered? GST is added at each item's rate; the total and the supplier balance change.`;
+    if (!window.confirm(msg)) return;
+    setError('');
+    try {
+      const saved = await apiRequest(`/api/purchases/bills/${b.id}/registration`, { method: 'POST', body: JSON.stringify({ unregistered }) });
+      setMessage(`${saved.billNumber}: ${saved.isUnregistered ? 'unregistered, no GST' : 'registered, GST'} · total ${money(saved.grandTotal)}`);
+      await loadTab(true);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const editBill = async (b) => {
     setError('');
     try {
@@ -445,6 +463,7 @@ export default function PurchasesPage() {
         dueDate: bill.dueDate || '',
         purchaseOrderId: bill.purchaseOrderId || '',
         notes: bill.notes || '',
+        unregistered: Boolean(bill.isUnregistered),
       });
       setBillLines((bill.items || []).map((i) => ({
         productId: i.productId,
@@ -624,7 +643,15 @@ export default function PurchasesPage() {
           )}
 
           {(tab === 'bills' || tab === 'log') && (
-            <div className="card overflow-hidden p-0">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-slate-500">Show</span>
+              {[['', 'All bills'], ['registered', 'Registered (GST)'], ['unregistered', 'Unregistered (no GST)']].map(([v, l]) => (
+                <button key={v} type="button" className={`rounded-full px-3 py-1 ${gstFilter === v ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setGstFilter(v)}>{l}</button>
+              ))}
+            </div>
+          )}
+          {(tab === 'bills' || tab === 'log') && (
+            <div className="card overflow-x-auto p-0">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50"><tr>
                   <th className="px-4 py-3 text-left">Bill #</th>
@@ -649,9 +676,13 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3">{b.billDate}</td>
                       <td className="px-4 py-3">{b.stockPosted ? '✓ IN' : '—'}</td>
                       <td className="px-4 py-3 text-right text-slate-700">{money(b.taxableAmount)}</td>
-                      <td className="px-4 py-3 text-right text-slate-700" title={b.igstAmount > 0 ? `IGST ${money(b.igstAmount)}` : `CGST ${money(b.cgstAmount)} + SGST ${money(b.sgstAmount)}`}>
-                        {money(b.gstAmount)}
-                        <div className="text-[11px] text-slate-400">{b.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                      <td className="px-4 py-3 text-right text-slate-700" title={b.isUnregistered ? 'Unregistered supplier: no GST, no input tax credit' : b.igstAmount > 0 ? `IGST ${money(b.igstAmount)}` : `CGST ${money(b.cgstAmount)} + SGST ${money(b.sgstAmount)}`}>
+                        {b.isUnregistered ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Unregistered</span> : (
+                          <>
+                            {money(b.gstAmount)}
+                            <div className="text-[11px] text-slate-400">{b.igstAmount > 0 ? 'IGST' : 'CGST + SGST'}</div>
+                          </>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">{money(b.grandTotal)}</td>
                       <td className="px-4 py-3 text-right">{money(b.amountPaid)}</td>
@@ -659,6 +690,11 @@ export default function PurchasesPage() {
                       <td className="px-4 py-3 capitalize">{b.status}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         {isOwner && b.status !== 'cancelled' ? <button type="button" className={`${printButton} mr-2`} onClick={() => editBill(b)} title="Edit bill (admin)">✏ Edit</button> : null}
+                        {isOwner && b.status !== 'cancelled' ? (
+                          <button type="button" className={`${printButton} mr-2`} onClick={() => setRegistration(b, !b.isUnregistered)} title={b.isUnregistered ? 'Supplier is registered: GST at each item rate' : 'Supplier has no GSTIN: remove GST and input credit'}>
+                            {b.isUnregistered ? 'Mark registered' : 'Mark unregistered'}
+                          </button>
+                        ) : null}
                         <button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'bill', id: b.id })}>Print / PDF</button>
                       </td>
                     </tr>
@@ -812,7 +848,7 @@ export default function PurchasesPage() {
         <form id="bill-form" onSubmit={saveBill} className="space-y-4">
           <Alert type="error" message={error} />
           <div className="grid gap-4 md:grid-cols-2">
-            <div><label className="label">Supplier *</label><select className="input-field" required value={billForm.supplierId} onChange={(e) => setBillForm({ ...billForm, supplierId: e.target.value })}><option value="">Select</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div><label className="label">Supplier *</label><select className="input-field" required value={billForm.supplierId} onChange={(e) => { const sup = suppliers.find((s) => s.id === e.target.value); setBillForm({ ...billForm, supplierId: e.target.value, unregistered: Boolean(sup && !String(sup.gstNumber || '').trim()) }); }}><option value="">Select</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><label className="label">Supplier Invoice #</label><input className="input-field" value={billForm.supplierInvoiceNumber} onChange={(e) => setBillForm({ ...billForm, supplierInvoiceNumber: e.target.value })} /></div>
             <div><label className="label">Warehouse</label><select className="input-field" value={billForm.warehouseId} onChange={(e) => setBillForm({ ...billForm, warehouseId: e.target.value })}><option value="">Default</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
             <div><label className="label">Bill Date</label><input type="date" className="input-field" value={billForm.billDate} onChange={(e) => setBillForm({ ...billForm, billDate: e.target.value })} /></div>
@@ -823,6 +859,13 @@ export default function PurchasesPage() {
               <div><label className="label">Notes</label><input className="input-field" value={billForm.notes || ''} onChange={(e) => setBillForm({ ...billForm, notes: e.target.value })} /></div>
             </div>
           ) : null}
+          <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billForm.unregistered ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
+            <input type="checkbox" className="mt-0.5" checked={Boolean(billForm.unregistered)} onChange={(e) => setBillForm({ ...billForm, unregistered: e.target.checked })} />
+            <span>
+              <span className="font-semibold">Unregistered supplier (no GSTIN)</span>
+              <span className="block text-xs text-slate-500">No GST on this bill and no input tax credit; the rate paid is the cost. Stock, purchases and margins still count. Ticked for suppliers without a GSTIN: untick if they are registered.</span>
+            </span>
+          </label>
           <p className="text-xs text-slate-500">Each line: product, HSN / SAC, qty, rate, discount %. Leave HSN blank to use the product&apos;s code.</p>
           <LineEditor lines={billLines} setLines={setBillLines} products={products} onSearch={loadProducts} />
           {billPreview?.totals && <div className="rounded-lg bg-emerald-50 p-3 text-sm">{editBillId ? 'New bill total (stock and supplier balance move by the difference):' : 'Posts stock IN + supplier payable:'} <strong>{money(billPreview.totals.grandTotal)}</strong></div>}

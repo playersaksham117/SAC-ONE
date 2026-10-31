@@ -68,6 +68,11 @@ purchaseRouter.put('/bills/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.updateBill(req.params.id, req.body || {}, req.actor, req));
 }));
 
+// Owner only: mark a bill as from an unregistered supplier (no GST / input credit) or registered.
+purchaseRouter.post('/bills/:id/registration', asyncHandler(async (req, res) => {
+  sendSuccess(res, purchaseService.setBillRegistration(req.params.id, req.body?.unregistered, req.actor, req));
+}));
+
 purchaseRouter.post('/price-lists/parse', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.parsePriceList(req.body, req.actor));
 }));

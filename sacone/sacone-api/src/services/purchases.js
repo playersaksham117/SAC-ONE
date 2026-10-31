@@ -137,10 +137,12 @@ function enrichLines(items, { allowInactive = [] } = {}) {
   });
 }
 
-function buildPurchaseTotals(items, supplierId) {
+function buildPurchaseTotals(items, supplierId, { unregistered = false } = {}) {
   const company = companyRepo.get();
   const supplier = supplierRepo.findById(supplierId);
   if (!supplier) throw new AppError('Supplier not found', 404);
+  // Unregistered purchase: no GST on any line; the cost is what is paid.
+  if (unregistered) items = items.map((item) => ({ ...item, gstPercentage: 0 }));
 
   const totals = calculateCartTotals(items, 0, {
     companyStateCode: stateCodeOf(company),
@@ -165,6 +167,18 @@ function buildPurchaseTotals(items, supplierId) {
   }));
 
   return { totals, items: computedItems };
+}
+
+/**
+ * Unregistered flag for a bill: only when asked (the ERP form ticks it for a supplier without a
+ * GSTIN, for the user to confirm), else as the bill already was. Never guessed silently: a
+ * registered supplier whose GSTIN is just missing must not lose GST on its bills.
+ */
+function unregisteredFor(data, fallback = false) {
+  if (data.unregistered !== undefined && data.unregistered !== null && data.unregistered !== '') {
+    return data.unregistered === true || data.unregistered === 'true' || data.unregistered === 1;
+  }
+  return Boolean(fallback);
 }
 
 function allocateDocNumber(documentType) {
@@ -195,7 +209,7 @@ export class PurchaseService {
     ]);
     if (!data.supplierId) throw new AppError('Supplier is required', 400);
     const enriched = enrichLines(data.items || []);
-    return buildPurchaseTotals(enriched, data.supplierId);
+    return buildPurchaseTotals(enriched, data.supplierId, { unregistered: data.unregistered === true });
   }
 
   listOrders(filters, actor) {
@@ -465,7 +479,8 @@ export class PurchaseService {
     if (!data.supplierId) throw new AppError('Supplier is required', 400);
     const enriched = enrichLines(data.items || []);
     if (!enriched.length) throw new AppError('At least one line item is required', 400);
-    const { totals, items } = buildPurchaseTotals(enriched, data.supplierId);
+    const unregistered = unregisteredFor(data);
+    const { totals, items } = buildPurchaseTotals(enriched, data.supplierId, { unregistered });
     const doc = allocateDocNumber('purchase_bill');
     const warehouseId = data.warehouseId || null;
 
@@ -489,6 +504,7 @@ export class PurchaseService {
       stockPosted: false,
       notes: data.notes || null,
       createdBy: actor.user.id,
+      isUnregistered: unregistered,
     }, items);
 
     supplierRepo.adjustPayable(data.supplierId, totals.grandTotal);
@@ -557,7 +573,9 @@ export class PurchaseService {
     }
     const enriched = enrichLines(data.items || [], { allowInactive: old.items.map((i) => i.productId) });
     if (!enriched.length) throw new AppError('At least one line item is required', 400);
-    const { totals, items } = buildPurchaseTotals(enriched, supplierId);
+    // the bill keeps its registered / unregistered choice unless the edit changes it (or the supplier)
+    const unregistered = unregisteredFor(data, old.isUnregistered);
+    const { totals, items } = buildPurchaseTotals(enriched, supplierId, { unregistered });
     if (totals.grandTotal + 0.009 < paid) {
       throw new AppError(`The new total ${totals.grandTotal} is less than the ${paid} already paid on this bill.`, 400, 'BELOW_PAID');
     }
@@ -613,6 +631,7 @@ export class PurchaseService {
         igstAmount: totals.igstAmount,
         grandTotal: totals.grandTotal,
         notes: data.notes !== undefined ? (data.notes || null) : old.notes,
+        isUnregistered: unregistered,
       }, items);
       for (const line of items) productRepo.update(line.productId, { purchasePrice: line.unitPrice });
       return purchaseRepo.findBillById(old.id);
@@ -630,6 +649,25 @@ export class PurchaseService {
       ...getRequestMeta(req),
     });
     return updated;
+  }
+
+  /**
+   * Mark a purchase bill as from an unregistered supplier (no GST, no input credit) or back to
+   * registered (GST at each item's rate). Same rules as editing the bill; totals and the payable follow.
+   */
+  setBillRegistration(id, unregistered, actor, req) {
+    const bill = purchaseRepo.findBillById(id);
+    if (!bill) throw new AppError('Purchase bill not found', 404);
+    const flag = unregistered === true || unregistered === 'true';
+    if (flag === bill.isUnregistered) return bill;
+    return this.updateBill(id, {
+      unregistered: flag,
+      // back to registered: each item's GST rate from the product
+      items: bill.items.map((i) => ({
+        productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, discountPercent: i.discountPercent, hsnCode: i.hsnCode,
+        ...(flag ? {} : { gstPercentage: undefined }),
+      })),
+    }, actor, req);
   }
 
   createBillFromPo(poId, data, actor, req) {

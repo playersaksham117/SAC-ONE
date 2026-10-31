@@ -101,6 +101,7 @@ function mapBill(row, items = []) {
     amountPaid: Number(row.amount_paid || 0),
     amountPayable: Number(row.amount_payable || 0),
     status: row.status,
+    isUnregistered: Boolean(row.is_unregistered),
     stockPosted: Boolean(row.stock_posted),
     referenceType: row.reference_type,
     referenceId: row.reference_id,
@@ -351,6 +352,8 @@ export class PurchaseRepository {
     const params = [];
     if (supplierId) { conditions.push('b.supplier_id = ?'); params.push(supplierId); }
     if (status) { conditions.push('b.status = ?'); params.push(status); }
+    if (filters.gst === 'unregistered') conditions.push('b.is_unregistered = 1');
+    if (filters.gst === 'registered') conditions.push('COALESCE(b.is_unregistered, 0) = 0');
     if (filters.dateFrom) { conditions.push('substr(b.bill_date, 1, 10) >= ?'); params.push(filters.dateFrom); }
     if (filters.dateTo) { conditions.push('substr(b.bill_date, 1, 10) <= ?'); params.push(filters.dateTo); }
     if (search) {
@@ -395,14 +398,14 @@ export class PurchaseRepository {
           id, bill_number, supplier_id, supplier_invoice_number, bill_date, due_date,
           warehouse_id, purchase_order_id, subtotal, gst_amount, cgst_amount, sgst_amount, igst_amount,
           grand_total, amount_paid, amount_payable, status, reference_type, reference_id,
-          stock_posted, notes, created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'open', 'purchase_bill', ?, ?, ?, ?, ?, ?)
+          stock_posted, notes, created_by, created_at, updated_at, is_unregistered
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'open', 'purchase_bill', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id, data.billNumber, data.supplierId, data.supplierInvoiceNumber || null,
         data.billDate, data.dueDate || null, data.warehouseId || null, data.purchaseOrderId || null,
         data.subtotal, data.gstAmount, data.cgstAmount, data.sgstAmount, data.igstAmount, data.grandTotal,
         data.grandTotal, data.purchaseOrderId || null, data.stockPosted ? 1 : 0,
-        data.notes || null, data.createdBy || null, now, now
+        data.notes || null, data.createdBy || null, now, now, data.isUnregistered ? 1 : 0
       );
       const insertItem = db.prepare(`
         INSERT INTO supplier_bill_items (
@@ -439,12 +442,12 @@ export class PurchaseRepository {
         UPDATE supplier_bills SET
           supplier_id = ?, supplier_invoice_number = ?, bill_date = ?, due_date = ?, warehouse_id = ?,
           subtotal = ?, gst_amount = ?, cgst_amount = ?, sgst_amount = ?, igst_amount = ?, grand_total = ?,
-          amount_payable = ?, status = ?, notes = ?, updated_at = ?
+          amount_payable = ?, status = ?, notes = ?, is_unregistered = ?, updated_at = ?
         WHERE id = ?
       `).run(
         data.supplierId, data.supplierInvoiceNumber, data.billDate, data.dueDate, data.warehouseId,
         data.subtotal, data.gstAmount, data.cgstAmount, data.sgstAmount, data.igstAmount, data.grandTotal,
-        payable, status, data.notes, now, id,
+        payable, status, data.notes, data.isUnregistered ? 1 : 0, now, id,
       );
       db.prepare('DELETE FROM supplier_bill_items WHERE bill_id = ?').run(id);
       const insertItem = db.prepare(`

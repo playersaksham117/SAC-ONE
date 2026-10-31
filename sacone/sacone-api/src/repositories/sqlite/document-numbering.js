@@ -16,6 +16,7 @@ export const DOCUMENT_TYPES = {
   customer_receipt: { docPrefix: 'RV', label: 'Customer Receipt' },
   supplier_payment: { docPrefix: 'PV', label: 'Supplier Payment' },
   commission_payment: { docPrefix: 'CP', label: 'Commission Payment' },
+  delivery_challan: { docPrefix: 'DC', label: 'Delivery Challan' },
 };
 
 /** Cash and credit invoices share one invoice series (one running number, no duplicates). */
