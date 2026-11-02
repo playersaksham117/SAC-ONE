@@ -63,7 +63,7 @@ export function quotationForPrint(q: Quotation): Sale {
   } as Sale;
 }
 
-const billNumber = (sale: Sale, deviceCode?: string) =>
+export const billNumber = (sale: Sale, deviceCode?: string) =>
   sale.serverNumber ?? (deviceCode ? `${deviceCode}-${sale.number}` : sale.number);
 
 const discountTotal = (sale: Sale) => sale.totals.itemDiscountTotal + sale.totals.invoiceDiscount;

@@ -7,6 +7,8 @@ import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
 import { billHtml, LAYOUTS, PDF_SIZES, PRINT_SIZES, printBill, savePdf, shareInvoice, type Layout, type PaperSize, type PdfSize } from '../../lib/receipt';
 import { usePref } from '../../lib/usePref';
+import { LABEL_SIZES, labelSettingsFrom } from '../../lib/labels';
+import { printWarrantyLabels, saleWarrantyUnits } from '../../lib/warrantyLabels';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
 import { useCan, useSession } from '../../store/session';
@@ -30,6 +32,7 @@ export default function SaleDetail() {
   const [layout, setLayout] = usePref<Layout>('sacpos.invoiceLayout', invoiceSettings?.layout ?? 'classic', LAYOUTS.map((l) => l.value));
   const [sharing, setSharing] = useState(false);
   const [captionCopied, setCaptionCopied] = useState(false);
+  const [labelSize, setLabelSize] = usePref<string>('sacpos.warrantyLabelSize', labelSettingsFrom([{ key: 'label.size', value: info?.settings?.labels?.size }]).size, LABEL_SIZES.map((s) => s.value));
 
   if (!sale) {
     return (
@@ -45,6 +48,13 @@ export default function SaleDetail() {
   const returnable = !sale.cancelledInErp && t.lines.some((l) => l.quantity - (sale.returned[l.productId] || 0) > 0);
   const html = (size: PaperSize) => billHtml(withBuyerAddress(sale), info?.company, info?.device.code, size, { layout, invoice: invoiceSettings ?? {} });
   const number = sale.serverNumber ?? sale.number;
+  // one sticker per unit with a warranty / guarantee / serial number (returned units left out)
+  const warrantyUnits = () => saleWarrantyUnits(sale, {
+    shop: info?.settings?.labels?.businessName || info?.company?.businessName || 'SACONE',
+    branch: info?.warehouse?.name ?? null,
+    deviceCode: info?.device.code,
+  });
+  const warrantyUnitsCount = warrantyUnits().length;
   const run = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch (e) { notify('Printing', (e as Error).message); }
   };
@@ -114,6 +124,25 @@ export default function SaleDetail() {
             <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: space.xs }}>
               Caption copied. Paste it in the chat if you want to add it to the PDF.
             </Text>
+          ) : null}
+          {warrantyUnitsCount > 0 && !sale.cancelledInErp ? (
+            <>
+              <Divider />
+              <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700', marginBottom: 6 }}>WARRANTY LABELS · {warrantyUnitsCount}</Text>
+              <Row gap={space.xs} style={{ flexWrap: 'wrap', marginBottom: space.sm }}>
+                {LABEL_SIZES.map((s) => <Chip key={s.value} label={s.label.split(' · ')[0]} active={labelSize === s.value} onPress={() => setLabelSize(s.value)} />)}
+              </Row>
+              <Button
+                title="Print warranty labels"
+                icon="pricetag-outline"
+                variant="secondary"
+                onPress={() => run(() => printWarrantyLabels(warrantyUnits(), labelSize))}
+                testID="print-warranty-labels"
+              />
+              <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.xs }}>
+                Shop, branch, sale date, warranty end and a barcode of the serial (or bill) number for Warranty Check.
+              </Text>
+            </>
           ) : null}
         </Card>
 

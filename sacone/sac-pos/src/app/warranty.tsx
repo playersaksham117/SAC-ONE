@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { sync, type WarrantyCheck, type WarrantyPeriod } from '../api/sacone';
-import { LABEL_SIZES, labelSettingsFrom, warrantyLabelsHtml, warrantyUnits } from '../lib/labels';
-import { printDocument } from '../lib/printDocument';
+import { LABEL_SIZES, labelSettingsFrom, warrantyUnits } from '../lib/labels';
+import { printWarrantyLabels } from '../lib/warrantyLabels';
 import { deviceConfig, useDevice } from '../store/device';
 import { Badge, Banner, Button, Card, Chip, Header, Row, Screen, SearchBar, colors, font, space } from '../ui/components';
 import { goBack } from '../lib/nav';
-
-const PT_PER_MM = 72 / 25.4;
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
@@ -40,11 +38,8 @@ export default function Warranty() {
       shop: info?.settings?.labels?.businessName || info?.company?.businessName || 'SACONE',
       branch: info?.warehouse?.name ?? '',
     });
-    if (!units.length) { setError('Nothing left to label on this invoice (all returned).'); return; }
-    const s = LABEL_SIZES.find((x) => x.value === labelSize) ?? LABEL_SIZES[0];
-    const page = s.cols ? { width: 595, height: 842 } : { width: Math.round(s.w * PT_PER_MM), height: Math.round(s.h * PT_PER_MM) };
     try {
-      await printDocument({ html: warrantyLabelsHtml(units, { size: labelSize }), ...page, margins: { left: 0, top: 0, right: 0, bottom: 0 } });
+      await printWarrantyLabels(units, labelSize);
     } catch (e) {
       setError((e as Error).message);
     }
