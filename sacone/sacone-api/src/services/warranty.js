@@ -98,8 +98,9 @@ export class WarrantyService {
     const today = istDate();
     const results = ids.map((id) => {
       const s = db().prepare(`
-        SELECT s.id, s.invoice_number, s.created_at, s.completed_at, s.status, c.name AS customer_name, c.phone AS customer_phone, c.is_walk_in
-        FROM pos_sales s LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = ?
+        SELECT s.id, s.invoice_number, s.created_at, s.completed_at, s.status, c.name AS customer_name, c.phone AS customer_phone, c.is_walk_in,
+          w.name AS warehouse_name
+        FROM pos_sales s LEFT JOIN customers c ON c.id = s.customer_id LEFT JOIN warehouses w ON w.id = s.warehouse_id WHERE s.id = ?
       `).get(id);
       const start = s.completed_at || s.created_at;
       const serials = serialsBySaleItem(id);
@@ -119,6 +120,8 @@ export class WarrantyService {
         saleId: s.id,
         invoiceNumber: s.invoice_number,
         date: start,
+        // the branch (warehouse) it was sold from, for warranty labels
+        branch: s.warehouse_name || null,
         status: s.status,
         customerName: s.is_walk_in ? null : s.customer_name,
         customerPhone: s.is_walk_in ? null : s.customer_phone,

@@ -92,7 +92,7 @@ export interface WarrantyPeriod { period: string; till: string; daysLeft: number
 export interface WarrantyCheck {
   query: string; today: string;
   results: {
-    saleId: string; invoiceNumber: string; date: string; status: string; customerName: string | null; customerPhone: string | null; matchedSerial: string | null;
+    saleId: string; invoiceNumber: string; date: string; branch?: string | null; status: string; customerName: string | null; customerPhone: string | null; matchedSerial: string | null;
     lines: { itemId: string; productName: string; sku: string; quantity: number; quantityReturned: number; serials: string[]; warranty: WarrantyPeriod | null; guarantee: WarrantyPeriod | null }[];
   }[];
 }

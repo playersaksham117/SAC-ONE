@@ -6,6 +6,8 @@ import { RequirePermission, useAuth } from '../../../../lib/auth-context';
 import PageHeader, { Alert, Modal } from '../../../../components/ui';
 import { EmptyPanel, SectionCard } from '../../../../components/module-ui';
 import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
+import { LABEL_SIZES, labelSettingsFrom, warrantyLabelsHtml, warrantyUnits } from '../../../../lib/labels';
+import { printHtml } from '../../../../lib/bill-document';
 
 const ddmmyyyy = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 
@@ -56,6 +58,21 @@ export default function WarrantyCheckPage() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);
   const input = useRef(null);
+  // Warranty labels: size from Settings → Barcode labels (changeable here); shop name from the firm
+  const [labelSize, setLabelSize] = useState('50x25');
+  const [shop, setShop] = useState('');
+  useEffect(() => {
+    Promise.all([apiRequest('/api/settings').catch(() => []), apiRequest('/api/company').catch(() => null)]).then(([list, company]) => {
+      const rows = Array.isArray(list) ? list : [];
+      setLabelSize(labelSettingsFrom(rows).size);
+      setShop(rows.find((x) => x.key === 'label.businessName')?.value || company?.businessName || company?.name || '');
+    });
+  }, []);
+  const printLabels = (r) => {
+    const units = warrantyUnits(r, { shop });
+    if (!units.length) { setError('Nothing left to label on this invoice (all returned).'); return; }
+    printHtml(warrantyLabelsHtml(units, { size: labelSize }));
+  };
 
   const search = async (value = q) => {
     if (value.trim().length < 2) return;
@@ -73,13 +90,27 @@ export default function WarrantyCheckPage() {
         <button type="submit" className="btn-primary shrink-0" disabled={busy || q.trim().length < 2}>{busy ? 'Checking…' : 'Check'}</button>
       </form>
       <Alert message={error} />
+      {data?.results.length ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500">Warranty label size</span>
+          <select className="input-field max-w-xs" value={labelSize} onChange={(e) => setLabelSize(e.target.value)}>
+            {LABEL_SIZES.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+          <span className="text-xs text-slate-400">Shop, branch, sale date, warranty end and a barcode of the serial (or invoice) that this page scans back.</span>
+        </div>
+      ) : null}
 
       {data && !data.results.length && <EmptyPanel title="Nothing found" description={`No invoice or serial number matches “${data.query}”.`} />}
       <div className="space-y-4">
         {data?.results.map((r) => (
           <SectionCard key={r.saleId}
             title={<span>Invoice {r.invoiceNumber}{r.status === 'cancelled' ? <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs text-rose-700">Cancelled</span> : null}</span>}
-            action={isAdmin && r.status === 'completed' && <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={() => setEditSaleId(r.saleId)}>✏ Edit bill</button>}
+            action={(
+              <div className="flex gap-2">
+                {r.status !== 'cancelled' && <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={() => printLabels(r)}>🏷 Warranty labels</button>}
+                {isAdmin && r.status === 'completed' && <button type="button" className="btn-secondary !min-h-0 !py-1.5 text-xs" onClick={() => setEditSaleId(r.saleId)}>✏ Edit bill</button>}
+              </div>
+            )}
             subtitle={`${new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · ${r.customerName ? `${r.customerName}${r.customerPhone ? ` · ${r.customerPhone}` : ''}` : 'Walk-in customer'}${r.matchedSerial ? ` · serial ${r.matchedSerial}` : ''}`}
             noPadding>
             <div className="divide-y divide-slate-100">

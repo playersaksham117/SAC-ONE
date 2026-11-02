@@ -91,6 +91,11 @@ function oneLabel(p, size, fields, { company, footer }) {
 export function labelsHtml(items, { size: sizeKey, fields, company, footer = '' }) {
   const size = LABEL_SIZES.find((s) => s.value === sizeKey) || LABEL_SIZES[0];
   const labels = items.flatMap(({ product, copies }) => Array.from({ length: Math.max(0, Math.min(500, Number(copies) || 0)) }, () => oneLabel(product, size, fields, { company, footer })));
+  return labelPageHtml(labels, size);
+}
+
+/** Lay out ready label blocks: one per page on a roll, or a grid on A4 sheets. */
+function labelPageHtml(labels, size) {
   const base = `
   *{box-sizing:border-box} html,body{margin:0;padding:0}
   body{font-family:Arial,Helvetica,sans-serif;color:#000}
@@ -125,4 +130,53 @@ export function labelsHtml(items, { size: sizeKey, fields, company, footer = '' 
     page-break-after:always;break-after:page;overflow:hidden}
   .sheet:last-child{page-break-after:auto;break-after:auto}
 </style></head><body>${pages.map((p) => `<div class="sheet">${p.join('')}</div>`).join('')}</body></html>`;
+}
+
+
+const istDay = (iso) => (iso ? new Date(Date.parse(iso) + 330 * 60000).toISOString().slice(0, 10) : '');
+const ddmm = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '');
+
+/**
+ * One sticker per unit sold from a Warranty Check result: each serial number gets its own label;
+ * lines without serials get one label per unit kept (returned units are left out).
+ */
+export function warrantyUnits(result, { shop = '', branch = '' } = {}) {
+  const units = [];
+  for (const l of result.lines || []) {
+    const kept = Math.max(0, Math.round(Number(l.quantity || 0) - Number(l.quantityReturned || 0)));
+    const base = {
+      shop, branch: result.branch || branch, productName: l.productName, invoiceNumber: result.invoiceNumber,
+      saleDate: istDay(result.date), warrantyTill: l.warranty?.till || null, guaranteeTill: l.guarantee?.till || null,
+    };
+    const serials = (l.serials || []).slice(0, kept || (l.serials || []).length);
+    if (serials.length) serials.forEach((serial) => units.push({ ...base, serial }));
+    else for (let i = 0; i < Math.min(kept, 200); i += 1) units.push({ ...base, serial: null });
+  }
+  return units;
+}
+
+/**
+ * Warranty stickers: shop and branch, product, sale date and invoice, warranty / guarantee end, and a
+ * barcode of the serial number (else the invoice number) that Warranty Check scans back.
+ */
+export function warrantyLabelsHtml(units, { size: sizeKey }) {
+  const size = LABEL_SIZES.find((s) => s.value === sizeKey) || LABEL_SIZES[0];
+  const unit = Math.min(size.h, size.w * 0.6);
+  const fs = (k) => `${(unit * k).toFixed(2)}mm`;
+  const labels = units.slice(0, 1000).map((u) => {
+    const code = String(u.serial || u.invoiceNumber || '').trim();
+    let bars = '';
+    try { bars = code ? code128Svg(code) : ''; } catch { bars = ''; }
+    const till = [u.warrantyTill ? `Warranty till ${ddmm(u.warrantyTill)}` : '', u.guaranteeTill ? `Guarantee till ${ddmm(u.guaranteeTill)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="lbl" style="font-size:${fs(0.095)}">
+    <div class="biz" style="font-size:${fs(0.11)}">${esc(u.shop)}</div>
+    ${u.branch ? `<div class="sub" style="font-size:${fs(0.08)}">${esc(u.branch)}</div>` : ''}
+    <div class="sub"><b>${esc(u.productName)}</b></div>
+    <div class="sub" style="font-size:${fs(0.08)}">Sold ${esc(ddmm(u.saleDate))} · ${esc(u.invoiceNumber)}</div>
+    ${till ? `<div style="font-size:${fs(0.08)};max-width:100%"><b>${esc(till)}</b></div>` : ''}
+    ${bars ? `<div class="bars">${bars}</div>` : ''}
+    <div class="code" style="font-size:${fs(0.085)}">${u.serial ? 'S/N ' : ''}${esc(code)}</div>
+  </div>`;
+  });
+  return labelPageHtml(labels, size);
 }

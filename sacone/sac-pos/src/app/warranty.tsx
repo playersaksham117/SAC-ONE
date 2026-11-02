@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { sync, type WarrantyCheck, type WarrantyPeriod } from '../api/sacone';
-import { deviceConfig } from '../store/device';
-import { Badge, Banner, Button, Card, Header, Row, Screen, SearchBar, colors, font, space } from '../ui/components';
+import { LABEL_SIZES, labelSettingsFrom, warrantyLabelsHtml, warrantyUnits } from '../lib/labels';
+import { printDocument } from '../lib/printDocument';
+import { deviceConfig, useDevice } from '../store/device';
+import { Badge, Banner, Button, Card, Chip, Header, Row, Screen, SearchBar, colors, font, space } from '../ui/components';
 import { goBack } from '../lib/nav';
+
+const PT_PER_MM = 72 / 25.4;
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
@@ -25,6 +29,26 @@ export default function Warranty() {
   const [data, setData] = useState<WarrantyCheck | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const info = useDevice((s) => s.info);
+  const defaultSize = useMemo(() => labelSettingsFrom([{ key: 'label.size', value: info?.settings?.labels?.size }]).size, [info]);
+  const [size, setSize] = useState<string | null>(null);
+  const labelSize = size ?? defaultSize;
+
+  // Warranty stickers: shop and branch, sale date, warranty end, barcode of the serial (or invoice)
+  const printLabels = async (r: WarrantyCheck['results'][number]) => {
+    const units = warrantyUnits(r, {
+      shop: info?.settings?.labels?.businessName || info?.company?.businessName || 'SACONE',
+      branch: info?.warehouse?.name ?? '',
+    });
+    if (!units.length) { setError('Nothing left to label on this invoice (all returned).'); return; }
+    const s = LABEL_SIZES.find((x) => x.value === labelSize) ?? LABEL_SIZES[0];
+    const page = s.cols ? { width: 595, height: 842 } : { width: Math.round(s.w * PT_PER_MM), height: Math.round(s.h * PT_PER_MM) };
+    try {
+      await printDocument({ html: warrantyLabelsHtml(units, { size: labelSize }), ...page, margins: { left: 0, top: 0, right: 0, bottom: 0 } });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
 
   const check = async () => {
     const cfg = deviceConfig();
@@ -41,6 +65,14 @@ export default function Warranty() {
         <SearchBar value={q} onChangeText={setQ} placeholder="Scan or type invoice / serial no." onSubmitEditing={check} autoFocus />
         <Button title="Check" icon="shield-checkmark-outline" onPress={check} loading={busy} disabled={q.trim().length < 2} style={{ marginTop: space.sm }} />
         {error ? <View style={{ marginTop: space.md }}><Banner tone="danger" messages={[error]} /></View> : null}
+        {data?.results.length ? (
+          <View style={{ marginTop: space.md }}>
+            <Text style={{ fontSize: font.xs, color: colors.textMuted, fontWeight: '600', marginBottom: 4 }}>Warranty label size</Text>
+            <Row gap={6} style={{ flexWrap: 'wrap' }}>
+              {LABEL_SIZES.map((x) => <Chip key={x.value} label={x.label.split(' · ')[0]} active={labelSize === x.value} onPress={() => setSize(x.value)} />)}
+            </Row>
+          </View>
+        ) : null}
         {data && !data.results.length ? <Text style={{ color: colors.textMuted, marginTop: space.lg }}>Nothing found for “{data.query}”.</Text> : null}
         {data?.results.map((r) => (
           <Card key={r.saleId} style={{ marginTop: space.md }}>
@@ -59,6 +91,9 @@ export default function Warranty() {
                 <Period label="Guarantee" p={l.guarantee} />
               </View>
             ))}
+            {r.status !== 'cancelled' ? (
+              <Button title="Print warranty labels" icon="pricetag-outline" variant="secondary" size="sm" onPress={() => printLabels(r)} style={{ marginTop: space.md }} />
+            ) : null}
           </Card>
         ))}
         <View style={{ height: space.xl }} />
