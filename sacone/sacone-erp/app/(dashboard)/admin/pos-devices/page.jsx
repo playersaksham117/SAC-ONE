@@ -149,7 +149,7 @@ function SyncKeyBanner({ secret, onClose }) {
  * changes until a phone / browser uses it; then that device becomes this terminal and the device
  * that used it before is disconnected.
  */
-function PairingCodeBanner({ pairing, onClose, onNew }) {
+function PairingCodeBanner({ pairing, onClose, onNew, onOldApp }) {
   const urls = useServerUrls();
   const { session } = useAuth();
   const [now, setNow] = useState(Date.now());
@@ -183,6 +183,11 @@ function PairingCodeBanner({ pairing, onClose, onNew }) {
           <div>
             <div className="text-xs text-emerald-800">Server address{candidates.length > 1 ? 'es' : ''}</div>
             <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [getApiBase()]).join('\n')}</code>
+          </div>
+          <div className="rounded-lg bg-white/70 p-2 text-xs text-emerald-900">
+            Phone app has <b>no pairing-code box</b> (older SAC-POS)?{' '}
+            <button type="button" className="font-semibold underline" onClick={onOldApp}>Show the key &amp; QR for an older app</button>
+            {' '}— scan it with <b>Scan QR from ERP</b> (or type the key). This makes a new key now.
           </div>
           <p className="text-xs text-emerald-900">
             On the phone or counter PC: <b>Connect with a pairing code</b> (first setup, or More → Connect to another terminal) → server address → this code.
@@ -261,7 +266,23 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
         )}
       </Toolbar>
 
-      <PairingCodeBanner pairing={pairing} onClose={() => setPairing(null)} onNew={() => pairing && connectDevice(pairing.device)} />
+      <PairingCodeBanner
+        pairing={pairing}
+        onClose={() => setPairing(null)}
+        onNew={() => pairing && connectDevice(pairing.device)}
+        onOldApp={async () => {
+          if (!pairing) return;
+          if (!window.confirm(`Show a key for ${pairing.device.name} for an older SAC-POS app?
+
+The device using ${pairing.device.name} now stops and the phone you are setting up takes over once it scans the QR.`)) return;
+          try {
+            onSecret(await apiRequest(`/api/pos-devices/${pairing.device.id}/rotate-key`, { method: 'POST' }));
+            setPairing(null);
+            await onChanged();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } catch (err) { setError(err.message); }
+        }}
+      />
 
       {!devices.length ? (
         <EmptyPanel title="No POS devices yet" description="Register a phone to let SAC-POS sync sales, returns, collections and customers into SACONE." />
