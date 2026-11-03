@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const { checkPermission } = useAuth();
   const canEdit = checkPermission('core.system_settings.edit');
 
+  const [accounts, setAccounts] = useState([]);
   const load = async () => {
     setLoading(true);
     setError('');
@@ -39,7 +40,9 @@ export default function SettingsPage() {
         'invoice.upi_qr_print': String(value('invoice.upi_qr_print', 'true')) !== 'false' ? 'true' : 'false',
         'pos.upi_qr_screen': String(value('pos.upi_qr_screen', 'true')) !== 'false' ? 'true' : 'false',
         'invoice.upi_qr_source': value('invoice.upi_qr_source', 'generated') === 'uploaded' ? 'uploaded' : 'generated',
+        'pos.quick_bill_account_id': value('pos.quick_bill_account_id', ''),
       });
+      setAccounts(await apiRequest('/api/finance/accounts').then((a) => (a.items || a || []).filter((x) => x.isActive !== false && x.accountType !== 'cash')).catch(() => []));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -156,6 +159,13 @@ export default function SettingsPage() {
                 <option value="uploaded">Use the uploaded QR image (customer types the amount)</option>
               </select>
               <span className="mt-1 block text-xs text-slate-500">Upload the image on the bank in Banking &amp; Cash → Accounts → Edit. Without an uploaded image the generated QR is used.</span>
+            </label>
+            <label className="mt-3 block text-sm"><span className="label">UPI QR for Quick Bills (walk-in / unregistered)</span>
+              <select className="input-field max-w-md" {...field('pos.quick_bill_account_id')}>
+                <option value="">Same as GST invoices (default bank / terminal&apos;s bank)</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}{a.bankName ? ` · ${a.bankName}` : ''}{a.upiId ? ` · ${a.upiId}` : ''}</option>)}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">Quick Bills (their own QB number series) show and print this account&apos;s UPI QR and bank details, on SAC-POS and from the ERP. Use one of the firm&apos;s own accounts.</span>
             </label>
             {[
               ['invoice.upi_qr_print', 'Print the UPI pay QR on bills', 'Under “Our Bankers” on A4 / A5 invoices and at the foot of 58 / 80 mm receipts, from the ERP and SAC-POS.'],

@@ -17,6 +17,8 @@ export const DOCUMENT_TYPES = {
   supplier_payment: { docPrefix: 'PV', label: 'Supplier Payment' },
   commission_payment: { docPrefix: 'CP', label: 'Commission Payment' },
   delivery_challan: { docPrefix: 'DC', label: 'Delivery Challan' },
+  // Walk-in / unregistered (B2C) bills in their own series; still GST tax invoices, reported as B2C.
+  quick_bill: { docPrefix: 'QB', label: 'Quick Bill (walk-in / unregistered)' },
 };
 
 /** Cash and credit invoices share one invoice series (one running number, no duplicates). */
@@ -26,6 +28,7 @@ const seriesTypeOf = (documentType) => (documentType === 'cash_invoice' ? 'tax_i
 /** Numbers already on a document are skipped, so a changed "next number" can never duplicate one. */
 const TAKEN = {
   tax_invoice: 'SELECT 1 FROM pos_sales WHERE invoice_number = ?',
+  quick_bill: 'SELECT 1 FROM pos_sales WHERE invoice_number = ?',
 };
 
 function formatNumber(firm, series, n, fy) {

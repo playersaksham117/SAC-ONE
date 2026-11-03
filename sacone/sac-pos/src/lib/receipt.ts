@@ -265,6 +265,9 @@ export interface InvoiceSettings {
   printUpiQr?: boolean;
   posUpiQr?: boolean;
   upiQrSource?: 'generated' | 'uploaded';
+  quickBank?: PayBank | null;
+  /** Internal: which cached uploaded QR image to print ('quick' for Quick Bills). */
+  qrSlot?: 'quick';
   signStamp?: { print?: boolean; version?: string | null };
 }
 
@@ -280,7 +283,7 @@ function signStampHtml(invoice: InvoiceSettings, heightMm: number) {
 /** UPI pay QR for this bill (balance due, else payer types the amount), or '' when off / no UPI ID. */
 function upiQr(sale: Sale, company: CompanyInfo | null | undefined, invoice: InvoiceSettings, px: number) {
   if (isQuote(sale) || invoice.printUpiQr === false) return '';
-  const image = uploadedQr(invoice.upiQrSource);
+  const image = uploadedQr(invoice.upiQrSource, invoice.qrSlot);
   if (image) {
     const label = sale.amountDue > 0 ? `Scan & pay ${formatMoney(sale.amountDue)}` : 'Scan to pay by UPI';
     return `<div class="upi"><img src="${image}" alt="UPI QR" width="${px}" height="${px}" style="display:block;margin:0 auto 2px;object-fit:contain"><div>${esc(label)}</div></div>`;
@@ -510,10 +513,16 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
 }
 
 /** A5 / A4 use the chosen layout (type 1 = GST classic by default); 58 / 80 mm are receipts. */
+/** A Quick Bill prints the Quick Bill bank (Settings → Invoice printing) and its UPI QR; others as set. */
+export function invoiceFor(sale: Pick<Sale, 'series'>, invoice: InvoiceSettings): InvoiceSettings {
+  return sale.series === 'quick' && invoice.quickBank ? { ...invoice, bank: invoice.quickBank, qrSlot: 'quick' } : invoice;
+}
+
 export function billHtml(
   sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PaperSize,
-  { layout = 'classic', invoice = {} }: { layout?: Layout; invoice?: InvoiceSettings } = {},
+  { layout = 'classic', invoice: settings = {} }: { layout?: Layout; invoice?: InvoiceSettings } = {},
 ): string {
+  const invoice = invoiceFor(sale, settings);
   if (!isSheet(size)) return thermalHtml(sale, company, deviceCode, size, invoice);
   return layout === 'modern' ? sheetHtml(sale, company, deviceCode, size, invoice) : classicHtml(sale, company, deviceCode, size, invoice);
 }

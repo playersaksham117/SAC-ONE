@@ -152,6 +152,8 @@ export interface Sale extends SyncMeta {
   shipTo?: ShipTo | null;
   /** Credit bills: the date the due amount should be paid by ('YYYY-MM-DD'). */
   dueDate?: string | null;
+  /** 'quick' = Quick Bill (walk-in / unregistered customer, own number series; still a GST invoice). */
+  series?: 'quick' | null;
   returned: Record<string, number>;   // productId → qty returned
   /** The bill was cancelled in the ERP after it synced. */
   cancelledInErp?: boolean;

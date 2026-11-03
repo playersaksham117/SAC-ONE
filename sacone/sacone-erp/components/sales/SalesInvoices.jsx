@@ -176,6 +176,7 @@ Reason (optional):`);
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-mono text-xs font-semibold">
                     {s.invoiceNumber}
+                    {s.documentType === 'quick_bill' && <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 font-sans text-[10px] font-semibold text-violet-700">Quick Bill</span>}
                     {s.customerPoNumber && (
                       <div className="font-sans text-[11px] font-normal text-slate-500">
                         PO {s.customerPoNumber}{s.customerPoDate ? ` · ${new Date(s.customerPoDate).toLocaleDateString('en-IN')}` : ''}
@@ -271,16 +272,19 @@ async function loadInvoice(saleId) {
     ? await apiRequest(`/api/customers/${sale.customerId}`).catch(() => null)
     : null;
   const model = saleDocument(sale, customer);
+  // a Quick Bill prints the Quick Bill bank and its UPI QR (Settings → Invoice printing)
+  const printSettings = sale.documentType === 'quick_bill' && invoice.quickBank ? { ...invoice, bank: invoice.quickBank } : invoice;
   return {
     summary: [
       ['Invoice', sale.invoiceNumber],
+      ...(sale.documentType === 'quick_bill' ? [['Bill type', 'Quick Bill (walk-in / unregistered)']] : []),
       ['Date', new Date(sale.createdAt).toLocaleString('en-IN')],
       ['Customer', sale.customerIsWalkIn ? 'Walk-in' : sale.customerName],
       ...(sale.customerPoNumber ? [['Customer PO', `${sale.customerPoNumber}${sale.customerPoDate ? ` · ${new Date(sale.customerPoDate).toLocaleDateString('en-IN')}` : ''}`]] : []),
       ['Total', money(sale.grandTotal)],
       ...(sale.notes ? [['Notes', sale.notes]] : []),
     ],
-    html: (size, layout) => documentHtml(model, company, size, { layout, invoice }),
+    html: (size, layout) => documentHtml(model, company, size, { layout, invoice: printSettings }),
     defaultLayout: invoice.layout,
     items: sale.items,
     csvName: sale.invoiceNumber,

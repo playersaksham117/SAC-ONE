@@ -109,6 +109,10 @@ export function completeSale(
   }
   const dated = billTimestamp(billDate);
   if (dated.error) throw new ValidationError({ errors: [{ field: 'billDate', message: dated.error }], warnings: [] });
+  const quick = cart.series === 'quick';
+  if (quick && customer?.gstin) {
+    throw new ValidationError({ errors: [{ field: 'series', message: `${customer.name} has a GSTIN: bill them on a GST invoice, not a Quick Bill.` }], warnings: [] });
+  }
   const amountDue = round2(payments.filter((p) => p.method === 'credit').reduce((s, p) => s + p.amount, 0));
   // Change is worked out against the cash the customer hands over (not the exchange credit).
   const cashPaid = round2(customerPayments.filter((p) => p.method === 'cash').reduce((s, p) => s + p.amount, 0));
@@ -134,6 +138,7 @@ export function completeSale(
     transport: transport ?? null,
     shipTo: shipTo ?? null,
     dueDate: amountDue > 0 ? dueDate || addDays(billDate || istToday(), customer?.creditDays ?? DEFAULT_CREDIT_DAYS) : null,
+    series: quick ? 'quick' : null,
     returned: {},
     sync: 'pending',
   };

@@ -196,6 +196,13 @@ export function bankForPrint(acct, { withImage = true } = {}) {
   };
 }
 
+/** Settings → Invoice printing → UPI QR for Quick Bills: that account, or null (= the usual bank). */
+export function quickBillBank({ withImage = true } = {}) {
+  const id = settingsRepo.get('pos.quick_bill_account_id')?.value;
+  const acct = id ? repos.financeAccounts.findById(String(id)) : null;
+  return acct && acct.isActive !== false ? bankForPrint(acct, { withImage }) : null;
+}
+
 /** The firm's signature and stamp images (Settings → Signature & stamp), kept as firm settings. */
 export const SIGN_KEYS = { sign: 'invoice.sign_image', stamp: 'invoice.stamp_image' };
 const IMAGE_SETTING_KEYS = new Set(Object.values(SIGN_KEYS));
@@ -241,6 +248,8 @@ export function invoicePrintSettings({ withImage = true } = {}) {
     copyLabel: get('invoice.copy_label', 'ORIGINAL FOR RECIPIENT'),
     bankDetails: get('invoice.bank_details'),
     bank: bankForPrint(repos.financeAccounts.findDefault(), { withImage }),
+    // Settings → Invoice printing: the bank whose UPI QR shows on Quick Bills (blank = same as GST invoices)
+    quickBank: quickBillBank({ withImage }),
     // 'generated' = QR made from the UPI ID with the amount filled in; 'uploaded' = the firm's own QR image.
     upiQrSource: get('invoice.upi_qr_source', 'generated') === 'uploaded' ? 'uploaded' : 'generated',
     // Settings → Invoice printing: UPI pay QR on printed bills, and the scan-to-pay QR on SAC-POS.
@@ -634,7 +643,12 @@ export class PosService {
     }
 
     const isAllCash = normalizedPayments.every((p) => p.method !== 'credit');
-    const docType = isAllCash && amountCredit <= 0 ? 'cash_invoice' : 'tax_invoice';
+    // Quick Bill: walk-in or unregistered (no GSTIN) customer, own number series; a GST invoice all the same (B2C).
+    const quick = data.series === 'quick' || data.series === 'quick_bill';
+    if (quick && !customer.isWalkIn && String(customer.gstNumber || '').trim()) {
+      throw new AppError(`${customer.name} has a GSTIN: bill them on a GST invoice, not a Quick Bill.`, 400, 'QUICK_BILL_B2B');
+    }
+    const docType = quick ? 'quick_bill' : isAllCash && amountCredit <= 0 ? 'cash_invoice' : 'tax_invoice';
     let invoiceNumber = data.invoiceNumber;
     let firmId = company?.id || null;
     if (!invoiceNumber) {
@@ -906,6 +920,8 @@ export class PosService {
         ...(data.billDate ? { billDate: data.billDate } : {}),
         // the credit due date stays unless the edit sends a new one
         dueDate: data.dueDate !== undefined ? data.dueDate : old.dueDate,
+        // a Quick Bill stays in its series
+        series: old.documentType === 'quick_bill' ? 'quick' : undefined,
         // Transport and Ship-to stay with the invoice unless the edit sends new ones.
         transport: data.transport !== undefined ? data.transport : old.transport,
         shipTo: data.shipTo !== undefined ? data.shipTo : old.shipTo,

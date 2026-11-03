@@ -32,6 +32,8 @@ export interface PingResult {
       layout?: 'classic' | 'modern'; copyLabel?: string; bankDetails?: string; terms?: string; declaration?: string;
       /** The terminal's bank (else the firm's default) for "Our Bankers" and the UPI pay QR. */
       bank?: PayBank | null;
+      /** Settings → Invoice printing → UPI QR for Quick Bills (null = same as bank). */
+      quickBank?: PayBank | null;
       /** Settings → Invoice printing: print the UPI QR on bills / show the scan-to-pay QR here. */
       printUpiQr?: boolean;
       posUpiQr?: boolean;
@@ -152,8 +154,8 @@ export const sync = {
     }),
 
   /** The uploaded UPI QR image of this terminal's bank (only fetched when its version changes). */
-  upiQr: (c: DeviceConfig) =>
-    request<{ accountId: string | null; version: string | null; image: string | null }>(c.baseUrl, '/api/v1/sync/upi-qr', { headers: deviceHeaders(c), timeoutMs: 30000 }),
+  upiQr: (c: DeviceConfig, series?: 'quick') =>
+    request<{ accountId: string | null; version: string | null; image: string | null }>(c.baseUrl, '/api/v1/sync/upi-qr', { headers: deviceHeaders(c), timeoutMs: 30000, query: series ? { series } : undefined }),
 
   /** Check in / out (or read today) for a staff member; the server takes the time. */
   attendance: (c: DeviceConfig, userId: string, action: 'status' | 'in' | 'out') =>

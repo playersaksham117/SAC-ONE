@@ -93,8 +93,13 @@ export default function Checkout() {
   const [qrOpen, setQrOpen] = useState(false);
   const deviceInfo = useDevice((s) => s.info);
   const invoiceCfg = deviceInfo?.settings?.invoice;
-  const payBank = invoiceCfg?.bank;
-  const cachedQr = useUpiQr((s) => s.image);
+  const series = useCart((s) => s.series);
+  const quickBill = series === 'quick';
+  // Quick Bills take the Quick Bill bank's UPI (Settings → Invoice printing), when one is set
+  const useQuickBank = quickBill && Boolean(invoiceCfg?.quickBank);
+  const payBank = useQuickBank ? invoiceCfg?.quickBank : invoiceCfg?.bank;
+  const cachedQr = useUpiQr((s) => (useQuickBank ? s.quickImage : s.image));
+  const quickB2b = quickBill && Boolean(customer?.gstin);
   const qrImage = invoiceCfg?.upiQrSource === 'uploaded' ? cachedQr : null;
   const canShowQr = Boolean(payBank) && (Boolean(qrImage) || hasUpi(payBank));
   const [poOn, setPoOn] = useState(false);
@@ -147,7 +152,7 @@ export default function Checkout() {
     if (receivedTotal < cashPart - 0.001) drawerErrors.push(`Notes received (${formatMoney(receivedTotal)}) are less than the cash due (${formatMoney(cashPart)})`);
     else if (changeNotes !== changeNeeded) drawerErrors.push(`Change notes add up to ${formatMoney(changeNotes)}; give ${formatMoney(changeNeeded)}`);
   }
-  const blocked = check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error)
+  const blocked = quickB2b || check.errors.length > 0 || drawerErrors.length > 0 || Boolean(poCheck.error)
     || Boolean(transportCheck.error) || Boolean(shipCheck.error) || Boolean(isAdmin && billDateError);
 
   const choose = (method: PaymentMethod) => {
@@ -204,7 +209,12 @@ export default function Checkout() {
         </View>
       )}
     >
-      <Header title="Payment" subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => goBack()} />
+      <Header title={quickBill ? 'Payment · Quick Bill' : 'Payment'} subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => goBack()} />
+      {quickB2b ? (
+        <View style={{ paddingHorizontal: space.lg }}>
+          <Banner tone="danger" title="Quick Bill is for walk-in / unregistered customers" messages={[`${customer?.name} has a GSTIN. Switch to GST Bill on the Sell screen, or remove the customer.`]} />
+        </View>
+      ) : null}
       <View style={{ paddingHorizontal: space.lg }}>
         <Card style={{ alignItems: 'center', backgroundColor: colors.dark, borderColor: colors.dark }}>
           <Text style={{ color: '#94A3B8', fontWeight: '600' }}>{exchange ? 'To collect after exchange' : 'Amount payable'}</Text>

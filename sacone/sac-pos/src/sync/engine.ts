@@ -128,6 +128,18 @@ async function runCycle(): Promise<void> {
         } catch { /* keep the old image; retry next sync */ }
       }
     }
+    // 1b'. the Quick Bill bank's uploaded QR (when one is set for Quick Bills)
+    const quickBank = useDevice.getState().info?.settings?.invoice?.quickBank;
+    const wantQuick = quickBank?.hasQrImage ? quickBank.qrImageVersion ?? null : null;
+    if (wantQuick !== useUpiQr.getState().quickVersion) {
+      if (!wantQuick) useUpiQr.getState().setQuick(null, null);
+      else {
+        try {
+          const qr = await sync.upiQr(cfg, 'quick');
+          useUpiQr.getState().setQuick(qr.version, qr.image);
+        } catch { /* retry next sync */ }
+      }
+    }
 
     // 1c. the firm's signature & stamp images, only when the ERP has new ones
     const ss = useDevice.getState().info?.settings?.invoice?.signStamp;

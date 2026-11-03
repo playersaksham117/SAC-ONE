@@ -21,7 +21,7 @@ import { generateApiKeySecret, hashApiKey } from '../repositories/sqlite/webstor
 import { authService } from './index.js';
 import { firmService } from './firms.js';
 import { currentFirmId } from '../database/context.js';
-import { posService, bankForPrint, invoicePrintSettings, labelPrintSettings } from './pos.js';
+import { posService, bankForPrint, invoicePrintSettings, labelPrintSettings, quickBillBank } from './pos.js';
 import { quotationService } from './quotations.js';
 import { customerService } from './parties.js';
 import { inventoryMovementService } from './inventory.js';
@@ -139,6 +139,7 @@ function phoneSale(s) {
     transport: s.transport || null,
     shipTo: s.shipTo || null,
     dueDate: s.amountCredit > 0 ? s.dueDate || null : null,
+    series: s.documentType === 'quick_bill' ? 'quick' : null,
   };
 }
 const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
@@ -320,9 +321,11 @@ export class PosSyncService {
     };
   }
 
-  /** The uploaded UPI QR image of this terminal's bank (else the default bank), for caching on the phone. */
-  upiQrImage(device) {
-    const acct = (device.paymentAccountId && repos.financeAccounts.findById(device.paymentAccountId)) || repos.financeAccounts.findDefault();
+  /** The uploaded UPI QR image of this terminal's bank (else the default bank), for caching on the phone; series=quick: the Quick Bill bank. */
+  upiQrImage(device, series = '') {
+    const quickId = series === 'quick' ? repos.systemSettings.get('pos.quick_bill_account_id')?.value : null;
+    const acct = (quickId && repos.financeAccounts.findById(String(quickId)))
+      || (device.paymentAccountId && repos.financeAccounts.findById(device.paymentAccountId)) || repos.financeAccounts.findDefault();
     const bank = acct ? bankForPrint(acct) : null;
     return { accountId: acct?.id || null, version: bank?.qrImageVersion || null, image: bank?.qrImage || null };
   }
@@ -698,6 +701,8 @@ export class PosSyncService {
         ? str(sale.customer_po_date) : undefined,
       // credit due date chosen on the phone (checked at checkout; otherwise from credit days)
       dueDate: str(sale.due_date) || undefined,
+      // Quick Bill series (walk-in / unregistered); checked at checkout
+      series: str(sale.series) === 'quick' ? 'quick' : undefined,
       // GST bills: transport / dispatch details and a separate Shipped To (consignee).
       // A malformed block is dropped rather than failing the sale.
       transport: (() => { try { return transportFrom(sale.transport); } catch { return null; } })(),

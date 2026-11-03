@@ -47,7 +47,7 @@ posSyncRouter.get('/sign-stamp', asyncHandler(async (req, res) => {
   sendSuccess(res, signStampForPrint());
 }));
 posSyncRouter.get('/upi-qr', asyncHandler(async (req, res) => {
-  sendSuccess(res, posSyncService.upiQrImage(req.device));
+  sendSuccess(res, posSyncService.upiQrImage(req.device, String(req.query.series || '')));
 }));
 
 posSyncRouter.post('/push', asyncHandler(async (req, res) => {

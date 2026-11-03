@@ -22,6 +22,9 @@ interface CartState {
   mode: 'sale' | 'quotation';
   /** The phone quotation this cart was loaded from (the sale converts it). */
   fromQuotation: { id: string; number: string } | null;
+  /** Bill type for sales: GST invoice or Quick Bill (walk-in / unregistered); stays as chosen. */
+  series: 'gst' | 'quick';
+  setSeries: (series: 'gst' | 'quick') => void;
   setMode: (mode: 'sale' | 'quotation') => void;
   loadQuotation: (q: Quotation) => void;
   add: (p: Product, qty?: number) => void;
@@ -48,6 +51,11 @@ export const useCart = create<CartState>()(
       exchange: null,
       mode: 'sale',
       fromQuotation: null,
+      series: 'gst',
+
+      setSeries(series) {
+        set({ series });
+      },
 
       setMode(mode) {
         set((s) => (s.exchange && mode === 'quotation' ? {} : { mode, fromQuotation: mode === 'quotation' ? null : s.fromQuotation }));

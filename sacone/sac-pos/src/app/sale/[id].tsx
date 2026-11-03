@@ -152,6 +152,7 @@ export default function SaleDetail() {
         {sale.syncWarnings?.length ? <Banner tone="warning" messages={sale.syncWarnings} /> : null}
 
         <Card>
+          {sale.series === 'quick' ? <KeyValue label="Bill type" value="Quick Bill (walk-in / unregistered, GST included)" muted /> : null}
           <KeyValue label="Date" value={new Date(sale.createdAt).toLocaleString('en-IN')} muted />
           <KeyValue label="Cashier" value={sale.userName} muted />
           {sale.customer ? <KeyValue label="Customer" value={sale.customer.name} muted /> : null}

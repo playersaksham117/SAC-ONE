@@ -22,6 +22,7 @@ export interface ServerSale {
   transport: Transport | null;
   shipTo: ShipTo | null;
   dueDate?: string | null;
+  series?: 'quick' | null;
 }
 
 /** An ERP quotation (GET /api/v1/sync/documents). */
@@ -93,6 +94,7 @@ export function withServerSale(local: Sale, s: ServerSale): Sale {
     transport: s.transport,
     shipTo: s.shipTo,
     dueDate: s.dueDate ?? null,
+    series: s.series ?? null,
     cancelledInErp: undefined,
     returned,
   };

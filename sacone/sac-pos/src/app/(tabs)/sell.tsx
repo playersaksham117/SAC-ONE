@@ -32,6 +32,13 @@ export default function Sell() {
   const lines = useCart((s) => s.lines);
   const mode = useCart((s) => s.mode);
   const setMode = useCart((s) => s.setMode);
+  const series = useCart((s) => s.series);
+  const setSeries = useCart((s) => s.setSeries);
+  const pickType = (v: 'gst' | 'quick' | 'quotation') => {
+    if (v === 'quotation') { setMode('quotation'); return; }
+    setMode('sale');
+    setSeries(v);
+  };
   const canQuote = useCan('quote');
   const quoting = canQuote && mode === 'quotation';
   const add = useCart((s) => s.add);
@@ -211,15 +218,20 @@ export default function Sell() {
         )}
       />
       <View style={{ paddingHorizontal: space.lg }}>
-        {canQuote ? (
-          <View style={{ marginBottom: space.sm }}>
-            <Segmented<'sale' | 'quotation'>
-              value={quoting ? 'quotation' : 'sale'}
-              onChange={setMode}
-              options={[{ value: 'sale', label: 'Sale' }, { value: 'quotation', label: 'Quotation' }]}
-            />
-          </View>
-        ) : null}
+        <View style={{ marginBottom: space.sm }}>
+          <Segmented<'gst' | 'quick' | 'quotation'>
+            value={quoting ? 'quotation' : series}
+            onChange={pickType}
+            options={[
+              { value: 'gst', label: 'GST Bill' },
+              { value: 'quick', label: 'Quick Bill' },
+              ...(canQuote ? [{ value: 'quotation' as const, label: 'Quotation' }] : []),
+            ]}
+          />
+          {!quoting && series === 'quick' ? (
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 4 }}>Quick Bill: walk-in / unregistered customers, own number series (QB), GST included.</Text>
+          ) : null}
+        </View>
         <ExchangeNotice />
         <SearchBar
           inputRef={searchRef}

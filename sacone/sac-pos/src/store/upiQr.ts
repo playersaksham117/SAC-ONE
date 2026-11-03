@@ -10,6 +10,9 @@ interface UpiQrState {
   version: string | null;
   image: string | null;
   set: (version: string | null, image: string | null) => void;
+  quickVersion: string | null;
+  quickImage: string | null;
+  setQuick: (version: string | null, image: string | null) => void;
 }
 
 export const useUpiQr = create<UpiQrState>()(
@@ -17,15 +20,18 @@ export const useUpiQr = create<UpiQrState>()(
     (set) => ({
       version: null,
       image: null,
+      quickVersion: null,
+      quickImage: null,
       set: (version, image) => set({ version, image }),
+      setQuick: (quickVersion, quickImage) => set({ quickVersion, quickImage }),
     }),
     { name: 'sacpos.upiQr', storage: jsonStorage },
   ),
 );
 
 /** The cached image when the ERP says to show the uploaded QR, else null (use the generated QR). */
-export function uploadedQr(source?: string | null): string | null {
+export function uploadedQr(source?: string | null, slot?: 'quick'): string | null {
   if (source !== 'uploaded') return null;
-  const image = useUpiQr.getState().image;
+  const image = slot === 'quick' ? useUpiQr.getState().quickImage : useUpiQr.getState().image;
   return image && /^data:image\/(png|jpeg|webp);base64,/.test(image) ? image : null;
 }
