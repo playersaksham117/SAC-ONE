@@ -20,7 +20,7 @@ import { deliveryChallanRouter } from './delivery-challans.js';
 import { bankImportRouter, bankTransactionRouter } from './bank-import.js';
 import { approvalRouter } from './approvals.js';
 import { salesAgentRouter, commissionRouter, commissionPaymentRouter } from './commissions.js';
-import { posSyncRouter, posDeviceAdminRouter } from './pos-sync.js';
+import { posSyncRouter, posDeviceAdminRouter, posPairRouter } from './pos-sync.js';
 import { eventsRouter } from './events.js';
 import { openingBalanceRouter } from './opening-balances.js';
 import { sharedDocumentRouter } from './shared-documents.js';
@@ -82,6 +82,7 @@ export const ROUTES = [
   // External integrations (API-key / device-key auth)
   ['/api/webstore/v1', webstorePublicRouter],
   ['/api/webstore/admin', webstoreAdminRouter],
+  ['/api/v1/sync/pair', posPairRouter], // before /api/v1/sync: no device key yet
   ['/api/v1/sync', posSyncRouter],
 
   // Public, token-gated: customers opening a shared invoice link

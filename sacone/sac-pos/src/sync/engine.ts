@@ -29,6 +29,8 @@ interface SyncStatusState {
   status: Status;
   lastSyncAt: string | null;
   lastError: string | null;
+  /** The server refused this device's key (terminal reconnected elsewhere / key changed / switched off). */
+  keyRejected?: boolean;
   lastSummary: string | null;
 }
 
@@ -104,6 +106,7 @@ async function runCycle(): Promise<void> {
     try {
       const info = await sync.ping(cfg);
       useDevice.getState().setInfo(info);
+      if (useSyncStatus.getState().keyRejected) useSyncStatus.setState({ keyRejected: false });
     } catch (e) {
       const recovered = e instanceof ApiError && e.isNetwork ? await recoverServer(cfg) : null;
       if (!recovered) throw e;
@@ -245,7 +248,7 @@ async function runCycle(): Promise<void> {
   } catch (e) {
     const err = e as ApiError;
     if (err instanceof ApiError && err.status === 401) {
-      useSyncStatus.setState({ status: 'error', lastError: 'Device key revoked or invalid — re-connect this phone in More → Device' });
+      useSyncStatus.setState({ status: 'error', keyRejected: true, lastError: 'Not connected: this terminal was reconnected or switched off in SACONE ERP. Enter a pairing code (ERP → POS Devices → Connect a device).' });
     } else if (err instanceof ApiError && err.isNetwork) {
       useSyncStatus.setState({ status: 'offline', lastError: 'Offline — sales are saved on the phone and will sync automatically' });
     } else {

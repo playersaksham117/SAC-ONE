@@ -15,12 +15,16 @@ export async function connectWithPairing(pairing: Pairing): Promise<string> {
   const tried: string[] = [];
   for (const url of pairing.urls) {
     try {
-      await useDevice.getState().connect(url, pairing.key);
+      // a pairing code is exchanged on the first address that answers, then that key connects
+      const key = pairing.key || (await useDevice.getState().exchangeCode(url, pairing.code ?? '')).key;
+      await useDevice.getState().connect(url, key);
       return url;
     } catch (e) {
       const err = e as ApiError;
-      if (err.status === 401) {
-        throw new Error('ERP did not accept this key. It may have been renewed or revoked: show a fresh QR in SACONE ERP → POS Devices.');
+      if (err.status === 401 || err.status === 429) {
+        throw new Error(pairing.code
+          ? err.message
+          : 'ERP did not accept this key. It may have been renewed or revoked: in SACONE ERP → POS Devices choose “Connect a device” for a pairing code.');
       }
       if (err.status === 403) {
         throw new Error('This key is already used by another phone. In SACONE ERP → POS Devices choose “Rotate key” for this terminal and scan the new QR.');
@@ -79,4 +83,27 @@ export async function switchToSavedTerminal(id: string): Promise<void> {
   const urls = [...new Set([entry.baseUrl, device.baseUrl].filter((u): u is string => Boolean(u)))];
   await switchTerminal({ urls, key, deviceName: entry.deviceName, firm: entry.firm });
   syncNow().catch(() => undefined);
+}
+
+/**
+ * The device lost its connection (its terminal got a new key: another device connected, Rotate key,
+ * or switched off). A pairing code for the SAME terminal reconnects it keeping its bills; for another
+ * terminal it switches as usual (needs everything synced first).
+ */
+export async function reconnectWithCode(url: string, code: string): Promise<'same' | 'switched'> {
+  const device = useDevice.getState();
+  const currentId = device.info?.device.id ?? null;
+  const left = unsyncedOnPhone();
+  const { key, terminalId } = await device.exchangeCode(url, code);
+  if (!currentId || terminalId === currentId) {
+    await device.connect(url, key);
+    syncNow().catch(() => undefined);
+    return 'same';
+  }
+  if (left.total) {
+    throw new Error(`This code is for another terminal, but ${left.total} record(s) here belong to ${device.info?.device.name ?? 'this terminal'} and are not synced yet. Ask for a pairing code for ${device.info?.device.name ?? 'this terminal'} instead.`);
+  }
+  await switchTerminal({ urls: [url], key, deviceName: null, firm: null });
+  syncNow().catch(() => undefined);
+  return 'switched';
 }

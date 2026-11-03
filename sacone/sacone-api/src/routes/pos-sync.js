@@ -13,6 +13,7 @@ import { currentFirmId } from '../database/context.js';
 import { serverAddresses } from '../core/server-addresses.js';
 import { attendanceService } from '../services/attendance.js';
 import { appUpdateService } from '../services/app-updates.js';
+import { posPairing } from '../services/pos-pairing.js';
 
 /** Tables behind what a terminal pulls (catalogue, stock, customers, staff, settings). */
 const POS_PULL_TABLES = new Set([
@@ -24,6 +25,15 @@ const POS_PULL_TABLES = new Set([
 ]);
 
 /* ───────────── Terminal-facing: /api/v1/sync (device key auth) ───────────── */
+
+/**
+ * SAC-POS connects with the short pairing code from ERP → POS Devices (no key yet, so this is
+ * mounted before the device-key check): returns the terminal's new key for this device.
+ */
+export const posPairRouter = Router();
+posPairRouter.post('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, posPairing.exchange(req.body?.code, req.body?.deviceId || req.headers['x-device-id'], req));
+}));
 
 export const posSyncRouter = Router();
 posSyncRouter.use(authenticateDevice());
@@ -205,6 +215,10 @@ posDeviceAdminRouter.all(['/users', '/users/:id'], (req, res) => {
 
 posDeviceAdminRouter.put('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, posDeviceAdminService.update(req.params.id, req.body, req.actor, req));
+}));
+/** One-time pairing code to connect a phone / browser to this terminal (nothing changes until used). */
+posDeviceAdminRouter.post('/:id/pairing-code', asyncHandler(async (req, res) => {
+  sendSuccess(res, posPairing.createCode(req.params.id, req.actor, req));
 }));
 posDeviceAdminRouter.post('/:id/rotate-key', asyncHandler(async (req, res) => {
   sendSuccess(res, posDeviceAdminService.rotateKey(req.params.id, req.actor, req));

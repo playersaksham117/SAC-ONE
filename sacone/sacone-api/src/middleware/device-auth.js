@@ -22,7 +22,8 @@ export function authenticateDevice() {
       // A terminal belongs to the firm it was registered in; the request runs in that firm's books.
       return firmService.inFirmOf(() => authenticateDeviceKey(rawKey, fingerprint), (device) => {
         if (!device) {
-          return next(new AppError('Invalid or revoked device sync key', 401, 'UNAUTHORIZED'));
+          // the terminal was given a new key (another device connected, or Rotate key) or switched off
+          return next(new AppError('This device is no longer connected: its terminal was reconnected to another device or switched off in SACONE ERP. Ask a manager for a pairing code (ERP → POS Devices → Connect a device).', 401, 'UNAUTHORIZED'));
         }
         req.device = device;
         req.requestId = req.headers['x-request-id'] || generateId();

@@ -19,7 +19,7 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
  * the phone's camera app through the sacpos://connect link in the QR.
  */
 export default function Connect() {
-  const params = useLocalSearchParams<{ k?: string; u?: string; n?: string; f?: string }>();
+  const params = useLocalSearchParams<{ k?: string; c?: string; u?: string; n?: string; f?: string }>();
   const paired = useDevice((s) => Boolean(s.baseUrl && s.deviceKey));
   const currentInfo = useDevice((s) => s.info);
   const user = useCurrentUser();
@@ -31,13 +31,13 @@ export default function Connect() {
   const { pairing, invalid } = useMemo((): { pairing: Pairing | null; invalid: string | null } => {
     try {
       return {
-        pairing: pairingFromParams({ k: first(params.k), u: first(params.u), n: first(params.n), f: first(params.f) }),
+        pairing: pairingFromParams({ k: first(params.k), c: first(params.c), u: first(params.u), n: first(params.n), f: first(params.f) }),
         invalid: null,
       };
     } catch (e) {
       return { pairing: null, invalid: (e as Error).message };
     }
-  }, [params.k, params.u, params.n, params.f]);
+  }, [params.k, params.c, params.u, params.n, params.f]);
 
   const connect = async () => {
     if (!pairing) return;

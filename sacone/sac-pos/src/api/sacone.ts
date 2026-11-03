@@ -122,6 +122,10 @@ export const deviceHeaders = (c: DeviceConfig) => ({
 });
 
 
+/** Exchange a pairing code (ERP → POS Devices → Connect a device) for the terminal's new key; no key needed. */
+export const pairWithCode = (baseUrl: string, code: string, deviceId: string) =>
+  request<{ syncKey: string; device: { id: string; code: string; name: string } }>(baseUrl, '/api/v1/sync/pair', { method: 'POST', body: { code, deviceId } });
+
 export const sync = {
   /** Staff sign-in on this terminal: Login ID or email + the PIN set in ERP → Users. */
   login: (c: DeviceConfig, identifier: string, pin: string) =>

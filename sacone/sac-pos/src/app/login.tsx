@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { switchToSavedTerminal } from '../lib/pairing';
 import { useDevice } from '../store/device';
+import { ReconnectBanner } from '../ui/ConnectForm';
 import { useSession, type Profile } from '../store/session';
 import { syncNow } from '../sync/engine';
 import { PinPad } from '../ui/PinPad';
@@ -129,6 +130,7 @@ export default function Login() {
         </Text>
       </View>
 
+      <ReconnectBanner />
       {error ? <Banner tone="danger" messages={[error]} /> : null}
 
       {mode === 'pick' && (

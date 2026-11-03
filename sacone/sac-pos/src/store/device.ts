@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ApiError } from '../api/client';
-import { sync, type DeviceConfig, type PingResult } from '../api/sacone';
+import { pairWithCode, sync, type DeviceConfig, type PingResult } from '../api/sacone';
 import { isValidDeviceKey, isValidServerUrl } from '../domain/validation';
 import { secure } from '../storage/kv';
 import { jsonStorage } from './persist';
@@ -33,6 +33,8 @@ interface DeviceState {
   secretLoaded: boolean;
   /** Every firm's terminal connected here, so the sign-in screen can offer a firm choice. */
   saved: SavedTerminal[];
+  /** Pairing code → the terminal's new key for this device (not saved here: connect / switch does that). */
+  exchangeCode: (baseUrl: string, code: string) => Promise<{ key: string; deviceId: string; terminalId: string; terminalName: string }>;
   /** Remember the current terminal (and its key) for the firm choice. */
   remember: () => Promise<void>;
   savedKey: (id: string) => Promise<string | null>;
@@ -55,6 +57,15 @@ export const useDevice = create<DeviceState>()(
       lastPingAt: null,
       secretLoaded: false,
       saved: [],
+
+      async exchangeCode(rawUrl, code) {
+        const baseUrl = rawUrl.trim().replace(/\/+$/, '');
+        if (!isValidServerUrl(baseUrl)) throw new ApiError('Enter the server address, e.g. http://192.168.1.10:4000', 0, 'VALIDATION');
+        const deviceId = get().deviceId ?? Crypto.randomUUID();
+        if (!get().deviceId) set({ deviceId }); // the key is bound to this id; connect() must use the same
+        const r = await pairWithCode(baseUrl, code, deviceId);
+        return { key: r.syncKey, deviceId, terminalId: r.device.id, terminalName: r.device.name };
+      },
 
       async remember() {
         const { info, baseUrl, deviceKey } = get();

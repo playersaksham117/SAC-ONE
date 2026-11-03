@@ -8,6 +8,7 @@ import { daySummary } from '../../services/pos';
 import { useCart } from '../../store/cart';
 import { useCatalog } from '../../store/catalog';
 import { switchToSavedTerminal } from '../../lib/pairing';
+import { ReconnectBanner } from '../../ui/ConnectForm';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
 import { useCurrentUser, useSession } from '../../store/session';
@@ -128,6 +129,7 @@ export default function More() {
     <Screen padded={false} scroll>
       <Header title="More" subtitle={`${info?.company?.businessName ?? ''}`} />
       <View style={{ paddingHorizontal: space.lg }}>
+        <ReconnectBanner />
         <Card>
           <Row>
             <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -248,7 +250,7 @@ export default function More() {
           <KeyValue label="Negative stock" value={info?.settings.allowNegativeStock ? 'Allowed' : 'Blocked'} muted />
           {can(user?.permissions, 'manageDevice') ? (
             <>
-              <Button title={Platform.OS === 'web' ? 'Connect to another terminal (type key)' : 'Connect to another terminal (scan QR)'} variant="secondary" icon="qr-code-outline" onPress={() => router.push('/pair-scan')} style={{ marginTop: space.sm }} />
+              <Button title={Platform.OS === 'web' ? 'Connect to another terminal (pairing code)' : 'Connect to another terminal (QR or code)'} variant="secondary" icon="qr-code-outline" onPress={() => router.push('/pair-scan')} style={{ marginTop: space.sm }} />
               <Button title="Disconnect device" variant="danger" icon="unlink-outline" onPress={disconnect} style={{ marginTop: space.sm }} />
             </>
           ) : (

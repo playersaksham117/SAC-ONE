@@ -72,8 +72,9 @@ function ServerUrlCard() {
  * opens SAC-POS with it, and the app's "Scan QR from ERP" reads it. Drawn here in the browser,
  * so the key is not sent anywhere again. Same format as sac-pos/src/domain/pairing.ts.
  */
-function pairingLink({ key, urls, deviceName, firm }) {
-  const q = [`k=${encodeURIComponent(key)}`, `u=${urls.map(encodeURIComponent).join(',')}`];
+function pairingLink({ key, code, urls, deviceName, firm }) {
+  // a short pairing code (c=) instead of the key (k=): the app exchanges it for the key itself
+  const q = [code ? `c=${encodeURIComponent(code)}` : `k=${encodeURIComponent(key)}`, `u=${urls.map(encodeURIComponent).join(',')}`];
   if (deviceName) q.push(`n=${encodeURIComponent(deviceName)}`);
   if (firm) q.push(`f=${encodeURIComponent(firm)}`);
   return `sacpos://connect?${q.join('&')}`;
@@ -143,6 +144,56 @@ function SyncKeyBanner({ secret, onClose }) {
   );
 }
 
+/**
+ * Connect a device: a one-time 8-character code (and a QR with it) for this terminal. Nothing
+ * changes until a phone / browser uses it; then that device becomes this terminal and the device
+ * that used it before is disconnected.
+ */
+function PairingCodeBanner({ pairing, onClose, onNew }) {
+  const urls = useServerUrls();
+  const { session } = useAuth();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  if (!pairing) return null;
+  const candidates = [...new Set([...(urls || []).map((u) => u.url), getApiBase()])].filter((u) => u && !isLoopback(u));
+  const left = Math.max(0, Math.round((new Date(pairing.expiresAt).getTime() - now) / 1000));
+  const expired = left <= 0;
+  const link = candidates.length ? pairingLink({ code: pairing.code, urls: candidates, deviceName: pairing.device?.name, firm: session?.firm?.name }) : null;
+  return (
+    <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="font-semibold text-emerald-900">Connect a device to {pairing.device?.name}</div>
+        <button type="button" className="text-emerald-700" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      <div className="mt-3 flex flex-col gap-4 md:flex-row">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          {expired ? <div className="flex h-[220px] w-[220px] items-center justify-center rounded-xl bg-white text-center text-xs text-slate-500">Code expired</div>
+            : link ? <PairingQr link={link} /> : <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />}
+          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800">SAC-POS: <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="text-xs text-emerald-800">Pairing code (type it in SAC-POS)</div>
+            <div className={`mt-1 inline-block rounded-xl bg-white px-4 py-2 font-mono text-3xl font-bold tracking-[0.3em] ${expired ? 'text-slate-300 line-through' : 'text-slate-900'}`}>{pairing.code}</div>
+            <div className={`mt-1 text-xs ${expired ? 'text-rose-700' : 'text-emerald-800'}`}>
+              {expired ? 'Expired.' : `Works once · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`}
+              {' '}<button type="button" className="font-semibold underline" onClick={onNew}>New code</button>
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-emerald-800">Server address{candidates.length > 1 ? 'es' : ''}</div>
+            <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [getApiBase()]).join('\n')}</code>
+          </div>
+          <p className="text-xs text-emerald-900">
+            On the phone or counter PC: <b>Connect with a pairing code</b> (first setup, or More → Connect to another terminal) → server address → this code.
+            {pairing.device?.lastSeenAt ? <> The device now using {pairing.device.name} (last seen {ago(pairing.device.lastSeenAt)}{pairing.device.platform ? `, ${pairing.device.platform}` : ''}) is disconnected when the new one connects; nothing changes until then.</> : null}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────────────────── Devices tab ───────────────────────── */
 
 function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecret, setError }) {
@@ -174,8 +225,19 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
     }
   };
 
+  const [pairing, setPairing] = useState(null);
+  const connectDevice = async (device) => {
+    setError('');
+    try {
+      setPairing(await apiRequest(`/api/pos-devices/${device.id}/pairing-code`, { method: 'POST' }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) { setError(err.message); }
+  };
+
   const rotate = async (device) => {
-    if (!window.confirm(`Issue a new sync key for ${device.name}? The terminal must be updated with the new key.`)) return;
+    if (!window.confirm(device.isActive
+      ? `Make a new key for ${device.name} now?\n\nThe phone / browser using it (last seen ${ago(device.lastSeenAt)}) STOPS WORKING at once and must be connected again.\n\nTo connect a device, use “Connect a device” instead: it changes nothing until the new device connects.`
+      : `Re-activate ${device.name} with a new key?`)) return;
     try {
       onSecret(await apiRequest(`/api/pos-devices/${device.id}/rotate-key`, { method: 'POST' }));
       await onChanged();
@@ -183,7 +245,7 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
   };
 
   const revoke = async (device) => {
-    if (!window.confirm(`Revoke ${device.name}? It will stop syncing immediately.`)) return;
+    if (!window.confirm(`Switch off ${device.name}?\n\nThe phone / browser using it (last seen ${ago(device.lastSeenAt)}) stops syncing at once and shows “not connected”. Use this only for a lost or retired device.`)) return;
     try {
       await apiRequest(`/api/pos-devices/${device.id}/revoke`, { method: 'POST' });
       await onChanged();
@@ -198,6 +260,8 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
           <button type="button" className="btn-primary" onClick={() => open()}>Register device</button>
         )}
       </Toolbar>
+
+      <PairingCodeBanner pairing={pairing} onClose={() => setPairing(null)} onNew={() => pairing && connectDevice(pairing.device)} />
 
       {!devices.length ? (
         <EmptyPanel title="No POS devices yet" description="Register a phone to let SAC-POS sync sales, returns, collections and customers into SACONE." />
@@ -229,14 +293,15 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
               <div className="mt-4 flex flex-wrap gap-2">
                 {checkPermission('pos.devices.edit') && (
                   <>
+                    <button type="button" className="btn-primary px-3 py-1.5 text-xs" onClick={() => connectDevice(d)} title="One-time code / QR; changes nothing until a device uses it">Connect a device</button>
                     <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => open(d)}>Edit</button>
-                    <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => rotate(d)}>
-                      {d.isActive ? 'Rotate key' : 'Re-activate'}
+                    <button type="button" className="px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800" onClick={() => rotate(d)} title="Disconnects the device using it now">
+                      {d.isActive ? 'New key (advanced)' : 'Re-activate'}
                     </button>
                   </>
                 )}
                 {d.isActive && checkPermission('pos.devices.delete') && (
-                  <button type="button" className="px-3 py-1.5 text-xs font-medium text-rose-600" onClick={() => revoke(d)}>Revoke</button>
+                  <button type="button" className="px-2 py-1.5 text-xs font-medium text-rose-600" onClick={() => revoke(d)}>Switch off</button>
                 )}
               </div>
             </div>

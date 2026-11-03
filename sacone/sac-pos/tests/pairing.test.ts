@@ -55,3 +55,21 @@ describe('pairing QR', () => {
     expect(p.firm).toBeNull();
   });
 });
+
+describe('pairing codes', () => {
+  it('a QR with a short code instead of the key', () => {
+    const p = parsePairingCode(`sacpos://connect?c=K7QM-3XPD&u=${encodeURIComponent('http://192.168.1.4:4000')}&n=COUNTER%20SAC`);
+    expect(p).toMatchObject({ key: '', code: 'K7QM3XPD', urls: ['http://192.168.1.4:4000'], deviceName: 'COUNTER SAC' });
+  });
+
+  it('typed codes in any case, with a dash or space', async () => {
+    const { cleanPairingCode } = await import('../src/domain/pairing');
+    expect(cleanPairingCode('k7qm 3xpd')).toBe('K7QM3XPD');
+    expect(cleanPairingCode('K7QM-3XPD')).toBe('K7QM3XPD');
+    expect(cleanPairingCode('K7QM')).toBeNull();
+  });
+
+  it('no key and no code is refused', () => {
+    expect(() => parsePairingCode(`sacpos://connect?u=${encodeURIComponent('http://192.168.1.4:4000')}`)).toThrow(/no valid device key or pairing code/);
+  });
+});

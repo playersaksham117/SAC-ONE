@@ -13,12 +13,20 @@ export const PAIRING_PREFIX = 'sacpos://connect';
 export interface Pairing {
   /** Server addresses to try in order (LAN, Tailscale …). */
   urls: string[];
+  /** The terminal's sync key; empty when a pairing code is given instead. */
   key: string;
+  /** Short one-time code from ERP → POS Devices → Connect a device (exchanged for the key). */
+  code?: string | null;
   deviceName: string | null;
   firm: string | null;
 }
 
 const KEY = /^sk_live_[A-Za-z0-9_-]{20,}$/;
+/** "K7QM-3XPD" (any case, with or without the dash / space) → "K7QM3XPD", or null. */
+export function cleanPairingCode(raw: string | null | undefined): string | null {
+  const c = String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return /^[A-Z0-9]{8}$/.test(c) ? c : null;
+}
 const MAX_URLS = 6;
 
 function validUrl(raw: string): string | null {
@@ -40,12 +48,13 @@ export function buildPairingLink({ urls, key, deviceName, firm }: { urls: string
 }
 
 /** Turn already-decoded link parameters (expo-router route params) into a Pairing. */
-export function pairingFromParams(params: { k?: string; u?: string; n?: string; f?: string }): Pairing {
+export function pairingFromParams(params: { k?: string; u?: string; n?: string; f?: string; c?: string }): Pairing {
   const key = (params.k ?? '').trim();
-  if (!KEY.test(key)) throw new Error('This QR code has no valid device key. Show the QR from SACONE ERP → POS Devices again.');
+  const code = key ? null : cleanPairingCode(params.c);
+  if (!KEY.test(key) && !code) throw new Error('This QR code has no valid device key or pairing code. Show the QR from SACONE ERP → POS Devices again.');
   const urls = [...new Set(String(params.u ?? '').split(',').map(validUrl).filter((u): u is string => Boolean(u)))].slice(0, MAX_URLS);
   if (!urls.length) throw new Error('This QR code has no server address. Show the QR from SACONE ERP → POS Devices again.');
-  return { urls, key, deviceName: clean(params.n), firm: clean(params.f, 120) };
+  return { urls, key: code ? '' : key, ...(code ? { code } : {}), deviceName: clean(params.n), firm: clean(params.f, 120) };
 }
 
 /** Read a scanned QR. Throws a message for the cashier when it is not a SAC-POS pairing code. */
