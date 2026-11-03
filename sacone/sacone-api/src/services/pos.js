@@ -774,6 +774,8 @@ export class PosService {
       customerId: filters.customerId || '',
       warehouseId: filters.warehouseId || '',
       status: filters.status || '',
+      // series=quick: Quick Bills only; series=gst: GST invoices (not Quick Bills)
+      series: filters.series === 'quick' || filters.series === 'gst' ? filters.series : '',
       includeVoided: filters.includeVoided === 'true' || filters.includeVoided === true,
       dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom || '') ? filters.dateFrom : '',
       dateTo: /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo || '') ? filters.dateTo : '',

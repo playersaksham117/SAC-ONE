@@ -303,7 +303,7 @@ export class PosSaleRepository {
     `).all(saleId).map(mapPayment);
   }
 
-  findAll({ search = '', customerId = '', warehouseId = '', status = '', dateFrom = '', dateTo = '', includeVoided = false, limit = 50, offset = 0 } = {}) {
+  findAll({ search = '', customerId = '', warehouseId = '', status = '', series = '', dateFrom = '', dateTo = '', includeVoided = false, limit = 50, offset = 0 } = {}) {
     const db = getDatabase();
     const where = [];
     const params = [];
@@ -320,6 +320,8 @@ export class PosSaleRepository {
       where.push('s.warehouse_id = ?');
       params.push(warehouseId);
     }
+    if (series === 'quick') where.push("s.document_type = 'quick_bill'");
+    if (series === 'gst') where.push("COALESCE(s.document_type, 'tax_invoice') != 'quick_bill'");
     if (status) {
       where.push('s.status = ?');
       params.push(status);

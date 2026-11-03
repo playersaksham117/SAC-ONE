@@ -46,11 +46,12 @@ function queryString(filters, limit) {
   if (filters.search) q.set('search', filters.search);
   if (filters.dateFrom) q.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) q.set('dateTo', filters.dateTo);
+  if (filters.series) q.set('series', filters.series);
   return q.toString();
 }
 
 export default function SalesInvoices() {
-  const [filters, setFilters] = useState({ search: '', dateFrom: '', dateTo: '' });
+  const [filters, setFilters] = useState({ search: '', dateFrom: '', dateTo: '', series: '' });
   const [applied, setApplied] = useState(filters);
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
@@ -141,9 +142,16 @@ Reason (optional):`);
         </label>
         <button type="button" className="btn-primary" onClick={() => setApplied(filters)}>Apply</button>
         {(applied.search || applied.dateFrom || applied.dateTo) && (
-          <button type="button" className="btn-secondary" onClick={() => { const empty = { search: '', dateFrom: '', dateTo: '' }; setFilters(empty); setApplied(empty); }}>Clear</button>
+          <button type="button" className="btn-secondary" onClick={() => { const empty = { search: '', dateFrom: '', dateTo: '', series: applied.series }; setFilters(empty); setApplied(empty); }}>Clear</button>
         )}
       </Toolbar>
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-slate-500">Show</span>
+        {[['', 'All bills'], ['gst', 'GST invoices'], ['quick', 'Quick Bills (walk-in / unregistered)']].map(([v, l]) => (
+          <button key={v} type="button" className={`rounded-full px-3 py-1 ${applied.series === v ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
+            onClick={() => { setFilters((f) => ({ ...f, series: v })); setApplied((a) => ({ ...a, series: v })); }}>{l}</button>
+        ))}
+      </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Invoices" value={data.total} compact />

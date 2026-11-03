@@ -7,7 +7,7 @@ import { useLedger } from '../../store/ledger';
 import { useCan } from '../../store/session';
 import { confirm } from '../../ui/dialogs';
 import { DocSyncBadge } from '../../ui/SyncBadge';
-import { Button, Card, Empty, Header, Row, Screen, SearchBar, Segmented, colors, font, space } from '../../ui/components';
+import { Button, Card, Chip, Empty, Header, Row, Screen, SearchBar, Segmented, colors, font, space } from '../../ui/components';
 
 type Tab = 'sales' | 'quotes' | 'held' | 'returns' | 'payments';
 
@@ -31,9 +31,12 @@ export default function Sales() {
   useEffect(() => { if (params.tab) setTab(params.tab); }, [params.tab]);
 
   const query = q.trim().toLowerCase();
-  const filteredSales = useMemo(() => sales.filter((s) => !query
+  // All bills / GST invoices / Quick Bills (walk-in / unregistered)
+  const [series, setSeries] = useState<'' | 'gst' | 'quick'>('');
+  const filteredSales = useMemo(() => sales.filter((s) => (!series || (series === 'quick') === (s.series === 'quick')) && (!query
     || s.number.toLowerCase().includes(query) || (s.serverNumber ?? '').toLowerCase().includes(query)
-    || (s.customer?.name ?? '').toLowerCase().includes(query) || (s.customer?.phone ?? '').includes(query)), [sales, query]);
+    || (s.customer?.name ?? '').toLowerCase().includes(query) || (s.customer?.phone ?? '').includes(query))), [sales, query, series]);
+  const shownTotal = useMemo(() => filteredSales.filter((s) => !s.cancelledInErp).reduce((t, s) => t + s.totals.grandTotal, 0), [filteredSales]);
 
   const resume = async (id: string) => {
     const bill = held.find((h) => h.id === id);
@@ -60,6 +63,14 @@ export default function Sales() {
           ]}
         />
         {tab === 'sales' ? <SearchBar value={q} onChangeText={setQ} placeholder="Bill no, customer or phone" /> : null}
+        {tab === 'sales' ? (
+          <Row gap={6} style={{ flexWrap: 'wrap', marginTop: space.xs }}>
+            {([['', 'All bills'], ['gst', 'GST invoices'], ['quick', 'Quick Bills']] as const).map(([v, l]) => (
+              <Chip key={v} label={l} active={series === v} onPress={() => setSeries(v)} />
+            ))}
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, alignSelf: 'center' }}>{filteredSales.length} · {formatMoney(shownTotal)}</Text>
+          </Row>
+        ) : null}
       </View>
 
       {tab === 'sales' && (
@@ -71,7 +82,7 @@ export default function Sales() {
           renderItem={({ item }) => (
             <Card style={{ marginBottom: space.sm, padding: space.md }} onPress={() => router.push({ pathname: '/sale/[id]', params: { id: item.id } })}>
               <Row style={{ justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: '800', color: item.cancelledInErp ? colors.danger : colors.text }}>{item.serverNumber ?? item.number}{item.cancelledInErp ? ' · Cancelled' : ''}{item.origin ? (item.origin === 'erp' ? ' · ERP' : ' · other terminal') : ''}</Text>
+                <Text style={{ fontWeight: '800', color: item.cancelledInErp ? colors.danger : colors.text }}>{item.serverNumber ?? item.number}{item.series === 'quick' ? ' · Quick Bill' : ''}{item.cancelledInErp ? ' · Cancelled' : ''}{item.origin ? (item.origin === 'erp' ? ' · ERP' : ' · other terminal') : ''}</Text>
                 <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(item.totals.grandTotal)}</Text>
               </Row>
               <Row style={{ justifyContent: 'space-between', marginTop: 6 }}>
