@@ -36,7 +36,7 @@ defaults:
 jobs:
   test:
     name: Typecheck & tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -61,7 +61,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.release) ||
       (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip app]'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     concurrency:
       group: sac-pos-release
