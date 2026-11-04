@@ -8,6 +8,7 @@ import { daySummary } from '../../services/pos';
 import { useCart } from '../../store/cart';
 import { useCatalog } from '../../store/catalog';
 import { switchToSavedTerminal } from '../../lib/pairing';
+import { installedVersion } from '../../lib/appUpdate';
 import { ReconnectBanner } from '../../ui/ConnectForm';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
@@ -258,7 +259,7 @@ export default function More() {
           )}
         </Card>
         <FirmCard />
-        <Text style={{ textAlign: 'center', color: colors.textFaint, fontSize: font.xs, marginTop: space.xl }}>SAC-POS 1.0 · SACONE</Text>
+        <Text style={{ textAlign: 'center', color: colors.textFaint, fontSize: font.xs, marginTop: space.xl }}>SAC-POS {installedVersion().name}{installedVersion().code ? ` (build ${installedVersion().code})` : ''} · SACONE</Text>
       </View>
     </Screen>
   );
