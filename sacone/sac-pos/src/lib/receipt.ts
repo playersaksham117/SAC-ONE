@@ -406,15 +406,16 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
       <td class="r">${l.igst ? l.gstRate : ''}</td><td class="r">${n2(l.igst)}</td></tr>`).join('');
   const terms = String(invoice.terms || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   const subTotal = sum('taxableAmount') + sum('sgst') + sum('cgst') + sum('igst');
-  const pad = a5 ? '1px 3px' : '2px 5px';
+  const pad = a5 ? '1px 3px 2px' : '2px 5px 4px';
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{text-transform:uppercase}
   @page{size:${size} portrait;margin:${page.m}mm}
   *{box-sizing:border-box} html,body{margin:0;padding:0}
-  body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;color:#000}
+  /* Explicit line heights: PDF engines (phones, html2canvas) misplace text with line-height:normal. */
+  body{font-family:Arial,Helvetica,sans-serif;font-size:${fs}px;line-height:1.3;color:#000}
   .sheet{border:1.5px solid #000;min-height:${page.h - 2 * page.m - 3.5}mm;display:flex;flex-direction:column}
-  .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '1.5px 3px' : '3px 5px'}}
+  .row{display:flex;border-bottom:1px solid #000} .row>div{padding:${a5 ? '1.5px 3px 2.5px' : '3px 5px 5px'}}
   .vr{border-right:1px solid #000} .b{font-weight:700} .c{text-align:center} .r{text-align:right} .u{text-decoration:underline}
   .head{position:relative;text-align:center;width:100%}
   .head .gst{position:absolute;left:${a5 ? 3 : 5}px;top:${a5 ? 2 : 4}px;font-weight:700}
@@ -428,7 +429,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   .items th{font-weight:700;border:1px solid #000;border-top:0;padding:1px 2px;font-size:${fs * 0.95}px}
   .items td{border-left:1px solid #000;border-right:1px solid #000;padding:${a5 ? '1px 1.5px' : '2px 3px'};vertical-align:top;overflow:hidden;word-wrap:break-word}
   .grow{flex:1;display:flex;flex-direction:column} .grow table{flex:1;height:100%}
-  .tot td{border:1px solid #000;padding:1px 3px;font-weight:700}
+  .tot td{border:1px solid #000;padding:${a5 ? '2px 3px' : '3px 3px'};line-height:1.3;font-weight:700}
   .kv{display:grid;grid-template-columns:1fr 1fr;column-gap:8px}
   .net{font-size:${fs * 1.35}px;font-weight:700;display:flex;justify-content:space-between;border-top:1px solid #000;border-bottom:1px solid #000;padding:${a5 ? 2 : 4}px 3px}
   .terms{font-size:${fs * 0.82}px;font-weight:700}

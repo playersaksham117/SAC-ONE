@@ -61,7 +61,12 @@ export function pairingFromParams(params: { k?: string; u?: string; n?: string; 
 export function parsePairingCode(text: string): Pairing {
   const raw = String(text ?? '').trim();
   if (!raw.toLowerCase().startsWith(PAIRING_PREFIX)) {
-    throw new Error('That is not a SAC-POS connection code. Scan the QR shown in SACONE ERP → POS Devices.');
+    const low = raw.toLowerCase();
+    if (/\/api\/app\/sac-pos\.apk/.test(low)) {
+      throw new Error('That is the app INSTALL QR. To connect, open ERP → POS Devices → your terminal → Connect a device, and scan the green QR there (or tap Type code instead).');
+    }
+    if (low.startsWith('upi:')) throw new Error('That is a UPI payment QR. Scan the green QR from ERP → POS Devices → Connect a device.');
+    throw new Error('That is not a SAC-POS connection QR. In ERP → POS Devices → your terminal → Connect a device, scan the green QR (or tap Type code instead).');
   }
   const query = raw.slice(raw.indexOf('?') + 1);
   if (!raw.includes('?') || !query) throw new Error('This QR code is incomplete. Show it again in SACONE ERP.');

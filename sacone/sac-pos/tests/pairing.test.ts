@@ -30,7 +30,7 @@ describe('pairing QR', () => {
   });
 
   it('rejects other QR codes and broken ones with a clear message', () => {
-    expect(() => parsePairingCode('8901234567890')).toThrow(/not a SAC-POS connection code/);
+    expect(() => parsePairingCode('8901234567890')).toThrow(/not a SAC-POS connection QR/);
     expect(() => parsePairingCode('https://example.com/?k=x')).toThrow(/not a SAC-POS/);
     expect(() => parsePairingCode('sacpos://connect')).toThrow(/incomplete/);
     expect(() => parsePairingCode(`sacpos://connect?u=${encodeURIComponent('http://1.2.3.4:4000')}`)).toThrow(/no valid device key/);
@@ -71,5 +71,14 @@ describe('pairing codes', () => {
 
   it('no key and no code is refused', () => {
     expect(() => parsePairingCode(`sacpos://connect?u=${encodeURIComponent('http://192.168.1.4:4000')}`)).toThrow(/no valid device key or pairing code/);
+  });
+});
+
+describe('wrong QR scanned', () => {
+  it('the app install QR is explained', () => {
+    expect(() => parsePairingCode('http://192.168.1.3:4000/api/app/sac-pos.apk')).toThrow(/INSTALL QR/);
+  });
+  it('a UPI QR is explained', () => {
+    expect(() => parsePairingCode('upi://pay?pa=shop@icici&am=10')).toThrow(/UPI payment QR/);
   });
 });

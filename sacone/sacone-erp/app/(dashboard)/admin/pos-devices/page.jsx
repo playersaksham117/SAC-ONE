@@ -170,7 +170,7 @@ function PairingCodeBanner({ pairing, onClose, onNew }) {
         <div className="flex shrink-0 flex-col items-center gap-2">
           {expired ? <div className="flex h-[220px] w-[220px] items-center justify-center rounded-xl bg-white text-center text-xs text-slate-500">Code expired</div>
             : link ? <PairingQr link={link} /> : <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />}
-          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800">SAC-POS (any version): <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
+          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800"><b>CONNECT QR</b> — in SAC-POS (any version) tap <b>Scan QR from ERP</b> and scan this one.</span>}
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div>
@@ -539,7 +539,7 @@ function AppReleaseCard() {
             <div className="mt-3 flex flex-wrap items-center gap-4">
               <PairingQr link={installUrl} />
               <div className="max-w-sm text-xs text-slate-600">
-                <div className="font-semibold text-slate-900">Install SAC-POS on a phone</div>
+                <div className="font-semibold text-slate-900">INSTALL QR: installs the SAC-POS app (not for connecting)</div>
                 Scan with the phone camera (phone on the shop Wi-Fi) → download → open → Install. Allow &quot;Install unknown apps&quot; if Android asks.
                 <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono">{installUrl}</code>
                 <span className="mt-1 block">A phone with an older SAC-POS signed by Expo must <b>uninstall it first</b> (sync its bills before) — newer builds are signed with the shop&apos;s own key; after that, updates install from More → App update.</span>

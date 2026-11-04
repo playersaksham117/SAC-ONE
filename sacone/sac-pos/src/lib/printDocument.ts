@@ -14,9 +14,22 @@ export interface PrintJob {
  * the document alone in a hidden frame, so the browser prints (or "Save as PDF") the bill and
  * not the app screen; the page size goes in as CSS @page.
  */
+const NO_TEXT_BOOST = '<style>html,body{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}</style>';
+
+/**
+ * Ready a document for Android's / iOS's HTML → PDF: no text autosizing ("font boosting" makes the
+ * text bigger than its boxes, so it sits on the lines and runs off the page), and no extra page
+ * margins when the document sets its own @page (they would shrink the page and cut its edge).
+ */
+export function forNativePrint<T extends { html: string; margins?: Print.PageMargins }>(job: T): T {
+  const ownPage = /@page\s*\{/.test(job.html);
+  const html = job.html.includes('</head>') ? job.html.replace('</head>', `${NO_TEXT_BOOST}</head>`) : `${NO_TEXT_BOOST}${job.html}`;
+  return { ...job, html, ...(ownPage ? { margins: { top: 0, right: 0, bottom: 0, left: 0 } } : {}) };
+}
+
 export async function printDocument(job: PrintJob): Promise<void> {
   if (Platform.OS !== 'web') {
-    await Print.printAsync(job);
+    await Print.printAsync(forNativePrint(job));
     return;
   }
   const pt = (n: number) => `${Math.round((n / 72) * 25.4 * 10) / 10}mm`;

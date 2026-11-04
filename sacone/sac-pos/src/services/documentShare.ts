@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import { forNativePrint } from '../lib/printDocument';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -63,7 +64,7 @@ export async function createPdf(html: string, page: PdfPage, fileName: string): 
   // Take the PDF bytes from expo-print and write them into our own folder. Moving the printed
   // file instead fails in Expo Go: it lands outside the app's scoped folders ("Missing READ
   // permission"). Writing needs access to our cache folder only, in Expo Go and in the APK.
-  const { uri, base64 } = await Print.printToFileAsync({ html, ...page, base64: true });
+  const { uri, base64 } = await Print.printToFileAsync({ ...forNativePrint({ html, ...page }), base64: true });
   if (!base64) throw new Error('Could not create the PDF. Try again.');
   const dir = shareDir();
   dir.create({ idempotent: true, intermediates: true });
