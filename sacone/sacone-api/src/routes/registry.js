@@ -20,7 +20,7 @@ import { deliveryChallanRouter } from './delivery-challans.js';
 import { bankImportRouter, bankTransactionRouter } from './bank-import.js';
 import { approvalRouter } from './approvals.js';
 import { salesAgentRouter, commissionRouter, commissionPaymentRouter } from './commissions.js';
-import { posSyncRouter, posDeviceAdminRouter, posPairRouter } from './pos-sync.js';
+import { posSyncRouter, posDeviceAdminRouter, posPairRouter, appInstallRouter } from './pos-sync.js';
 import { eventsRouter } from './events.js';
 import { openingBalanceRouter } from './opening-balances.js';
 import { sharedDocumentRouter } from './shared-documents.js';
@@ -83,6 +83,7 @@ export const ROUTES = [
   ['/api/webstore/v1', webstorePublicRouter],
   ['/api/webstore/admin', webstoreAdminRouter],
   ['/api/v1/sync/pair', posPairRouter], // before /api/v1/sync: no device key yet
+  ['/api/app', appInstallRouter], // install SAC-POS from the shop network
   ['/api/v1/sync', posSyncRouter],
 
   // Public, token-gated: customers opening a shared invoice link

@@ -1,12 +1,13 @@
 # SAC-POS mobile app: CI on every change, CD (APK build + GitHub release) on main.
 #
-# CI  — typecheck + unit tests, and a check that the lockfile installs with npm 10 (what EAS uses).
-# CD  — builds the Android APK on EAS (build number auto-incremented by EAS), then publishes a
-#       GitHub release "sac-pos-v<version>-b<build>" with sac-pos.apk + sac-pos.json.
-#       Each shop's SACONE server picks the release up within 30 minutes and offers it to its
-#       paired phones in SAC-POS → More → App update.
+# CI  — typecheck + unit tests, and a check that the lockfile installs with npm 10.
+# CD  — builds the Android APK here on GitHub with Gradle (no Expo account / EAS), signs it with the
+#       shop's own release key, then publishes a GitHub release "sac-pos-v<version>-b<build>" with
+#       sac-pos.apk + sac-pos.json. Each shop's SACONE server picks the release up within 30
+#       minutes and offers it to its paired phones in SAC-POS → More → App update.
 #
-# Needs one repository secret: EXPO_TOKEN (expo.dev → Account settings → Access tokens).
+# Needs three repository secrets (made on the shop PC, see D:\Vyoumix\sacone-signing\README.txt):
+#   SACPOS_KEYSTORE_BASE64, SACPOS_KEYSTORE_PASSWORD, SACPOS_KEY_ALIAS
 # Skip a release for a commit with "[skip app]" in its message, or run it by hand (Actions → Run workflow).
 
 name: SAC-POS app
@@ -55,66 +56,79 @@ jobs:
       - run: npx vitest run
 
   release:
-    name: Build APK & publish release
+    name: Build APK (Gradle) & publish release
     needs: test
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.release) ||
       (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip app]'))
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 90
     concurrency:
       group: sac-pos-release
       cancel-in-progress: false
     permissions:
       contents: write
     env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EAS_CLI: eas-cli@25.3.0
+      SACPOS_KEYSTORE_BASE64: ${{ secrets.SACPOS_KEYSTORE_BASE64 }}
+      SACPOS_KEYSTORE_PASSWORD: ${{ secrets.SACPOS_KEYSTORE_PASSWORD }}
+      SACPOS_KEY_ALIAS: ${{ secrets.SACPOS_KEY_ALIAS }}
+      # build numbers above the old Expo builds, rising with every run
+      SACPOS_VERSION_CODE: ${{ github.run_number }}00
     steps:
-      - name: Check Expo token
-        id: token
+      - name: Check signing key
+        id: key
         # runs before checkout, so not in sacone/sac-pos (the job default)
         working-directory: ${{ github.workspace }}
         run: |
-          if [ -z "$EXPO_TOKEN" ]; then
-            echo "::warning::EXPO_TOKEN secret is not set; skipping the APK build. Add it in Settings → Secrets and variables → Actions."
+          if [ -z "$SACPOS_KEYSTORE_BASE64" ] || [ -z "$SACPOS_KEYSTORE_PASSWORD" ] || [ -z "$SACPOS_KEY_ALIAS" ]; then
+            echo "::warning::SAC-POS signing secrets are not set; skipping the APK. Add SACPOS_KEYSTORE_BASE64, SACPOS_KEYSTORE_PASSWORD and SACPOS_KEY_ALIAS (Settings → Secrets and variables → Actions)."
             echo "ok=false" >> "$GITHUB_OUTPUT"
           else
             echo "ok=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v5
-        if: steps.token.outputs.ok == 'true'
+        if: steps.key.outputs.ok == 'true'
         with:
           fetch-depth: 20
 
       - uses: actions/setup-node@v5
-        if: steps.token.outputs.ok == 'true'
+        if: steps.key.outputs.ok == 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: sacone/sac-pos/package-lock.json
 
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
       - name: Install
-        if: steps.token.outputs.ok == 'true'
+        if: steps.key.outputs.ok == 'true'
         run: npm ci
 
-      - name: Build APK on EAS
-        if: steps.token.outputs.ok == 'true'
-        run: |
-          npx --yes "$EAS_CLI" build --platform android --profile preview --non-interactive --wait --json \
-            --message "CI ${GITHUB_SHA::7}: $(git log -1 --pretty=%s | cut -c1-80)" > build.json
-          cat build.json
+      - name: Generate the Android project
+        if: steps.key.outputs.ok == 'true'
+        run: CI=1 npx expo prebuild --platform android --no-install --clean
 
-      - name: Download APK and describe it
-        if: steps.token.outputs.ok == 'true'
+      - name: Build and sign the APK
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          echo "$SACPOS_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/sac-pos-release.p12"
+          export SACPOS_KEYSTORE="$RUNNER_TEMP/sac-pos-release.p12"
+          cd android
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../sac-pos.apk
+          rm -f "$SACPOS_KEYSTORE"
+
+      - name: Describe the APK
+        if: steps.key.outputs.ok == 'true'
         id: meta
         run: |
-          URL=$(jq -r '.[0].artifacts.buildUrl // .[0].artifacts.applicationArchiveUrl' build.json)
-          VERSION=$(jq -r '.[0].appVersion' build.json)
-          CODE=$(jq -r '.[0].appBuildVersion' build.json)
-          test -n "$URL" && test "$URL" != null || { echo "::error::No APK in the EAS build result"; exit 1; }
-          curl -fsSL -o sac-pos.apk "$URL"
+          VERSION=$(node -p "require('./app.json').expo.version")
+          CODE="$SACPOS_VERSION_CODE"
           SHA=$(sha256sum sac-pos.apk | cut -d' ' -f1)
           SIZE=$(stat -c%s sac-pos.apk)
           git log -1 --pretty=%B | head -c 1500 > notes.txt
@@ -126,7 +140,7 @@ jobs:
           echo "title=SAC-POS ${VERSION} (build ${CODE})" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
-        if: steps.token.outputs.ok == 'true'
+        if: steps.key.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

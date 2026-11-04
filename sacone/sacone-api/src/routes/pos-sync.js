@@ -35,6 +35,22 @@ posPairRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, posPairing.exchange(req.body?.code, req.body?.deviceId || req.headers['x-device-id'], req));
 }));
 
+/**
+ * Install SAC-POS on a phone from the shop network (no key yet): the newest APK this server holds.
+ * The APK holds no secrets; phones open it from the QR in ERP → POS Devices → Install on a phone.
+ */
+export const appInstallRouter = Router();
+appInstallRouter.get('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, appUpdateService.latest());
+}));
+appInstallRouter.get('/sac-pos.apk', asyncHandler(async (req, res) => {
+  const { file, name, size } = appUpdateService.apkFile();
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Length', String(size));
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.sendFile(file);
+}));
+
 export const posSyncRouter = Router();
 posSyncRouter.use(authenticateDevice());
 

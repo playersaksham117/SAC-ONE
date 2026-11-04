@@ -508,6 +508,10 @@ function InboxTab({ devices, onChanged, setError, setMessage }) {
 /** The newest SAC-POS APK this server holds (copied from GitHub releases) — phones install it from More → App update. */
 function AppReleaseCard() {
   const { checkPermission } = useAuth();
+  const urls = useServerUrls();
+  // the phone downloads the APK from this server on the shop Wi-Fi (no GitHub / internet needed)
+  const lan = (urls || []).map((u) => u.url).find((u) => u && !isLoopback(u));
+  const installUrl = lan ? `${lan}/api/app/sac-pos.apk` : null;
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -526,11 +530,22 @@ function AppReleaseCard() {
           <div className="text-slate-600">
             {latest
               ? <>Phones are offered <b>{latest.versionName} (build {latest.versionCode})</b> · {(latest.size / 1048576).toFixed(1)} MB · published {new Date(latest.publishedAt).toLocaleDateString('en-IN')}. Staff install it from SAC-POS → More → App update.</>
-              : 'No app release on this server yet. New APKs are built by GitHub Actions and copied here automatically.'}
+              : 'No app release on this server yet. New APKs are built by GitHub Actions (Gradle, signed with the shop key) and copied here automatically.'}
           </div>
           {status?.lastError && <div className="mt-1 text-xs text-rose-700">Last check: {status.lastError}</div>}
           {error && <div className="mt-1 text-xs text-rose-700">{error}</div>}
           {link && <div className="mt-1 text-xs text-slate-500">First install on a phone without in-app updates: <a className="font-medium text-brand-600 underline" href={link} target="_blank" rel="noreferrer">download the APK</a></div>}
+          {latest && installUrl && (
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <PairingQr link={installUrl} />
+              <div className="max-w-sm text-xs text-slate-600">
+                <div className="font-semibold text-slate-900">Install SAC-POS on a phone</div>
+                Scan with the phone camera (phone on the shop Wi-Fi) → download → open → Install. Allow &quot;Install unknown apps&quot; if Android asks.
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono">{installUrl}</code>
+                <span className="mt-1 block">A phone with an older SAC-POS signed by Expo must <b>uninstall it first</b> (sync its bills before) — newer builds are signed with the shop&apos;s own key; after that, updates install from More → App update.</span>
+              </div>
+            </div>
+          )}
         </div>
         {checkPermission('pos.devices.edit') && (
           <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check for new version'}</button>
