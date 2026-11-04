@@ -74,7 +74,7 @@ function ServerUrlCard() {
  */
 function pairingLink({ key, code, urls, deviceName, firm }) {
   // a short pairing code (c=) instead of the key (k=): the app exchanges it for the key itself
-  const q = [code ? `c=${encodeURIComponent(code)}` : `k=${encodeURIComponent(key)}`, `u=${urls.map(encodeURIComponent).join(',')}`];
+  const q = [...(key ? [`k=${encodeURIComponent(key)}`] : []), ...(code ? [`c=${encodeURIComponent(code)}`] : []), `u=${urls.map(encodeURIComponent).join(',')}`];
   if (deviceName) q.push(`n=${encodeURIComponent(deviceName)}`);
   if (firm) q.push(`f=${encodeURIComponent(firm)}`);
   return `sacpos://connect?${q.join('&')}`;
@@ -149,7 +149,7 @@ function SyncKeyBanner({ secret, onClose }) {
  * changes until a phone / browser uses it; then that device becomes this terminal and the device
  * that used it before is disconnected.
  */
-function PairingCodeBanner({ pairing, onClose, onNew, onOldApp }) {
+function PairingCodeBanner({ pairing, onClose, onNew }) {
   const urls = useServerUrls();
   const { session } = useAuth();
   const [now, setNow] = useState(Date.now());
@@ -158,7 +158,8 @@ function PairingCodeBanner({ pairing, onClose, onNew, onOldApp }) {
   const candidates = [...new Set([...(urls || []).map((u) => u.url), getApiBase()])].filter((u) => u && !isLoopback(u));
   const left = Math.max(0, Math.round((new Date(pairing.expiresAt).getTime() - now) / 1000));
   const expired = left <= 0;
-  const link = candidates.length ? pairingLink({ code: pairing.code, urls: candidates, deviceName: pairing.device?.name, firm: session?.firm?.name }) : null;
+  // the QR carries the key held in reserve (every SAC-POS version scans it) and the code
+  const link = candidates.length ? pairingLink({ key: pairing.pendingKey, code: pairing.code, urls: candidates, deviceName: pairing.device?.name, firm: session?.firm?.name }) : null;
   return (
     <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
@@ -169,7 +170,7 @@ function PairingCodeBanner({ pairing, onClose, onNew, onOldApp }) {
         <div className="flex shrink-0 flex-col items-center gap-2">
           {expired ? <div className="flex h-[220px] w-[220px] items-center justify-center rounded-xl bg-white text-center text-xs text-slate-500">Code expired</div>
             : link ? <PairingQr link={link} /> : <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />}
-          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800">SAC-POS: <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
+          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800">SAC-POS (any version): <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div>
@@ -184,11 +185,11 @@ function PairingCodeBanner({ pairing, onClose, onNew, onOldApp }) {
             <div className="text-xs text-emerald-800">Server address{candidates.length > 1 ? 'es' : ''}</div>
             <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [getApiBase()]).join('\n')}</code>
           </div>
-          <div className="rounded-lg bg-white/70 p-2 text-xs text-emerald-900">
-            Phone app has <b>no pairing-code box</b> (older SAC-POS)?{' '}
-            <button type="button" className="font-semibold underline" onClick={onOldApp}>Show the key &amp; QR for an older app</button>
-            {' '}— scan it with <b>Scan QR from ERP</b> (or type the key). This makes a new key now.
-          </div>
+          <details className="rounded-lg bg-white/70 p-2 text-xs text-emerald-900">
+            <summary className="cursor-pointer font-semibold">Older SAC-POS without a pairing-code box and no camera? Type this key instead</summary>
+            <code className="mt-1 block break-all rounded bg-white px-2 py-1 font-mono">{pairing.pendingKey}</code>
+            <span className="mt-1 block">Works once, until the code expires; it changes nothing until the device uses it.</span>
+          </details>
           <p className="text-xs text-emerald-900">
             On the phone or counter PC: <b>Connect with a pairing code</b> (first setup, or More → Connect to another terminal) → server address → this code.
             {pairing.device?.lastSeenAt ? <> The device now using {pairing.device.name} (last seen {ago(pairing.device.lastSeenAt)}{pairing.device.platform ? `, ${pairing.device.platform}` : ''}) is disconnected when the new one connects; nothing changes until then.</> : null}
@@ -270,18 +271,6 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
         pairing={pairing}
         onClose={() => setPairing(null)}
         onNew={() => pairing && connectDevice(pairing.device)}
-        onOldApp={async () => {
-          if (!pairing) return;
-          if (!window.confirm(`Show a key for ${pairing.device.name} for an older SAC-POS app?
-
-The device using ${pairing.device.name} now stops and the phone you are setting up takes over once it scans the QR.`)) return;
-          try {
-            onSecret(await apiRequest(`/api/pos-devices/${pairing.device.id}/rotate-key`, { method: 'POST' }));
-            setPairing(null);
-            await onChanged();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          } catch (err) { setError(err.message); }
-        }}
       />
 
       {!devices.length ? (

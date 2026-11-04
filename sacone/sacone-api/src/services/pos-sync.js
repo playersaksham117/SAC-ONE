@@ -30,6 +30,7 @@ import { productService } from './products.js';
 import { shipToFrom, transportFrom } from '../core/dispatch.js';
 import { stateCodeOf } from '../core/gst-state.js';
 import { posPins } from './pos-pins.js';
+import { promotePendingKey } from './pos-pairing.js';
 
 const deviceRepo = repos.posDevices;
 const posUserRepo = repos.posUsers;
@@ -260,7 +261,8 @@ function requestMeta(req) {
 
 export function authenticateDeviceKey(rawKey, fingerprint) {
   if (!rawKey) return null;
-  const device = deviceRepo.findActiveByKeyHash(hashApiKey(rawKey));
+  // a key held in reserve by a pairing QR becomes the terminal's key the first time it is used
+  const device = deviceRepo.findActiveByKeyHash(hashApiKey(rawKey)) || promotePendingKey(rawKey, fingerprint);
   if (!device) return null;
   if (fingerprint) {
     if (!device.deviceFingerprint) {
