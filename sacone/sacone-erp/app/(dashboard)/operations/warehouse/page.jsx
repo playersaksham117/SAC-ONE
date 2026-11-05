@@ -5,6 +5,7 @@ import { apiRequest } from '../../../../lib/api';
 import { useLiveRefresh } from '../../../../lib/live';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
+import { CityInput, StateSelect } from '../../../../components/common/IndiaPlaceFields';
 
 function HierarchyTree({ nodes, depth = 0, onShowQr }) {
   if (!nodes?.length) return null;
@@ -748,8 +749,8 @@ export default function WarehousePage() {
             {whEditId && <p className="mt-1 text-xs text-slate-500">Code is fixed: location codes and QR labels are built from it.</p>}
           </div>
           <div><label className="label">Name *</label><input className="input-field" value={whForm.name} onChange={(e) => setWhForm({ ...whForm, name: e.target.value })} required /></div>
-          <div><label className="label">City</label><input className="input-field" value={whForm.city} onChange={(e) => setWhForm({ ...whForm, city: e.target.value })} /></div>
-          <div><label className="label">State</label><input className="input-field" value={whForm.state} onChange={(e) => setWhForm({ ...whForm, state: e.target.value })} /></div>
+          <div><label className="label">State</label><StateSelect value={whForm.state} onChange={(state) => setWhForm((w) => ({ ...w, state }))} /></div>
+          <div><label className="label">City</label><CityInput value={whForm.city} state={whForm.state} placeholder="" onChange={(city) => setWhForm((w) => ({ ...w, city }))} onStateGuess={(st) => setWhForm((w) => (w.state ? w : { ...w, state: st.name }))} /></div>
           <div className="md:col-span-2"><label className="label">Address</label><input className="input-field" value={whForm.address} onChange={(e) => setWhForm({ ...whForm, address: e.target.value })} /></div>
           <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={whForm.isDefault} disabled={Boolean(whEditId) && Boolean(selectedWarehouse?.isDefault)} onChange={(e) => setWhForm({ ...whForm, isDefault: e.target.checked })} /> Default warehouse{whEditId && selectedWarehouse?.isDefault ? ' (make another warehouse default to change)' : ''}</label>
         </form>

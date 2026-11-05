@@ -46,6 +46,10 @@ export const INDIAN_BANKS = [
   { code: 'SURY', name: 'Suryoday Small Finance Bank' },
   { code: 'UTKS', name: 'Utkarsh Small Finance Bank' },
   { code: 'ESMF', name: 'ESAF Small Finance Bank' },
+  { code: 'CLBL', name: 'Capital Small Finance Bank' },
+  { code: 'SMCB', name: 'Shivalik Small Finance Bank' },
+  { code: 'UNBA', name: 'Unity Small Finance Bank' },
+  { code: 'NESF', name: 'North East Small Finance Bank' },
   // Payments banks
   { code: 'AIRP', name: 'Airtel Payments Bank' },
   { code: 'IPOS', name: 'India Post Payments Bank' },

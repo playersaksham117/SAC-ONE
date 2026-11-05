@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../lib/auth-context';
 import { Alert, LoadingState, Modal } from '../ui';
+import { CityInput } from '../common/IndiaPlaceFields';
 import { SOURCES, STAGES, istDay, money } from './crm-shared';
 import {
   ActivityComposer, ActivityList, ContactLinks, DateChips, FollowUpDoneModal, FollowUpRow, StagePill,
@@ -50,7 +51,7 @@ export function LeadFormModal({ lead, users, canAssign, onClose, onSaved }) {
         <label className="text-sm"><span className="label">Name *</span><input className="input-field" required autoFocus value={form.name} onChange={set('name')} placeholder="Contact person" /></label>
         <label className="text-sm"><span className="label">Mobile</span><input className="input-field" inputMode="tel" value={form.phone || ''} onChange={set('phone')} placeholder="98765 43210" /></label>
         <label className="text-sm"><span className="label">Company / shop</span><input className="input-field" value={form.company || ''} onChange={set('company')} /></label>
-        <label className="text-sm"><span className="label">City</span><input className="input-field" value={form.city || ''} onChange={set('city')} /></label>
+        <label className="text-sm"><span className="label">City</span><CityInput value={form.city || ''} placeholder="" onChange={(city) => set('city')({ target: { value: city } })} /></label>
         <label className="text-sm sm:col-span-2"><span className="label">Requirement</span><textarea className="input-field" rows={2} value={form.requirement || ''} onChange={set('requirement')} placeholder="What do they want?" /></label>
         <label className="text-sm"><span className="label">Expected value (₹)</span><input type="number" min="0" className="input-field" value={form.expectedValue} onChange={set('expectedValue')} /></label>
         <label className="text-sm"><span className="label">Source</span>

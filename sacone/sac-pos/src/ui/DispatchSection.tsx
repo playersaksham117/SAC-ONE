@@ -2,6 +2,7 @@ import { Text, View } from 'react-native';
 import { TRANSPORT_MODES, type ShipToDraft, type TransportDraft } from '../domain/dispatch';
 import { todayPoText } from '../domain/po';
 import { Button, Card, Chip, Field, Row, SectionTitle, colors, font, space } from './components';
+import { CityField, StateField } from './PlaceFields';
 
 /**
  * GST bill extras at checkout: Transport details and a separate Ship To (consignee).
@@ -44,8 +45,9 @@ export function DispatchSection({
               <Field label="Name" value={shipTo.name} onChangeText={sSet('name')} placeholder="Consignee / site name" testID="ship-name" />
               <Field label="Address" value={shipTo.address} onChangeText={sSet('address')} placeholder="Delivery address" multiline testID="ship-address" />
               <Row>
-                <Field label="City" value={shipTo.city} onChangeText={sSet('city')} style={{ flex: 1 }} />
-                <Field label="State" value={shipTo.state} onChangeText={sSet('state')} style={{ flex: 1 }} />
+                <StateField value={shipTo.state} onChange={(name) => sSet('state')(name)} style={{ flex: 1 }} />
+                <CityField value={shipTo.city} state={shipTo.state} onChange={sSet('city')} style={{ flex: 1 }}
+                  onStateGuess={(st, city) => setShipTo({ ...shipTo, city, state: st.name })} />
               </Row>
               <Row>
                 <Field label="GSTIN (optional)" value={shipTo.gstin} onChangeText={sSet('gstin')} autoCapitalize="characters" maxLength={15} style={{ flex: 1 }} testID="ship-gstin" />

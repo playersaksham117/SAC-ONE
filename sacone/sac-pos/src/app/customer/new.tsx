@@ -6,6 +6,7 @@ import { ValidationError, createCustomer } from '../../services/pos';
 import { useCart } from '../../store/cart';
 import { useCan } from '../../store/session';
 import { Banner, Button, Card, Empty, Field, Header, Screen, space } from '../../ui/components';
+import { CityField, StateField } from '../../ui/PlaceFields';
 import { goBack } from '../../lib/nav';
 
 export default function NewCustomer() {
@@ -57,8 +58,8 @@ export default function NewCustomer() {
           <Field label="GSTIN" value={d.gstin} onChangeText={(v) => set('gstin')(v.toUpperCase())} error={errors.gstin} autoCapitalize="characters" placeholder="27AABCU9603R1ZM" hint="For B2B tax invoices; decides CGST/SGST vs IGST" />
           <Field label="Email" value={d.email} onChangeText={set('email')} error={errors.email} keyboardType="email-address" autoCapitalize="none" />
           <Field label="Address" value={d.address} onChangeText={set('address')} />
-          <Field label="City" value={d.city} onChangeText={set('city')} />
-          <Field label="State" value={d.state} onChangeText={set('state')} />
+          <StateField value={d.state} onChange={(name) => set('state')(name)} />
+          <CityField value={d.city} state={d.state} onChange={set('city')} onStateGuess={(st, city) => setD({ ...d, city, state: st.name })} />
           <Button title="Save customer" icon="checkmark" onPress={save} size="lg" testID="cust-save" />
         </Card>
       </View>

@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth-context';
 import { Alert, LoadingState, Modal } from '../ui';
 import { accountLabel, defaultAccountFor } from '../../lib/accounts';
 import ShipToPicker from './ShipToPicker';
+import { CityInput, StateSelect } from '../common/IndiaPlaceFields';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const METHODS = [['cash', 'Cash'], ['upi', 'UPI'], ['bank', 'Bank'], ['credit', 'Credit (on account)']];
@@ -318,11 +319,18 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
             )}
             {form.shipOn && (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {[['name', 'Name *'], ['phone', 'Phone'], ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['gstin', 'GSTIN']].map(([k, l]) => (
-                  <label key={k} className={`block text-sm ${k === 'address' ? 'sm:col-span-2' : ''}`}><span className="label">{l}</span>
-                    <input className="input-field" value={form.shipTo[k] || ''} onChange={(e) => setForm({ ...form, shipTo: { ...form.shipTo, [k]: e.target.value } })} />
-                  </label>
-                ))}
+                {[['name', 'Name *'], ['phone', 'Phone'], ['address', 'Address'], ['state', 'State'], ['city', 'City'], ['gstin', 'GSTIN']].map(([k, l]) => {
+                  const put = (v) => setForm((f) => ({ ...f, shipTo: { ...f.shipTo, [k]: v } }));
+                  return (
+                    <label key={k} className={`block text-sm ${k === 'address' ? 'sm:col-span-2' : ''}`}><span className="label">{l}</span>
+                      {k === 'state' ? <StateSelect value={form.shipTo.state || ''} placeholder="" onChange={put} />
+                        : k === 'city' ? (
+                          <CityInput value={form.shipTo.city || ''} state={form.shipTo.state} placeholder="" onChange={put}
+                            onStateGuess={(st) => setForm((f) => (f.shipTo.state ? f : { ...f, shipTo: { ...f.shipTo, state: st.name } }))} />
+                        ) : <input className="input-field" value={form.shipTo[k] || ''} onChange={(e) => put(e.target.value)} />}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

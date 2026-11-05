@@ -14,6 +14,7 @@ import AgingBar, { AgingDetail } from '../../../../components/parties/AgingBar';
 import CustomerActivity from '../../../../components/crm/CustomerActivity';
 import EditInvoiceDialog from '../../../../components/sales/EditInvoiceDialog';
 import { CustomerInvoices, CustomerPayments, CustomerSalesHistory } from '../../../../components/customers/CustomerInvoicePanels';
+import { CityInput, StateSelect } from '../../../../components/common/IndiaPlaceFields';
 
 function money(n) {
   return `₹${Number(n || 0).toFixed(2)}`;
@@ -773,8 +774,17 @@ export default function PartiesPage() {
           <input className="input-field" placeholder="GST Number" value={form.gstNumber} onChange={(e) => setForm((p) => ({ ...p, gstNumber: e.target.value }))} />
           <input className="input-field" placeholder="GST state code" value={form.gstStateCode} onChange={(e) => setForm((p) => ({ ...p, gstStateCode: e.target.value }))} />
           <input className="input-field sm:col-span-2" placeholder="Address" value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-          <input className="input-field" placeholder="City" value={form.city} onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))} />
-          <input className="input-field" placeholder="State" value={form.state} onChange={(e) => setForm((p) => ({ ...p, state: e.target.value }))} />
+          <StateSelect
+            value={form.state}
+            onChange={(state) => setForm((p) => ({ ...p, state }))}
+            onPick={(st) => setForm((p) => ({ ...p, gstStateCode: p.gstStateCode || st.code }))}
+          />
+          <CityInput
+            value={form.city}
+            state={form.state}
+            onChange={(city) => setForm((p) => ({ ...p, city }))}
+            onStateGuess={(st) => setForm((p) => (p.state ? p : { ...p, state: st.name, gstStateCode: p.gstStateCode || st.code }))}
+          />
           {tab === 'customers' ? (
             <>
               <input className="input-field" placeholder="Credit limit" type="number" value={form.creditLimit} onChange={(e) => setForm((p) => ({ ...p, creditLimit: e.target.value }))} />

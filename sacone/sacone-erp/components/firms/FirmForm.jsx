@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { GST_STATES } from '../../lib/bill-document';
 import { Alert, LoadingState, Modal } from '../ui';
+import { CityInput } from '../common/IndiaPlaceFields';
 
 /** Financial year containing today (India), e.g. '2026-27'. */
 function thisYear() {
@@ -187,7 +188,9 @@ export default function FirmForm({
               <input className="input-field" value={form.addressLine2} onChange={set('addressLine2')} maxLength={200} />
             </Field>
             <Field label="City">
-              <input className="input-field" value={form.city} onChange={set('city')} maxLength={80} />
+              <CityInput value={form.city} state={form.gstStateCode || form.state} placeholder="" maxLength={80}
+                onChange={(city) => setForm((f) => ({ ...f, city }))}
+                onStateGuess={(st) => setForm((f) => (f.gstStateCode ? f : { ...f, gstStateCode: st.code, state: st.name }))} />
             </Field>
             <Field label="PIN code">
               <input className="input-field" inputMode="numeric" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value.replace(/\D/g, '') }))} maxLength={6} />
