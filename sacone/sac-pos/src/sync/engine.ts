@@ -7,6 +7,7 @@ import { checkForUpdate } from '../lib/appUpdate';
 import type { SyncMeta } from '../domain/types';
 import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
+import { pullProducts } from './productPull';
 import { deviceConfig, useDevice } from '../store/device';
 import { useLedger } from '../store/ledger';
 import { useUpiQr } from '../store/upiQr';
@@ -199,15 +200,10 @@ async function runCycle(): Promise<void> {
     }
 
     // 4. pull catalogue + customers
-    let pulledProducts = 0;
-    let productCursor: string | undefined;
-    for (let page = 1; page < 200; page++) {
-      const res = await sync.products(cfg, useCatalog.getState().productCursor, page);
-      productCursor ??= res.server_time;
-      useCatalog.getState().applyProducts(res.products);
-      pulledProducts += res.products.length;
-      if (!res.has_more) break;
-    }
+    const pullCfg = cfg;
+    const pulled = await pullProducts((since, page) => sync.products(pullCfg, since, page));
+    const productCursor = pulled.cursor;
+    const pulledProducts = pulled.pulled;
     let customerCursor: string | undefined;
     for (let page = 1; page < 200; page++) {
       const res = await sync.customers(cfg, useCatalog.getState().customerCursor, page);

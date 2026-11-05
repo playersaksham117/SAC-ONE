@@ -25,6 +25,8 @@ interface CatalogState {
   minPrices: Record<string, number>;
   setMinPrices: (prices: Record<string, number>) => void;
   applyProducts: (rows: ServerProduct[]) => void;
+  /** After a full pull: drop products the server did not send (removed, or from another firm). */
+  keepOnlyProducts: (ids: Set<string>) => number;
   /** Returns localId → serverId for local customers now superseded by their ERP record. */
   applyCustomers: (rows: ServerCustomer[]) => Record<string, string>;
   setCursors: (c: { productCursor?: string; customerCursor?: string }) => void;
@@ -90,7 +92,7 @@ export function mapServerCustomer(c: ServerCustomer): Customer {
 
 export const useCatalog = create<CatalogState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       products: {},
       customers: {},
       minPrices: {},
@@ -112,6 +114,18 @@ export const useCatalog = create<CatalogState>()(
           }
           return { products };
         });
+      },
+
+      keepOnlyProducts(ids) {
+        const gone = Object.keys(get().products).filter((id) => !ids.has(id));
+        if (gone.length) {
+          set((s) => {
+            const products = { ...s.products };
+            for (const id of gone) delete products[id];
+            return { products };
+          });
+        }
+        return gone.length;
       },
 
       applyCustomers(rows) {

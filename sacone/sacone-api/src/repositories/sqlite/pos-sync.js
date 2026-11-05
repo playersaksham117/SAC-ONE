@@ -407,6 +407,11 @@ export class PosCatalogRepository {
     return { items, total };
   }
 
+  /** Every product of the firm (what a full pull sends), so a phone can tell its list is stale. */
+  countProducts() {
+    return getDatabase().prepare('SELECT COUNT(*) AS c FROM products').get().c;
+  }
+
   countChanged(warehouseId, since) {
     return getDatabase().prepare(`
       SELECT COUNT(*) AS c FROM products p

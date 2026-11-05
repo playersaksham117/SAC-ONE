@@ -144,7 +144,7 @@ export const sync = {
     }),
 
   products: (c: DeviceConfig, since: string, page: number) =>
-    request<Page & { products: ServerProduct[] }>(c.baseUrl, '/api/v1/sync/products', {
+    request<Page & { products: ServerProduct[]; all_total?: number }>(c.baseUrl, '/api/v1/sync/products', {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
 

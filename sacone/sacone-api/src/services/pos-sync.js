@@ -948,6 +948,9 @@ export class PosSyncService {
       limit,
       total,
       has_more: offset + items.length < total,
+      // all products of the firm: a phone holding a different number pulls everything again
+      // and drops what the server no longer has (other firm's items, products removed here)
+      all_total: page === 1 ? catalogRepo.countProducts() : undefined,
       server_time: serverTime,
     };
   }
