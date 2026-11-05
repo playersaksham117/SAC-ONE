@@ -1,4 +1,5 @@
 import { AppError } from '../core/http.js';
+import { getDatabase } from '../database/connection.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
 import { periodFrom, periodText } from '../core/warranty.js';
@@ -751,124 +752,194 @@ export class ProductService {
     return `${headers.join(',')}\n${rows.join('\n')}`;
   }
 
-  importCsv(csvText, actor, req) {
+  /**
+   * Import products from CSV (Excel "CSV UTF-8"; comma, semicolon or tab separated).
+   * - A row is matched to an existing product by SKU, else (no SKU given) by name.
+   * - Names are unique: a row whose name belongs to another product, or repeats an earlier row
+   *   of the file, is skipped (case, extra spaces and line breaks don't make a name different).
+   * - Updating: blank cells keep what the product has (a short sheet never wipes prices / brand).
+   * - Prices like "₹1,200.50" and GST like "18%" are read; any other text in a number column is an error.
+   * - dryRun: everything is checked exactly as a real import, then rolled back (nothing is saved).
+   * Returns { dryRun, created, updated, skipped: [{row,name,sku,message}], errors: [...], rows: [{row,name,sku,action}] }.
+   */
+  importCsv(csvText, actor, req, { dryRun = false } = {}) {
     authService.checkPermission(actor.permissions, 'products.products.create');
     if (!csvText?.trim()) throw new AppError('CSV content is required', 400);
 
-    // Excel's "CSV UTF-8" starts with a byte-order mark; drop it so the first header is read.
-    const lines = csvText.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
-    if (lines.length < 2) throw new AppError('CSV must include a header and at least one row', 400);
+    const table = parseCsvTable(csvText);
+    if (table.length < 2) throw new AppError('CSV must include a header and at least one row', 400);
 
-    const parseLine = (line) => {
-      const result = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i += 1) {
-        const ch = line[i];
-        if (ch === '"') {
-          if (inQuotes && line[i + 1] === '"') {
-            current += '"';
-            i += 1;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (ch === ',' && !inQuotes) {
-          result.push(current.trim());
-          current = '';
-        } else {
-          current += ch;
-        }
-      }
-      result.push(current.trim());
-      return result;
-    };
+    // "Selling Price", "selling-price" and "selling_price" all mean selling_price; "Product Name" → name.
+    const HEADER_ALIASES = { product_name: 'name', item_name: 'name', product: 'name', item: 'name', item_code: 'sku', product_code: 'sku', code: 'sku', gst: 'gst_percentage', gst_rate: 'gst_percentage', 'gst_%': 'gst_percentage', price: 'selling_price', sale_price: 'selling_price', cost_price: 'purchase_price' };
+    const headers = table[0].map((h) => {
+      const k = String(h).toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[()]/g, '');
+      return HEADER_ALIASES[k] || k;
+    });
+    if (!headers.includes('name')) throw new AppError('CSV missing required column: name', 400);
 
-    // "Selling Price", "selling-price" and "selling_price" all mean selling_price.
-    const headers = parseLine(lines[0]).map((h) => h.toLowerCase().trim().replace(/[\s-]+/g, '_'));
-    const required = ['sku', 'name'];
-    for (const key of required) {
-      if (!headers.includes(key)) {
-        throw new AppError(`CSV missing required column: ${key}`, 400);
-      }
+    const db = getDatabase();
+    const nameKey = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+    // every product in this firm, by its name, to stop duplicates (kept current while importing)
+    const byName = new Map();
+    for (const p of db.prepare('SELECT id, name, sku, is_active AS isActive FROM products').all()) {
+      if (!byName.has(nameKey(p.name))) byName.set(nameKey(p.name), p);
     }
 
-    const results = { created: 0, updated: 0, errors: [] };
+    const results = { dryRun: Boolean(dryRun), created: 0, updated: 0, skipped: [], errors: [], rows: [] };
+    const seenName = new Map();
+    const seenSku = new Map();
+    const ROLLBACK = Symbol('dry run');
 
-    for (let i = 1; i < lines.length; i += 1) {
-      if (!lines[i].trim()) continue;
-      const values = parseLine(lines[i]);
-      const row = Object.fromEntries(headers.map((h, idx) => [h, values[idx] ?? '']));
+    const num = (row, col, label) => {
+      const raw = row[col];
+      if (raw === undefined || raw === null || String(raw).trim() === '') return undefined;
+      const cleaned = String(raw).replace(/₹|rs\.?|inr|%|,|\s/gi, '');
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) throw new AppError(`${label} "${raw}" is not a number`, 400);
+      if (n < 0) throw new AppError(`${label} cannot be negative`, 400);
+      return n;
+    };
+    const text = (row, ...cols) => {
+      for (const c of cols) if (row[c] !== undefined && String(row[c]).trim() !== '') return String(row[c]).trim();
+      return undefined;
+    };
+    const yesNo = (v) => (v === undefined ? undefined : !['0', 'false', 'no', 'n', 'inactive'].includes(String(v).toLowerCase()));
 
-      try {
-        const categoryId = resolveLookupId(categoryRepo, {
-          name: row.category,
-          createIfMissing: Boolean(row.category),
-          createdBy: actor.user.id,
-        });
-        const brandId = resolveLookupId(brandRepo, {
-          name: row.brand,
-          createIfMissing: Boolean(row.brand),
-          createdBy: actor.user.id,
-        });
-        const unitId = resolveLookupId(unitRepo, {
-          name: row.unit_name || row.unit,
-          abbreviation: row.unit || row.unit_abbreviation || row.unit_name,
-          createIfMissing: Boolean(row.unit || row.unit_name),
-          createdBy: actor.user.id,
-        });
-
-        const payload = {
-          name: row.name,
-          sku: row.sku,
-          barcode: row.barcode || null,
-          categoryId,
-          brandId,
-          unitId,
-          modelVariant: row.model_variant || row.variant || row.model || null,
-          hsnCode: row.hsn_code || row.hsn || row.sac || row.hsn_sac || null,
-          // product / goods → stock-tracked; service → never stocked (blank keeps an existing item's type)
-          ...(row.item_type || row.type ? { itemType: /^serv/i.test(row.item_type || row.type) ? 'service' : 'goods' } : {}),
-          gstPercentage: row.gst_percentage,
-          mrp: row.mrp,
-          sellingPrice: row.selling_price,
-          purchasePrice: row.purchase_price,
-          reorderLevel: row.reorder_level,
-          minimumStock: row.minimum_stock,
-          imageUrl: row.image_url || null,
-          description: row.description || null,
-          isActive: row.is_active === undefined || row.is_active === '' ? true : !['0', 'false', 'no'].includes(String(row.is_active).toLowerCase()),
-          webStorePublished: ['1', 'true', 'yes'].includes(String(row.web_store_published || '').toLowerCase()),
-          // "1 year", "18 months", "90 days" (a missing column leaves the product's period unchanged)
-          ...(row.warranty !== undefined ? { warranty: row.warranty } : {}),
-          ...(row.guarantee !== undefined ? { guarantee: row.guarantee } : {}),
-          ...(row.short_description !== undefined ? { shortDescription: row.short_description } : {}),
+    const runAll = db.transaction(() => {
+      for (let i = 1; i < table.length; i += 1) {
+        const cells = table[i];
+        if (!cells.some((c) => String(c).trim())) continue;
+        const rowNo = i + 1;
+        const row = Object.fromEntries(headers.map((h, idx) => [h, cells[idx] ?? '']));
+        const name = String(row.name || '').replace(/\s+/g, ' ').trim();
+        const sku = String(row.sku || '').trim();
+        const note = (list, message) => {
+          list.push({ row: rowNo, name: name || null, sku: sku || null, message });
+          results.rows.push({ row: rowNo, name, sku, action: list === results.skipped ? 'skip' : 'error', message });
         };
 
-        const existing = productRepo.findBySku(payload.sku);
-        if (existing) {
-          this.update(existing.id, payload, actor, req);
-          results.updated += 1;
-        } else {
-          this.create(payload, actor, req);
-          results.created += 1;
+        if (!name) { note(results.errors, 'Name is missing'); continue; }
+        const key = nameKey(name);
+        if (seenName.has(key)) { note(results.skipped, `Same name as row ${seenName.get(key)} of this file`); continue; }
+        if (sku && seenSku.has(sku.toLowerCase())) { note(results.skipped, `Same SKU as row ${seenSku.get(sku.toLowerCase())} of this file`); continue; }
+
+        const bySku = sku ? productRepo.findBySku(sku) : null;
+        const sameName = byName.get(key);
+        let target = null;
+        if (bySku) {
+          if (sameName && sameName.id !== bySku.id) {
+            note(results.skipped, `Name "${sameName.name}" already belongs to SKU ${sameName.sku}`);
+            continue;
+          }
+          target = bySku;
+        } else if (sameName) {
+          if (sku) {
+            note(results.skipped, `"${sameName.name}" already exists as SKU ${sameName.sku}${sameName.isActive ? '' : ' (inactive)'}; use that SKU to update it`);
+            continue;
+          }
+          target = productRepo.findById(sameName.id);
         }
-      } catch (err) {
-        results.errors.push({ row: i + 1, sku: row.sku || null, message: err.message });
+        seenName.set(key, rowNo);
+        if (sku) seenSku.set(sku.toLowerCase(), rowNo);
+
+        try {
+          // each row on its own savepoint: a failing row leaves nothing half-saved
+          const saved = db.transaction(() => {
+            const lookup = (repo, nameVal, abbr) => (nameVal
+              ? resolveLookupId(repo, { name: nameVal, abbreviation: abbr, createIfMissing: true, createdBy: actor.user.id })
+              : undefined);
+            const unitName = text(row, 'unit_name', 'unit');
+            const itemType = text(row, 'item_type', 'type');
+            const fields = {
+              name,
+              sku: sku || undefined,
+              barcode: text(row, 'barcode'),
+              categoryId: lookup(categoryRepo, text(row, 'category')),
+              brandId: lookup(brandRepo, text(row, 'brand')),
+              unitId: lookup(unitRepo, unitName, text(row, 'unit', 'unit_abbreviation', 'unit_name')),
+              modelVariant: text(row, 'model_variant', 'variant', 'model'),
+              hsnCode: text(row, 'hsn_code', 'hsn', 'sac', 'hsn_sac'),
+              itemType: itemType === undefined ? undefined : (/^serv/i.test(itemType) ? 'service' : 'goods'),
+              gstPercentage: num(row, 'gst_percentage', 'GST %'),
+              mrp: num(row, 'mrp', 'MRP'),
+              sellingPrice: num(row, 'selling_price', 'Selling price'),
+              purchasePrice: num(row, 'purchase_price', 'Purchase price'),
+              reorderLevel: num(row, 'reorder_level', 'Reorder level'),
+              minimumStock: num(row, 'minimum_stock', 'Minimum stock'),
+              imageUrl: text(row, 'image_url'),
+              description: text(row, 'description'),
+              isActive: yesNo(text(row, 'is_active', 'active')),
+              webStorePublished: text(row, 'web_store_published') === undefined ? undefined : yesNo(text(row, 'web_store_published')),
+              warranty: text(row, 'warranty'),
+              guarantee: text(row, 'guarantee'),
+            };
+            if (fields.gstPercentage !== undefined && fields.gstPercentage > 100) throw new AppError('GST % must be 0 to 100', 400);
+            // only what the sheet gives: blank cells keep the product's values
+            const payload = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+            if (target) return { action: 'update', product: this.update(target.id, payload, actor, req), before: target };
+            return { action: 'create', product: this.create({ isActive: true, ...payload }, actor, req) };
+          })();
+
+          if (saved.before) byName.delete(nameKey(saved.before.name));
+          byName.set(nameKey(saved.product.name), { id: saved.product.id, name: saved.product.name, sku: saved.product.sku, isActive: saved.product.isActive });
+          if (saved.action === 'create') results.created += 1; else results.updated += 1;
+          results.rows.push({ row: rowNo, name, sku: saved.product.sku, action: saved.action });
+        } catch (err) {
+          seenName.delete(key);
+          note(results.errors, err.message);
+        }
       }
+      if (dryRun) throw ROLLBACK;
+    });
+
+    try {
+      runAll();
+    } catch (err) {
+      if (err !== ROLLBACK) throw err;
     }
 
-    auditRepo.create({
-      userId: actor.user.id,
-      userName: actor.user.fullName,
-      action: 'import',
-      module: 'products',
-      recordType: 'product',
-      newValue: results,
-      ...getRequestMeta(req),
-    });
+    if (!dryRun) {
+      auditRepo.create({
+        userId: actor.user.id,
+        userName: actor.user.fullName,
+        action: 'import',
+        module: 'products',
+        recordType: 'product',
+        newValue: { created: results.created, updated: results.updated, skipped: results.skipped.length, errors: results.errors },
+        ...getRequestMeta(req),
+      });
+    }
 
     return results;
   }
+}
+
+/**
+ * Split CSV text into rows of cells: quoted cells may hold commas, quotes ("") and line breaks.
+ * The separator (comma, semicolon or tab) is taken from the header line.
+ */
+function parseCsvTable(csvText) {
+  const src = String(csvText).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const firstLine = src.slice(0, src.indexOf('\n') === -1 ? src.length : src.indexOf('\n'));
+  const count = (ch) => firstLine.split(ch).length - 1;
+  const sep = [',', ';', '\t'].sort((a, b) => count(b) - count(a))[0];
+  const rows = [];
+  let row = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { cur += '"'; i += 1; } else quoted = false;
+      } else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === sep) { row.push(cur.trim()); cur = ''; }
+    else if (ch === '\n') { row.push(cur.trim()); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur.trim()); rows.push(row); }
+  return rows.filter((r, idx) => idx === 0 || r.some((c) => c !== ''));
 }
 
 export const productService = new ProductService();

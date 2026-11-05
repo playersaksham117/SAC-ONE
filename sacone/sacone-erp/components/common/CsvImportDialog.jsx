@@ -6,19 +6,53 @@ import { downloadCsv } from '../../lib/csv';
 import { Alert, Modal } from '../ui';
 
 
-/** Split one CSV line, honouring "quoted, values". */
-function cells(line) {
-  const out = [];
+/**
+ * Split CSV text into rows of cells: quoted cells may hold commas, quotes ("") and line breaks;
+ * the separator (comma, semicolon or tab) is taken from the header line. Blank rows are dropped.
+ */
+function parseTable(text) {
+  const src = String(text).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const nl = src.indexOf('\n');
+  const first = nl === -1 ? src : src.slice(0, nl);
+  const sep = [',', ';', '\t'].sort((x, y) => first.split(y).length - first.split(x).length)[0];
+  const rows = [];
+  let row = [];
   let cur = '';
   let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (quoted && line[i + 1] === '"') { cur += '"'; i += 1; } else quoted = !quoted;
-    } else if (ch === ',' && !quoted) { out.push(cur.trim()); cur = ''; } else cur += ch;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    if (quoted) {
+      if (ch === '"') { if (src[i + 1] === '"') { cur += '"'; i += 1; } else quoted = false; } else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === sep) { row.push(cur.trim()); cur = ''; }
+    else if (ch === '\n') { row.push(cur.trim()); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
   }
-  out.push(cur.trim());
-  return out;
+  if (cur !== '' || row.length) { row.push(cur.trim()); rows.push(row); }
+  return rows.filter((r) => r.some((c) => c !== ''));
+}
+
+/** Rows that were skipped or failed: row number, record, reason. */
+function IssueTable({ title, items, tone }) {
+  if (!items?.length) return null;
+  const c = tone === 'red'
+    ? { box: 'border-red-200', head: 'bg-red-50 text-red-800', div: 'divide-red-100' }
+    : { box: 'border-amber-200', head: 'bg-amber-50 text-amber-800', div: 'divide-amber-100' };
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold text-slate-600">{title} ({items.length})</div>
+      <div className={`max-h-56 overflow-auto rounded-lg border ${c.box}`}>
+        <table className="min-w-full text-xs">
+          <thead className={`text-left ${c.head}`}><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Record</th><th className="px-3 py-2">Reason</th></tr></thead>
+          <tbody className={`divide-y ${c.div}`}>
+            {items.map((e, i) => (
+              <tr key={i}><td className="px-3 py-1.5">{e.row}</td><td className="px-3 py-1.5">{[e.name, e.sku].filter(Boolean).join(' · ') || '—'}</td><td className="px-3 py-1.5">{e.message}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -28,9 +62,11 @@ function cells(line) {
  *   columns: known columns (others are shown as ignored); required: must be present (an entry
  *   may be an array of alternative names, e.g. ['name', 'customer_name'])
  *   aliases: extra accepted column names; template: CSV text; help: note under the box
+ *   checkFirst: the endpoint accepts { dryRun: true }; "Check file" shows what would be added,
+ *   updated and skipped (nothing saved) before the real import
  */
 export default function CsvImportDialog({
-  title, endpoint, columns, required = [], aliases = [], template, templateName = 'template.csv', noun = 'record', help, onClose, onImported,
+  title, endpoint, columns, required = [], aliases = [], template, templateName = 'template.csv', noun = 'record', help, checkFirst = false, onClose, onImported,
 }) {
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -39,15 +75,16 @@ export default function CsvImportDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [check, setCheck] = useState(null);
   const inputRef = useRef(null);
 
   const preview = useMemo(() => {
-    const lines = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n').filter((l) => l.trim());
+    const lines = parseTable(text);
     if (!lines.length) return null;
-    const headers = cells(lines[0]).map((h) => h.toLowerCase().trim().replace(/[\s-]+/g, '_'));
+    const headers = lines[0].map((h) => h.toLowerCase().trim().replace(/[\s-]+/g, '_'));
     return {
       headers,
-      rows: lines.slice(1, 6).map(cells),
+      rows: lines.slice(1, 6),
       count: lines.length - 1,
       missing: required.filter((k) => ![].concat(k).some((h) => headers.includes(h))).map((k) => [].concat(k)[0]),
       unknown: headers.filter((h) => h && !columns.includes(h) && !aliases.includes(h)),
@@ -63,18 +100,19 @@ export default function CsvImportDialog({
     }
     if (file.size > 4 * 1024 * 1024) { setError('That file is larger than 4 MB; split it into smaller files.'); return; }
     const reader = new FileReader();
-    reader.onload = () => { setText(String(reader.result || '')); setFileName(file.name); setResult(null); setError(''); };
+    reader.onload = () => { setText(String(reader.result || '')); setFileName(file.name); setResult(null); setCheck(null); setError(''); };
     reader.onerror = () => setError('Could not read the file.');
     reader.readAsText(file);
   };
 
-  const submit = async () => {
+  const submit = async (dryRun = false) => {
     if (!preview?.count) { setError(`Choose a CSV file with a header row and at least one ${noun}.`); return; }
     if (preview.missing.length) { setError(`The file needs these columns: ${preview.missing.join(', ')}`); return; }
     setSaving(true);
     setError('');
     try {
-      const res = await apiRequest(endpoint, { method: 'POST', body: JSON.stringify({ csv: text }) });
+      const res = await apiRequest(endpoint, { method: 'POST', body: JSON.stringify(dryRun ? { csv: text, dryRun: true } : { csv: text }) });
+      if (dryRun) { setCheck(res); return; }
       setResult(res);
       onImported?.(res);
     } catch (e) {
@@ -95,9 +133,22 @@ export default function CsvImportDialog({
       ) : (
         <>
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" disabled={saving || !preview?.count || preview.missing.length > 0} onClick={submit}>
-            {saving ? 'Importing…' : preview?.count ? `Import ${preview.count} ${noun}${preview.count === 1 ? '' : 's'}` : 'Import'}
-          </button>
+          {checkFirst && !check ? (
+            <button type="button" className="btn-primary" disabled={saving || !preview?.count || preview.missing.length > 0} onClick={() => submit(true)}>
+              {saving ? 'Checking…' : 'Check file'}
+            </button>
+          ) : checkFirst ? (
+            <>
+              <button type="button" className="btn-secondary" disabled={saving} onClick={() => setCheck(null)}>Back</button>
+              <button type="button" className="btn-primary" disabled={saving || !(check.created + check.updated)} onClick={() => submit(false)}>
+                {saving ? 'Importing…' : `Import ${check.created + check.updated} ${noun}${check.created + check.updated === 1 ? '' : 's'}`}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn-primary" disabled={saving || !preview?.count || preview.missing.length > 0} onClick={() => submit(false)}>
+              {saving ? 'Importing…' : preview?.count ? `Import ${preview.count} ${noun}${preview.count === 1 ? '' : 's'}` : 'Import'}
+            </button>
+          )}
         </>
       )}
     >
@@ -106,19 +157,20 @@ export default function CsvImportDialog({
 
         {result ? (
           <div className="space-y-3">
-            <Alert type="success" message={`Import complete: ${result.created} created, ${result.updated} updated${result.errors?.length ? `, ${result.errors.length} with errors` : ''}.`} />
-            {result.errors?.length > 0 && (
-              <div className="max-h-64 overflow-auto rounded-lg border border-red-200">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-red-50 text-left text-red-800"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Record</th><th className="px-3 py-2">Problem</th></tr></thead>
-                  <tbody className="divide-y divide-red-100">
-                    {result.errors.map((e, i) => (
-                      <tr key={i}><td className="px-3 py-1.5">{e.row}</td><td className="px-3 py-1.5 font-mono">{e.sku || e.name || '—'}</td><td className="px-3 py-1.5">{e.message}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <Alert type="success" message={`Import complete: ${result.created} created, ${result.updated} updated${result.skipped?.length ? `, ${result.skipped.length} skipped` : ''}${result.errors?.length ? `, ${result.errors.length} with errors` : ''}.`} />
+            <IssueTable title="Skipped (not imported)" items={result.skipped} tone="amber" />
+            <IssueTable title="Errors (not imported)" items={result.errors} tone="red" />
+          </div>
+        ) : check ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[['New', check.created, 'text-emerald-700'], ['Update', check.updated, 'text-sky-700'], ['Skip', check.skipped?.length || 0, 'text-amber-700'], ['Errors', check.errors?.length || 0, 'text-red-700']].map(([l, n, c]) => (
+                <div key={l} className="rounded-lg border border-slate-200 px-3 py-2"><div className="text-xs text-slate-500">{l}</div><div className={`text-xl font-semibold ${c}`}>{n}</div></div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">Nothing is saved yet. Skipped rows and rows with errors will not be imported: fix them in the file and choose it again, or import the rest.</p>
+            <IssueTable title="Will be skipped" items={check.skipped} tone="amber" />
+            <IssueTable title="Errors" items={check.errors} tone="red" />
           </div>
         ) : (
           <>
@@ -147,7 +199,7 @@ export default function CsvImportDialog({
               <textarea
                 className="input-field min-h-[140px] font-mono text-xs"
                 value={text}
-                onChange={(e) => { setText(e.target.value); setFileName(''); setResult(null); }}
+                onChange={(e) => { setText(e.target.value); setFileName(''); setResult(null); setCheck(null); }}
                 placeholder={`${columns.slice(0, 6).join(',')},...`}
               />
             )}

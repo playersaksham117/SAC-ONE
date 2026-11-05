@@ -77,7 +77,7 @@ productRouter.get('/export', asyncHandler(async (req, res) => {
 
 productRouter.post('/import', asyncHandler(async (req, res) => {
   const csvText = typeof req.body?.csv === 'string' ? req.body.csv : req.body?.content;
-  sendSuccess(res, productService.importCsv(csvText, req.actor, req));
+  sendSuccess(res, productService.importCsv(csvText, req.actor, req, { dryRun: req.body?.dryRun === true }));
 }));
 
 productRouter.get('/barcode/:barcode', asyncHandler(async (req, res) => {
