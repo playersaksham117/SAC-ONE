@@ -81,6 +81,21 @@ function taxRows(sale: Sale) {
     : `<tr><td>CGST</td><td class="r">${formatMoney(t.cgstAmount)}</td></tr><tr><td>SGST</td><td class="r">${formatMoney(t.sgstAmount)}</td></tr>`;
 }
 
+/**
+ * Quick Bill (walk-in / unregistered): items print with GST-inclusive rate and amount only;
+ * the GST in the total is shown once as a single line under it.
+ */
+const isQuick = (sale: Sale) => sale.series === 'quick' && !isQuote(sale);
+const r2 = (v: number) => Math.round(v * 100) / 100;
+const inclRate = (l: Sale['totals']['lines'][number]) => r2(l.unitPrice * (1 + l.gstRate / 100));
+/** Discount on the line at GST-inclusive prices (item and bill discount). */
+const inclDisc = (l: Sale['totals']['lines'][number]) => Math.max(0, r2(inclRate(l) * l.quantity - l.lineTotal));
+function gstIncludedText(sale: Sale) {
+  const t = sale.totals;
+  const parts = t.taxSplit === 'igst' ? `IGST ${formatMoney(t.igstAmount)}` : `CGST ${formatMoney(t.cgstAmount)} + SGST ${formatMoney(t.sgstAmount)}`;
+  return `Includes GST ${formatMoney(t.gstAmount)} (${parts})`;
+}
+
 function paymentRows(sale: Sale) {
   const pays = sale.payments.map((p) => `<tr><td>${METHOD[p.method] ?? p.method}${p.reference ? ` (${esc(p.reference)})` : ''}</td><td class="r">${formatMoney(p.amount)}</td></tr>`).join('');
   const change = sale.change
@@ -97,7 +112,10 @@ function paymentRows(sale: Sale) {
 function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: '58mm' | '80mm', invoice: InvoiceSettings = {}) {
   const t = sale.totals;
   const narrow = size === '58mm';
-  const rows = t.lines.map((l) => `
+  const quick = isQuick(sale);
+  const rows = quick ? t.lines.map((l) => `
+    <tr><td colspan="2" class="name">${esc(l.name)}${noteFor(sale, l) ? `<div class="muted" style="font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td></tr>
+    <tr><td>${formatQty(l.quantity)} × ${formatMoney(inclRate(l))}${inclDisc(l) ? ` −${formatMoney(inclDisc(l))}` : ''}</td><td class="r">${formatMoney(l.lineTotal)}</td></tr>`).join('') : t.lines.map((l) => `
     <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}${noteFor(sale, l) ? `<div class="muted" style="font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td></tr>
     <tr><td>${formatQty(l.quantity)} × ${formatMoney(l.unitPrice)}${l.discountAmount ? ` −${formatMoney(l.discountAmount)}` : ''}</td>
         <td class="muted">${l.gstRate}%</td><td class="r">${formatMoney(l.lineTotal)}</td></tr>`).join('');
@@ -132,14 +150,19 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   ${transportRows(sale).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${esc(v)}</td></tr>`).join('')}
   </table><hr>
   <table>${rows}</table><hr>
-  <table>
+  ${quick ? `<table>
+    ${t.lines.some(inclDisc) ? `<tr><td>Discount</td><td class="r">−${formatMoney(r2(t.lines.reduce((x, l) => x + inclDisc(l), 0)))}</td></tr>` : ''}
+    ${roundOffRow(sale)}
+    <tr class="total"><td>TOTAL</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
+    <tr><td colspan="2" class="muted">${gstIncludedText(sale)}</td></tr>
+  </table><hr>` : `<table>
     <tr><td>Subtotal</td><td class="r">${formatMoney(t.subtotal)}</td></tr>
     ${discountTotal(sale) > 0 ? `<tr><td>Discount</td><td class="r">−${formatMoney(discountTotal(sale))}</td></tr>` : ''}
     <tr><td>Taxable</td><td class="r">${formatMoney(t.taxableAmount)}</td></tr>
     ${taxRows(sale)}
     ${roundOffRow(sale)}
     <tr class="total"><td>TOTAL</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
-  </table><hr>
+  </table><hr>`}
   ${isQuote(sale) ? '' : `<table>${paymentRows(sale)}</table>`}
   ${bankerLines(invoice.bank, invoice.bankDetails).length && upiQr(sale, company, invoice, 10) ? `<hr><div class="c muted">${bankerLines(invoice.bank, invoice.bankDetails).map(esc).join('<br>')}</div>` : ''}
   ${upiQr(sale, company, invoice, size === '58mm' ? 110 : 140)}
@@ -152,8 +175,17 @@ function thermalHtml(sale: Sale, company: CompanyInfo | null | undefined, device
 function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCode: string | undefined, size: PdfSize, invoice: InvoiceSettings = {}) {
   const t = sale.totals;
   const a5 = size === 'A5';
-  const anyDiscount = t.lines.some((l) => l.discountAmount > 0);
-  const rows = t.lines.map((l, i) => `
+  const quick = isQuick(sale);
+  const anyDiscount = quick ? t.lines.some(inclDisc) : t.lines.some((l) => l.discountAmount > 0);
+  const rows = quick ? t.lines.map((l, i) => `
+    <tr>
+      <td class="c">${i + 1}</td>
+      <td>${esc(l.name)}${l.shortDescription ? `<div style="font-weight:400;font-size:.9em">${esc(l.shortDescription)}</div>` : ''}${noteFor(sale, l) ? `<div class="muted" style="font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td>
+      <td class="r">${formatQty(l.quantity)} ${esc(l.unit || '')}</td>
+      <td class="r">${formatMoney(inclRate(l))}</td>
+      ${anyDiscount ? `<td class="r">${inclDisc(l) ? formatMoney(inclDisc(l)) : '—'}</td>` : ''}
+      <td class="r b">${formatMoney(l.lineTotal)}</td>
+    </tr>`).join('') : t.lines.map((l, i) => `
     <tr>
       <td class="c">${i + 1}</td>
       <td>${esc(l.name)}${l.shortDescription ? `<div style="font-weight:400;font-size:.9em">${esc(l.shortDescription)}</div>` : ''}${l.hsn ? `<div class="muted">HSN ${esc(l.hsn)}</div>` : ''}${noteFor(sale, l) ? `<div class="muted" style="font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td>
@@ -218,21 +250,25 @@ function sheetHtml(sale: Sale, company: CompanyInfo | null | undefined, deviceCo
   </div>
   <table class="items">
     <thead><tr>
-      <th class="c">#</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th>
-      ${anyDiscount ? '<th class="r">Disc</th>' : ''}${a5 ? '' : '<th class="r">Taxable</th>'}<th class="r">GST</th><th class="r">Amount</th>
+      <th class="c">#</th><th>Item</th><th class="r">Qty</th><th class="r">Rate${quick ? ' (incl. GST)' : ''}</th>
+      ${anyDiscount ? '<th class="r">Disc</th>' : ''}${quick ? '' : `${a5 ? '' : '<th class="r">Taxable</th>'}<th class="r">GST</th>`}<th class="r">Amount${quick ? ' (incl. GST)' : ''}</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="bottom">
     <div class="muted">${t.lines.length} item${t.lines.length === 1 ? '' : 's'} · ${formatQty(t.lines.reduce((s, l) => s + l.quantity, 0))} qty</div>
-    <table class="sum">
+    ${quick ? `<table class="sum">
+      ${roundOffRow(sale)}
+      <tr class="grand"><td>Total</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
+      <tr><td colspan="2" class="muted r">${gstIncludedText(sale)}</td></tr>
+    </table>` : `<table class="sum">
       <tr><td>Subtotal</td><td class="r">${formatMoney(t.subtotal)}</td></tr>
       ${discountTotal(sale) > 0 ? `<tr><td>Discount</td><td class="r">−${formatMoney(discountTotal(sale))}</td></tr>` : ''}
       <tr><td>Taxable value</td><td class="r">${formatMoney(t.taxableAmount)}</td></tr>
       ${taxRows(sale)}
       ${roundOffRow(sale)}
       <tr class="grand"><td>Total</td><td class="r">${formatMoney(t.grandTotal)}</td></tr>
-    </table>
+    </table>`}
   </div>
   ${bankerLines(invoice.bank, invoice.bankDetails).length ? `<div class="bankbox">
     <div><div class="label">Our bankers</div>${bankerLines(invoice.bank, invoice.bankDetails).map((l, i) => `<div${i === 0 ? ' class="b"' : ''}>${esc(l)}</div>`).join('')}</div>
@@ -407,6 +443,21 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   const terms = String(invoice.terms || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   const subTotal = sum('taxableAmount') + sum('sgst') + sum('cgst') + sum('igst');
   const pad = a5 ? '1px 3px 2px' : '2px 5px 4px';
+  // Quick Bill: Sr, goods, HSN, qty, UOM, rate and amount with GST included (no tax columns)
+  const quick = isQuick(sale);
+  const qDisc = quick && lines.some(inclDisc);
+  const qCols = `<colgroup><col style="width:5%"><col style="width:${qDisc ? 39 : 47}%"><col style="width:9%"><col style="width:9%"><col style="width:6%"><col style="width:11%">${qDisc ? '<col style="width:8%">' : ''}<col style="width:13%"></colgroup>`;
+  const qRows = lines.map((l, i) => `<tr>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.shortDescription ? `<div style="font-weight:400;font-size:.9em">${esc(l.shortDescription)}</div>` : ''}${noteFor(sale, l) ? `<div style="font-weight:400;font-size:.85em">${esc(noteFor(sale, l))}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
+      <td class="r">${l.quantity.toFixed(3)}</td><td>${esc(l.unit || '')}</td><td class="r b">${n2(inclRate(l))}</td>
+      ${qDisc ? `<td class="r">${blank(inclDisc(l))}</td>` : ''}<td class="r b">${n2(l.lineTotal)}</td></tr>`).join('');
+  const qTotal = r2(lines.reduce((x, l) => x + l.lineTotal, 0));
+  const itemTable = quick ? `<table class="items">${qCols}<thead><tr>
+    <th>Sr</th><th>Description of Goods</th><th>HSN/<br>SAC<br>code</th><th>Qty.</th><th>UOM</th><th>Rate<br>(incl. GST)</th>${qDisc ? '<th>Disc.</th>' : ''}<th>Amount<br>(incl. GST)</th>
+  </tr></thead><tbody>${qRows}</tbody></table>
+  <div class="grow"><table class="items">${qCols}<tbody><tr>${'<td></td>'.repeat(qDisc ? 8 : 7)}</tr></tbody></table></div>
+  <table class="tot">${qCols}<tr>
+    <td colspan="3">TOTAL :</td><td class="r">${qtySum.toFixed(3)}</td><td></td><td></td>${qDisc ? `<td class="r">${n2(lines.reduce((x, l) => x + inclDisc(l), 0))}</td>` : ''}<td class="r">${n2(qTotal)}</td></tr></table>` : '';
 
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{text-transform:uppercase}
@@ -465,7 +516,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
     <div style="width:50%">${consignee('Detail of Consignee (Shipped To)')}
       <div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div></div>
   </div>
-  <table class="items">${cols}<thead><tr>
+  ${quick ? itemTable : `<table class="items">${cols}<thead><tr>
     <th rowspan="2">Sr</th><th rowspan="2">Description of Goods</th><th rowspan="2">HSN/<br>SAC<br>code</th>
     <th rowspan="2">Qty.</th><th rowspan="2">UOM</th><th rowspan="2">Rate</th><th rowspan="2">Total<br>Amount</th>
     <th rowspan="2">Disc.</th><th rowspan="2">Taxable<br>Amount <sup>1</sup></th>
@@ -476,7 +527,7 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
   <table class="tot">${cols}<tr>
     <td colspan="3">TOTAL :</td><td class="r">${qtySum.toFixed(3)}</td><td></td><td></td>
     <td class="r">${n2(sum('gross'))}</td><td class="r">${n2(sum('disc'))}</td><td class="r">${n2(sum('taxableAmount'))}</td>
-    <td></td><td class="r">${n2(sum('sgst'))}</td><td></td><td class="r">${n2(sum('cgst'))}</td><td></td><td class="r">${n2(sum('igst'))}</td></tr></table>
+    <td></td><td class="r">${n2(sum('sgst'))}</td><td></td><td class="r">${n2(sum('cgst'))}</td><td></td><td class="r">${n2(sum('igst'))}</td></tr></table>`}
   <div style="display:flex">
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000"><div class="vr" style="width:65%;padding:${pad}"><div class="kv">
@@ -500,8 +551,9 @@ function classicHtml(sale: Sale, company: CompanyInfo | null | undefined, device
       </div>
     </div>
     <div style="width:30%;display:flex;flex-direction:column">
-      <div style="display:flex;justify-content:space-between;padding:${pad}"><span>Sub-Total (1+2+3+4) :</span><span>${n2(subTotal)}</span></div>
-      ${Math.abs(t.grandTotal - subTotal) >= 0.01 ? `<div style="display:flex;justify-content:space-between;padding:${pad}"><span>Round Off :</span><span>${n2(t.grandTotal - subTotal)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;padding:${pad}"><span>${quick ? 'Total (incl. GST) :' : 'Sub-Total (1+2+3+4) :'}</span><span>${n2(quick ? qTotal : subTotal)}</span></div>
+      ${Math.abs(t.grandTotal - (quick ? qTotal : subTotal)) >= 0.01 ? `<div style="display:flex;justify-content:space-between;padding:${pad}"><span>Round Off :</span><span>${n2(t.grandTotal - (quick ? qTotal : subTotal))}</span></div>` : ''}
+      ${quick ? `<div style="padding:${pad};font-size:${fs * 0.9}px">${gstIncludedText(sale)}</div>` : ''}
       <div style="flex:1"></div>
       <div class="net"><span>NET AMOUNT :</span><span>${n2(t.grandTotal)}</span></div>
       <div style="flex:1;min-height:${a5 ? 14 : 26}mm;padding:${a5 ? '2px 3px' : '4px 5px'};display:flex;flex-direction:column;justify-content:space-between;text-align:right;font-weight:700">
