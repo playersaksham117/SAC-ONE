@@ -1,4 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The phone's AsyncStorage needs a browser / device: keep the stores in memory here.
+vi.mock('../src/store/persist', async () => {
+  const { createJSONStorage } = await import('zustand/middleware');
+  const mem = new Map<string, string>();
+  return {
+    jsonStorage: createJSONStorage(() => ({
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => { mem.set(k, v); },
+      removeItem: (k: string) => { mem.delete(k); },
+    })),
+  };
+});
 import type { ServerProduct } from '../src/api/sacone';
 import { EPOCH, useCatalog } from '../src/store/catalog';
 import { pullProducts, type ProductPage } from '../src/sync/productPull';
