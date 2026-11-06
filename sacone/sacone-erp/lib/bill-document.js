@@ -156,8 +156,49 @@ function transportMeta(t) {
   ];
 }
 
+/**
+ * Quick Bill (walk-in / unregistered): rates and amounts print with GST included, and no
+ * taxable value, GST % or CGST / SGST / IGST is shown (the GST is still recorded in SACONE).
+ */
+const isQuickBill = (sale) => sale?.documentType === 'quick_bill';
+const inclRate = (l) => r2(Number(l.unitPrice || 0) * (1 + Number(l.gstPercentage || 0) / 100));
+const inclDisc = (l) => Math.max(0, r2(inclRate(l) * Number(l.quantity || 0) - Number(l.lineTotal || 0)));
+
+function quickSaleDocument(sale, base) {
+  const items = sale.items || [];
+  const itemsTotal = r2(items.reduce((s, l) => s + Number(l.lineTotal || 0), 0));
+  const disc = r2(items.reduce((s, l) => s + inclDisc(l), 0));
+  const roundOff = r2(Number(sale.grandTotal || 0) - itemsTotal);
+  return {
+    ...base,
+    inclusive: true,
+    items: items.map((l) => ({
+      name: l.productName, hsn: l.hsnCode, qty: l.quantity, rate: inclRate(l),
+      note: lineNote(l, sale.createdAt), desc: l.shortDescription || '',
+      discount: inclDisc(l) ? money(inclDisc(l)) : null,
+      taxable: null, gstRate: null, amount: l.lineTotal,
+    })),
+    totals: [
+      ...(disc > 0 ? [['Discount', -disc]] : []),
+      ...(Math.abs(roundOff) >= 0.01 ? [['Round off', roundOff]] : []),
+      ['Total', sale.grandTotal, true],
+    ],
+    classic: base.classic && {
+      ...base.classic,
+      inclusive: true,
+      lines: items.map((l, i) => ({ ...base.classic.lines[i], rate: inclRate(l), disc: inclDisc(l), amount: r2(Number(l.lineTotal || 0)) })),
+      totals: { ...base.classic.totals, disc, amount: itemsTotal, roundOff },
+    },
+  };
+}
+
 /** Sales invoice (GET /api/pos/sales/:id) + optional customer record. */
 export function saleDocument(sale, customer) {
+  const base = gstSaleDocument(sale, customer);
+  return isQuickBill(sale) ? quickSaleDocument(sale, base) : base;
+}
+
+function gstSaleDocument(sale, customer) {
   const discount = Number(sale.itemDiscountTotal || 0) + Number(sale.invoiceDiscount || 0);
   const payments = (sale.payments || []).map((p) => [`${METHOD[p.method] || p.method}${p.bankName ? ` · ${p.bankName}` : ''}${p.reference ? ` (${p.reference})` : ''}`, p.amount]);
   if (sale.amountCredit > 0) payments.push(['Balance due', sale.amountCredit]);
@@ -478,7 +519,7 @@ function thermalHtml(model, company, size, invoice = {}) {
   const rows = model.items.map((l) => `
     <tr><td colspan="3" class="name">${esc(l.name)}${l.hsn && !narrow ? ` <span class="muted">HSN ${esc(l.hsn)}</span>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td></tr>
     <tr><td>${qty(l.qty)} × ${money(l.rate)}${l.discount ? ` −${esc(l.discount)}` : ''}</td>
-        <td class="muted">${l.gstRate ?? 0}%</td><td class="r">${money(l.amount)}</td></tr>`).join('');
+        <td class="muted">${model.inclusive ? '' : `${l.gstRate ?? 0}%`}</td><td class="r">${money(l.amount)}</td></tr>`).join('');
   const party = model.party
     ? `<tr><td>${esc(model.partyLabel)}</td><td class="r">${esc(model.party.name)}${model.party.phone ? `<br>${esc(model.party.phone)}` : ''}${model.party.gstin ? `<br>GSTIN ${esc(model.party.gstin)}` : ''}</td></tr>`
     : '';
@@ -521,7 +562,7 @@ function sheetHtml(model, company, size, invoice = {}) {
       <td class="r">${money(l.rate)}</td>
       ${anyDiscount ? `<td class="r">${l.discount ? esc(l.discount) : '—'}</td>` : ''}
       ${showTaxable ? `<td class="r">${l.taxable !== null && l.taxable !== undefined ? money(l.taxable) : ''}</td>` : ''}
-      <td class="r">${l.gstRate ?? 0}%</td>
+      ${model.inclusive ? '' : `<td class="r">${l.gstRate ?? 0}%</td>`}
       <td class="r b">${money(l.amount)}</td>
     </tr>`).join('');
   const p = model.party;
@@ -573,7 +614,7 @@ function sheetHtml(model, company, size, invoice = {}) {
   <table class="items">
     <thead><tr>
       <th class="c">#</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th>
-      ${anyDiscount ? '<th class="r">Disc</th>' : ''}${showTaxable ? '<th class="r">Taxable</th>' : ''}<th class="r">GST</th><th class="r">Amount</th>
+      ${anyDiscount ? '<th class="r">Disc</th>' : ''}${showTaxable ? '<th class="r">Taxable</th>' : ''}${model.inclusive ? '' : '<th class="r">GST</th>'}<th class="r">Amount</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
@@ -628,6 +669,20 @@ function classicHtml(model, company, size, invoice = {}) {
       <td class="r">${l.cgst ? `${l.gstRate / 2}` : ''}</td><td class="r">${blankIfZero(l.cgst)}</td>
       <td class="r">${l.igst ? `${l.gstRate}` : ''}</td><td class="r">${n2(l.igst)}</td></tr>`).join('');
   const emptyRow = '<tr class="fill">' + '<td></td>'.repeat(15) + '</tr>';
+  // Quick Bill: Sr, goods, HSN, qty, UOM, rate and amount (GST included); no tax columns
+  const q = c.inclusive;
+  const qDisc = q && c.lines.some((l) => l.disc > 0);
+  const qCols = `<colgroup><col style="width:5%"><col style="width:${qDisc ? 39 : 47}%"><col style="width:9%"><col style="width:9%"><col style="width:6%"><col style="width:11%">${qDisc ? '<col style="width:8%">' : ''}<col style="width:13%"></colgroup>`;
+  const qItems = q ? `<table class="items">${qCols}<thead><tr>
+    <th>Sr</th><th>Description of Goods</th><th>HSN/<br>SAC<br>code</th><th>Qty.</th><th>UOM</th><th>Rate</th>${qDisc ? '<th>Disc.</th>' : ''}<th>Amount</th>
+  </tr></thead><tbody>${c.lines.map((l, i) => `<tr>
+      <td class="c">${i + 1}</td><td class="b">${esc(l.name)}${l.desc ? `<div style="font-weight:400;font-size:.9em">${esc(l.desc)}</div>` : ''}${l.note ? `<div style="font-weight:400;font-size:.85em">${esc(l.note)}</div>` : ''}</td><td>${esc(l.hsn || '')}</td>
+      <td class="r">${Number(l.qty || 0).toFixed(3)}</td><td>${esc(l.uom)}</td><td class="r b">${n2(l.rate)}</td>
+      ${qDisc ? `<td class="r">${blankIfZero(l.disc)}</td>` : ''}<td class="r b">${n2(l.amount)}</td></tr>`).join('')}</tbody></table>
+  <div class="grow"><table class="items fillt">${qCols}<tbody><tr class="fill">${'<td></td>'.repeat(qDisc ? 8 : 7)}</tr></tbody></table></div>
+  <table class="tot">${qCols}<tr>
+    <td colspan="3">TOTAL :</td><td class="r">${Number(t.qty).toFixed(3)}</td><td></td><td></td>${qDisc ? `<td class="r">${n2(t.disc)}</td>` : ''}<td class="r">${n2(t.amount)}</td></tr></table>` : '';
+  const subTotal = q ? t.amount : t.taxable + t.sgst + t.cgst + t.igst;
   const terms = String(invoice.terms || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   const bankers = bankerLines(invoice);
   const qr = upiQr(model, invoice, company, a5 ? 54 : 84);
@@ -700,7 +755,7 @@ function classicHtml(model, company, size, invoice = {}) {
       ${c.kind === 'sale' || c.kind === 'note' ? `<div class="b" style="margin-top:${a5 ? 2 : 6}px">Tax is Payable On Reverse Charge : NO</div>` : ''}
     </div>
   </div>
-  <table class="items">${cols}<thead><tr>
+  ${q ? qItems : `<table class="items">${cols}<thead><tr>
     <th rowspan="2">Sr</th><th rowspan="2">Description of Goods</th><th rowspan="2">HSN/<br>SAC<br>code</th>
     <th rowspan="2">Qty.</th><th rowspan="2">UOM</th><th rowspan="2">Rate</th><th rowspan="2">Total<br>Amount</th>
     <th rowspan="2">Disc.</th><th rowspan="2">Taxable<br>Amount <sup>1</sup></th>
@@ -711,7 +766,7 @@ function classicHtml(model, company, size, invoice = {}) {
   <table class="tot">${cols}<tr>
     <td colspan="3">TOTAL :</td><td class="r">${Number(t.qty).toFixed(3)}</td><td></td><td></td>
     <td class="r">${n2(t.gross)}</td><td class="r">${n2(t.disc)}</td><td class="r">${n2(t.taxable)}</td>
-    <td></td><td class="r">${n2(t.sgst)}</td><td></td><td class="r">${n2(t.cgst)}</td><td></td><td class="r">${n2(t.igst)}</td></tr></table>
+    <td></td><td class="r">${n2(t.sgst)}</td><td></td><td class="r">${n2(t.cgst)}</td><td></td><td class="r">${n2(t.igst)}</td></tr></table>`}
   <div style="display:flex;flex:0 0 auto">
     <div class="vr" style="width:70%;display:flex;flex-direction:column">
       <div style="display:flex;border-bottom:1px solid #000">
@@ -740,8 +795,8 @@ function classicHtml(model, company, size, invoice = {}) {
       </div>
     </div>
     <div style="width:30%;display:flex;flex-direction:column">
-      <div style="display:flex;justify-content:space-between;padding:${a5 ? '1px 3px' : '2px 5px'}"><span>Sub-Total (1+2+3+4) :</span><span>${n2(t.taxable + t.sgst + t.cgst + t.igst)}</span></div>
-      ${Math.abs(t.net - (t.taxable + t.sgst + t.cgst + t.igst)) >= 0.01 ? `<div style="display:flex;justify-content:space-between;padding:0 ${a5 ? 3 : 5}px"><span>Round Off :</span><span>${n2(t.net - (t.taxable + t.sgst + t.cgst + t.igst))}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;padding:${a5 ? '1px 3px' : '2px 5px'}"><span>${q ? 'Total :' : 'Sub-Total (1+2+3+4) :'}</span><span>${n2(subTotal)}</span></div>
+      ${Math.abs(t.net - subTotal) >= 0.01 ? `<div style="display:flex;justify-content:space-between;padding:0 ${a5 ? 3 : 5}px"><span>Round Off :</span><span>${n2(t.net - subTotal)}</span></div>` : ''}
       <div style="flex:1"></div>
       <div class="net"><span>NET AMOUNT :</span><span>${n2(t.net)}</span></div>
       <div class="sign" style="flex:1;min-height:${a5 ? 14 : 26}mm;padding:${a5 ? '2px 3px' : '4px 5px'}">
