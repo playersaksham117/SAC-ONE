@@ -785,8 +785,9 @@ export class ProductService {
       if (!byName.has(nameKey(p.name))) byName.set(nameKey(p.name), p);
     }
 
-    const results = { dryRun: Boolean(dryRun), created: 0, updated: 0, skipped: [], errors: [], rows: [] };
+    const results = { dryRun: Boolean(dryRun), created: 0, updated: 0, skipped: [], errors: [], barcodes: [], rows: [] };
     const seenName = new Map();
+    const seenBarcode = new Map(); // barcode (lower case) → row of this file that used it
     const seenSku = new Map();
     const ROLLBACK = Symbol('dry run');
 
@@ -848,12 +849,28 @@ export class ProductService {
             const lookup = (repo, nameVal, abbr) => (nameVal
               ? resolveLookupId(repo, { name: nameVal, abbreviation: abbr, createIfMissing: true, createdBy: actor.user.id })
               : undefined);
+            // A barcode belongs to one product only: one already on another product (or used by an
+            // earlier row of this file) is not taken; a new product gets a fresh in-house barcode,
+            // an existing one keeps its own (or gets a fresh one if it had none).
+            let barcode = text(row, 'barcode');
+            let barcodeNote = null;
+            if (barcode) {
+              const owner = productRepo.findByBarcode(barcode);
+              const earlier = seenBarcode.get(barcode.toLowerCase());
+              const clash = (owner && owner.id !== target?.id) ? `already on ${owner.name} (SKU ${owner.sku})`
+                : earlier ? `already used by row ${earlier} of this file` : null;
+              if (clash) {
+                const fresh = target?.barcode ? null : skuEngineRepo.peekNextBarcode();
+                barcodeNote = { given: barcode, clash, fresh };
+                barcode = fresh || undefined;
+              }
+            }
             const unitName = text(row, 'unit_name', 'unit');
             const itemType = text(row, 'item_type', 'type');
             const fields = {
               name,
               sku: sku || undefined,
-              barcode: text(row, 'barcode'),
+              barcode,
               categoryId: lookup(categoryRepo, text(row, 'category')),
               brandId: lookup(brandRepo, text(row, 'brand')),
               unitId: lookup(unitRepo, unitName, text(row, 'unit', 'unit_abbreviation', 'unit_name')),
@@ -876,9 +893,18 @@ export class ProductService {
             if (fields.gstPercentage !== undefined && fields.gstPercentage > 100) throw new AppError('GST % must be 0 to 100', 400);
             // only what the sheet gives: blank cells keep the product's values
             const payload = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
-            if (target) return { action: 'update', product: this.update(target.id, payload, actor, req), before: target };
-            return { action: 'create', product: this.create({ isActive: true, ...payload }, actor, req) };
+            if (target) return { action: 'update', product: this.update(target.id, payload, actor, req), before: target, barcodeNote };
+            return { action: 'create', product: this.create({ isActive: true, ...payload }, actor, req), barcodeNote };
           })();
+
+          if (saved.product.barcode) seenBarcode.set(String(saved.product.barcode).toLowerCase(), rowNo);
+          if (saved.barcodeNote) {
+            const { given, clash, fresh } = saved.barcodeNote;
+            results.barcodes.push({
+              row: rowNo, name, sku: saved.product.sku,
+              message: `Barcode ${given} ${clash}; ${fresh ? `new barcode ${fresh} given` : `kept its own barcode ${saved.product.barcode || ''}`.trim()}`,
+            });
+          }
 
           if (saved.before) byName.delete(nameKey(saved.before.name));
           byName.set(nameKey(saved.product.name), { id: saved.product.id, name: saved.product.name, sku: saved.product.sku, isActive: saved.product.isActive });

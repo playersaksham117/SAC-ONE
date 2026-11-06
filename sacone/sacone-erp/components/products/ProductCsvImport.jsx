@@ -34,7 +34,7 @@ export default function ProductCsvImport({ onClose, onImported }) {
           warranty and guarantee (e.g. 1 year, 18 months, 90 days).
           {' '}<b>No duplicate names:</b> a row is matched to a product by its SKU (or by its name when the SKU is blank) and updated;
           a name already used by another product, or repeated in the file, is skipped. Capitals and extra spaces don&apos;t make a name different.
-          Blank cells keep the product&apos;s current values. A new product with a blank SKU gets one made; new categories, brands and units are added.
+          Blank cells keep the product&apos;s current values. A barcode already on another product is not copied: a new product gets a fresh barcode instead (shown before importing). A new product with a blank SKU gets one made; new categories, brands and units are added.
           Prices may be written like ₹1,200 and GST like 18%.
         </>
       )}

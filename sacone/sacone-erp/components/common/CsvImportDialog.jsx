@@ -158,6 +158,7 @@ export default function CsvImportDialog({
         {result ? (
           <div className="space-y-3">
             <Alert type="success" message={`Import complete: ${result.created} created, ${result.updated} updated${result.skipped?.length ? `, ${result.skipped.length} skipped` : ''}${result.errors?.length ? `, ${result.errors.length} with errors` : ''}.`} />
+            <IssueTable title="Barcode changed (it belonged to another product)" items={result.barcodes} tone="amber" />
             <IssueTable title="Skipped (not imported)" items={result.skipped} tone="amber" />
             <IssueTable title="Errors (not imported)" items={result.errors} tone="red" />
           </div>
@@ -169,6 +170,7 @@ export default function CsvImportDialog({
               ))}
             </div>
             <p className="text-xs text-slate-500">Nothing is saved yet. Skipped rows and rows with errors will not be imported: fix them in the file and choose it again, or import the rest.</p>
+            <IssueTable title="Barcode will be changed (it belongs to another product)" items={check.barcodes} tone="amber" />
             <IssueTable title="Will be skipped" items={check.skipped} tone="amber" />
             <IssueTable title="Errors" items={check.errors} tone="red" />
           </div>
