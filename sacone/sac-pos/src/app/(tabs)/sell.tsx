@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, Text, View, type TextInput } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { formatMoney, formatQty } from '../../domain/money';
+import { inclGst } from '../../domain/tax';
 import type { Product } from '../../domain/types';
 import { usePendingQty, useSyncBadge } from '../../lib/useSyncInfo';
 import { useCartTotals } from '../../lib/useCartTotals';
@@ -34,6 +35,9 @@ export default function Sell() {
   const setMode = useCart((s) => s.setMode);
   const series = useCart((s) => s.series);
   const setSeries = useCart((s) => s.setSeries);
+  // Quick Bill: products show their rate incl. GST (the bill still books the price before GST)
+  const quickRates = series === 'quick' && mode !== 'quotation';
+  const shownPrice = (p: Product) => (quickRates ? inclGst(p.price, p.gstRate) : p.price);
   const pickType = (v: 'gst' | 'quick' | 'quotation') => {
     if (v === 'quotation') { setMode('quotation'); return; }
     setMode('sale');
@@ -107,14 +111,14 @@ export default function Sell() {
       >
         <View>
           <Text style={{ fontSize: font.md, fontWeight: '700', color: colors.text }} numberOfLines={2}>{item.name}</Text>
-          <Text style={{ fontSize: font.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>{item.sku} · GST {item.gstRate}%</Text>
+          <Text style={{ fontSize: font.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>{item.sku}{quickRates ? ' · incl. GST' : ` · GST ${item.gstRate}%`}</Text>
         </View>
         <View style={{ marginTop: space.sm }}>
           {item.itemType === 'service'
             ? <Badge tone="info" label="Service" />
             : <Badge tone={stockTone(available)} label={available <= 0 ? 'Out of stock' : `${formatQty(available)} ${item.unit}`} />}
           <Row style={{ justifyContent: 'space-between', marginTop: space.sm }}>
-            <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(item.price)}</Text>
+            <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(shownPrice(item))}</Text>
             {inCart ? (
               <Pressable onPress={() => setQtyFor(item)} hitSlop={8} accessibilityLabel={`Change quantity of ${item.name}`}
                 style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 }}>
@@ -149,7 +153,7 @@ export default function Sell() {
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: font.md, fontWeight: '700', color: colors.text }} numberOfLines={1}>{item.name}</Text>
           <Text style={{ fontSize: font.xs, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
-            {item.sku}{item.brand ? ` · ${item.brand}` : ''} · GST {item.gstRate}%
+            {item.sku}{item.brand ? ` · ${item.brand}` : ''}{quickRates ? ' · incl. GST' : ` · GST ${item.gstRate}%`}
           </Text>
           <View style={{ marginTop: 6 }}>
             {item.itemType === 'service'
@@ -158,7 +162,7 @@ export default function Sell() {
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(item.price)}</Text>
+          <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(shownPrice(item))}</Text>
           {inCart ? (
             <Pressable
               onPress={() => setQtyFor(item)}
@@ -281,6 +285,7 @@ export default function Sell() {
 
       <QtyPrompt
         product={qtyFor}
+        inclusive={quickRates}
         current={qtyFor ? qtyInCart[qtyFor.id] || 0 : 0}
         available={qtyFor ? qtyFor.available - (pending[qtyFor.id] || 0) : 0}
         onSet={(q) => {

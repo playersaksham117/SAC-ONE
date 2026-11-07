@@ -222,7 +222,7 @@ export default function Checkout() {
           <Text style={{ color: '#94A3B8', fontSize: font.xs, marginTop: 4 }}>
             {exchange
               ? `Bill ${formatMoney(total)} − exchange credit ${formatMoney(credit)} (${exchange.returnNumber})`
-              : `incl. GST ${formatMoney(totals.gstAmount)}`}
+              : quickBill ? 'Quick Bill · GST included' : `incl. GST ${formatMoney(totals.gstAmount)}`}
           </Text>
         </Card>
 

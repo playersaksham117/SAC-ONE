@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { formatMoney, formatQty } from '../domain/money';
+import { formatMoney, formatQty, round2 } from '../domain/money';
+import { billDiscountExclGst, billDiscountInclGst, exclGst, inclGst } from '../domain/tax';
 import type { CartLine } from '../domain/types';
 import { validateLine } from '../domain/validation';
 import { useCartTotals } from '../lib/useCartTotals';
@@ -36,7 +37,19 @@ function NumberInput({ value, onCommit, label, testID }: { value: number; onComm
   );
 }
 
-function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: boolean; canCost: boolean }) {
+/**
+ * One cart line. On a Quick Bill (`quick`) the counter sees and types GST-inclusive rates and
+ * discounts only; they are turned into the price before GST that the bill holds, so the ERP still
+ * books the taxable value and works out GST, margin and profit.
+ */
+/** A line's amount before the bill discount (incl. GST on a Quick Bill). */
+function quickLineAmount(line: CartLine, quick: boolean): number {
+  return quick
+    ? inclGst(line.unitPrice, line.gstRate) * line.quantity - inclGst(line.discountAmount, line.gstRate)
+    : line.unitPrice * line.quantity - line.discountAmount;
+}
+
+function LineRow({ line, canOverride, canCost, quick = false }: { line: CartLine; canOverride: boolean; canCost: boolean; quick?: boolean }) {
   const { setQty, updateLine } = useCart.getState();
   const [open, setOpen] = useState(false);
   // services start with their details open: the work differs for every customer
@@ -47,17 +60,20 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
   const serialCheck = parseSerials(serialText, line.quantity);
   const hasWarranty = Boolean(line.warranty || line.guarantee);
   const issues = validateLine(line, { canOverridePrice: canOverride });
-  const lineGross = line.unitPrice * line.quantity - line.discountAmount;
+  const rate = quick ? inclGst(line.unitPrice, line.gstRate) : line.unitPrice;
+  const listRate = quick ? inclGst(line.listPrice, line.gstRate) : line.listPrice;
+  const discount = quick ? inclGst(line.discountAmount, line.gstRate) : line.discountAmount;
+  const lineGross = quickLineAmount(line, quick);
   return (
     <Card style={{ marginBottom: space.sm, padding: space.md }}>
       <Row style={{ alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '700', fontSize: font.md, color: colors.text }} numberOfLines={2}>{line.name}</Text>
           <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
-            {formatMoney(line.unitPrice)} × {formatQty(line.quantity)} {line.unit} · GST {line.gstRate}%
+            {formatMoney(rate)} × {formatQty(line.quantity)} {line.unit}{quick ? ' · incl. GST' : ` · GST ${line.gstRate}%`}
           </Text>
-          {line.discountAmount > 0 ? <Badge tone="success" label={`− ${formatMoney(line.discountAmount)} discount`} /> : null}
-          {Math.abs(line.unitPrice - line.listPrice) > 0.001 ? <Badge tone="warning" label={`Price changed (list ${formatMoney(line.listPrice)})`} /> : null}
+          {line.discountAmount > 0 ? <Badge tone="success" label={`− ${formatMoney(discount)} discount`} /> : null}
+          {Math.abs(line.unitPrice - line.listPrice) > 0.001 ? <Badge tone="warning" label={`Price changed (list ${formatMoney(listRate)})`} /> : null}
           {!detailsOpen && line.shortDescription ? <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }} numberOfLines={2}>{line.shortDescription}</Text> : null}
           {!detailsOpen && canCost && line.costAmount != null ? <Text style={{ color: colors.textFaint, fontSize: font.xs }}>Cost to us {formatMoney(line.costAmount)}</Text> : null}
         </View>
@@ -92,8 +108,17 @@ function LineRow({ line, canOverride, canCost }: { line: CartLine; canOverride: 
       </Row>
       {open && canOverride ? (
         <Row style={{ marginTop: space.sm }} gap={space.sm}>
-          <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} />
-          <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} />
+          {quick ? (
+            <>
+              <NumberInput key={`r${line.unitPrice}`} label="Rate ₹ (incl. GST)" value={rate} onCommit={(v) => updateLine(line.productId, { unitPrice: exclGst(v, line.gstRate, line.listPrice) })} testID={`rate-${line.productId}`} />
+              <NumberInput key={`d${line.discountAmount}`} label="Line discount ₹ (incl. GST)" value={discount} onCommit={(v) => updateLine(line.productId, { discountAmount: exclGst(v, line.gstRate) })} testID={`disc-${line.productId}`} />
+            </>
+          ) : (
+            <>
+              <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} />
+              <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} />
+            </>
+          )}
         </Row>
       ) : null}
       {detailsOpen ? (
@@ -169,6 +194,11 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
   const quoting = useCart((s) => s.mode === 'quotation') && canQuote;
   const fromQuotation = useCart((s) => s.fromQuotation);
   const [validDays, setValidDays] = useState(15);
+  // Quick Bill: GST-inclusive rates, discounts and totals only (the ERP works out GST, margin, profit)
+  const quick = useCart((s) => s.series === 'quick') && !quoting;
+  const quickItems = round2(lines.reduce((s, l) => s + quickLineAmount(l, true), 0));
+  const quickBillDiscount = billDiscountInclGst(invoiceDiscount, lines);
+  const quickRoundOff = round2(totals.grandTotal - (quickItems - quickBillDiscount));
 
   const save = () => {
     try {
@@ -265,15 +295,35 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
         </Card>
 
         <SectionTitle>Items</SectionTitle>
-        {lines.map((l) => <LineRow key={l.productId} line={l} canOverride={canOverride} canCost={canCost} />)}
+        {lines.map((l) => <LineRow key={l.productId} line={l} canOverride={canOverride} canCost={canCost} quick={quick} />)}
 
         <SectionTitle>Bill</SectionTitle>
         <Card>
           {canOverride ? (
             <View style={{ marginBottom: space.sm }}>
-              <NumberInput label="Bill discount ₹ (before GST)" value={invoiceDiscount} onCommit={setInvoiceDiscount} testID="bill-discount" />
+              {quick ? (
+                <NumberInput
+                  key={`b${invoiceDiscount}`}
+                  label="Bill discount ₹ (incl. GST)"
+                  value={billDiscountInclGst(invoiceDiscount, lines)}
+                  onCommit={(v) => setInvoiceDiscount(billDiscountExclGst(v, lines))}
+                  testID="bill-discount"
+                />
+              ) : (
+                <NumberInput label="Bill discount ₹ (before GST)" value={invoiceDiscount} onCommit={setInvoiceDiscount} testID="bill-discount" />
+              )}
             </View>
           ) : null}
+          {quick ? (
+            <>
+              <KeyValue label="Items (incl. GST)" value={formatMoney(quickItems)} muted />
+              {quickBillDiscount > 0 ? <KeyValue label="Bill discount" value={`− ${formatMoney(quickBillDiscount)}`} muted /> : null}
+              {Math.abs(quickRoundOff) >= 0.01 ? <KeyValue label="Round off" value={formatMoney(quickRoundOff)} muted /> : null}
+              <Divider />
+              <KeyValue label="Total" value={formatMoney(totals.grandTotal)} bold />
+            </>
+          ) : (
+            <>
           <KeyValue label="Subtotal" value={formatMoney(totals.subtotal)} muted />
           {totals.itemDiscountTotal + totals.invoiceDiscount > 0 ? (
             <KeyValue label="Discount" value={`− ${formatMoney(totals.itemDiscountTotal + totals.invoiceDiscount)}`} muted />
@@ -289,6 +339,8 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
             )}
           <Divider />
           <KeyValue label="Total" value={formatMoney(totals.grandTotal)} bold />
+            </>
+          )}
         </Card>
       </View>
   );

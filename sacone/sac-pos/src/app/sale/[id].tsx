@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
+import { inclGst } from '../../domain/tax';
 import { billHtml, LAYOUTS, PDF_SIZES, PRINT_SIZES, printBill, savePdf, shareInvoice, type Layout, type PaperSize, type PdfSize } from '../../lib/receipt';
 import { usePref } from '../../lib/usePref';
 import { LABEL_SIZES, labelSettingsFrom } from '../../lib/labels';
@@ -169,14 +170,26 @@ export default function SaleDetail() {
                 <Text style={{ fontWeight: '700', color: colors.text }}>{formatMoney(l.lineTotal)}</Text>
               </Row>
               <Text style={{ color: colors.textMuted, fontSize: font.xs }}>
-                {formatQty(l.quantity)} × {formatMoney(l.unitPrice)} · GST {l.gstRate}%{sale.returned[l.productId] ? ` · returned ${sale.returned[l.productId]}` : ''}
+                {formatQty(l.quantity)} × {sale.series === 'quick' ? `${formatMoney(inclGst(l.unitPrice, l.gstRate))} incl. GST` : `${formatMoney(l.unitPrice)} · GST ${l.gstRate}%`}{sale.returned[l.productId] ? ` · returned ${sale.returned[l.productId]}` : ''}
               </Text>
             </View>
           ))}
           <Divider />
-          <KeyValue label="Taxable" value={formatMoney(t.taxableAmount)} muted />
-          <KeyValue label="GST" value={formatMoney(t.gstAmount)} muted />
-          {t.itemDiscountTotal + t.invoiceDiscount > 0 ? <KeyValue label="Discount" value={`− ${formatMoney(t.itemDiscountTotal + t.invoiceDiscount)}`} muted /> : null}
+          {sale.series === 'quick' ? null : (
+            <>
+              <KeyValue label="Taxable" value={formatMoney(t.taxableAmount)} muted />
+              <KeyValue label="GST" value={formatMoney(t.gstAmount)} muted />
+            </>
+          )}
+          {t.itemDiscountTotal + t.invoiceDiscount > 0 ? (
+            <KeyValue
+              label="Discount"
+              value={`− ${formatMoney(sale.series === 'quick'
+                ? Math.max(0, t.lines.reduce((s, l) => s + inclGst(l.unitPrice, l.gstRate) * l.quantity - l.lineTotal, 0)) // incl. GST
+                : t.itemDiscountTotal + t.invoiceDiscount)}`}
+              muted
+            />
+          ) : null}
           <KeyValue label="Total" value={formatMoney(t.grandTotal)} bold />
           <Divider />
           {sale.payments.map((p, i) => <KeyValue key={i} label={`${METHOD[p.method]}${p.reference ? ` · ${p.reference}` : ''}`} value={formatMoney(p.amount)} muted />)}

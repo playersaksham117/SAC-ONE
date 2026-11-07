@@ -81,3 +81,43 @@ export function lineRefundValue(line: ComputedLine, qty: number): number {
   if (!line.quantity) return 0;
   return round2(line.lineTotal * (qty / line.quantity));
 }
+
+/**
+ * Quick Bill: the counter sees and types GST-inclusive prices only. The bill itself still holds
+ * the price before GST (what the ERP books, and from which it works out GST, margin and profit).
+ */
+const round4 = (n: number): number => Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
+const factor = (gstRate: number) => 1 + (Number(gstRate) || 0) / 100;
+
+/** Price before GST → price incl. GST, as shown on a Quick Bill. */
+export function inclGst(price: number, gstRate: number): number {
+  return round2((Number(price) || 0) * factor(gstRate));
+}
+
+/**
+ * A typed price incl. GST → the price before GST to bill. Kept to 4 decimals so it gives the
+ * typed figure back exactly; typing the list price incl. GST gives the list price itself.
+ */
+export function exclGst(priceInclGst: number, gstRate: number, listPrice?: number): number {
+  const incl = round2(Math.max(0, Number(priceInclGst) || 0));
+  if (listPrice != null && Math.abs(inclGst(listPrice, gstRate) - incl) < 0.005) return listPrice;
+  return round4(incl / factor(gstRate));
+}
+
+/** Bill discount: before GST (as billed) ↔ incl. GST (as typed on a Quick Bill), for this cart. */
+function cartInclFactor(lines: CartLine[]): number {
+  let taxable = 0;
+  let total = 0;
+  for (const l of lines) {
+    const t = Math.max(0, (Number(l.unitPrice) || 0) * l.quantity - (l.discountAmount || 0));
+    taxable += t;
+    total += t * factor(l.gstRate);
+  }
+  return taxable > 0 ? total / taxable : 1;
+}
+export function billDiscountInclGst(discount: number, lines: CartLine[]): number {
+  return round2((Number(discount) || 0) * cartInclFactor(lines));
+}
+export function billDiscountExclGst(discountInclGst: number, lines: CartLine[]): number {
+  return round4(Math.max(0, Number(discountInclGst) || 0) / cartInclFactor(lines));
+}

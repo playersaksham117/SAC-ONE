@@ -82,6 +82,7 @@ export function checkCheckout(payments: Payment[]): CheckResult {
     allowNegativeStock: Boolean(useDevice.getState().info?.settings.allowNegativeStock),
     canOverridePrice: can(user?.permissions, 'overridePrice'),
     minPrices: useCatalog.getState().minPrices,
+    inclusive: cart.series === 'quick' && cart.mode !== 'quotation',
   });
 }
 

@@ -103,6 +103,8 @@ export interface CheckoutContext {
   /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Product Master.
    *  Products without one may not go below their selling price. */
   minPrices?: Record<string, number>;
+  /** Quick Bill: the counter works in prices incl. GST, so messages show those. */
+  inclusive?: boolean;
 }
 
 /**
@@ -110,7 +112,7 @@ export interface CheckoutContext {
  * the Commission-settings minimum when one applies, otherwise the product's selling price.
  */
 export function belowMinPrice(
-  totals: CartTotals, minPrices: Record<string, number> = {}, products: Record<string, Pick<Product, 'price'>> = {},
+  totals: CartTotals, minPrices: Record<string, number> = {}, products: Record<string, Pick<Product, 'price'>> = {}, inclusive = false,
 ): Issue[] {
   const issues: Issue[] = [];
   for (const l of totals.lines) {
@@ -118,7 +120,8 @@ export function belowMinPrice(
     if (!(Number(floor) > 0) || !(l.quantity > 0)) continue;
     const price = round2(l.taxableAmount / l.quantity);
     if (price + 0.005 < floor) {
-      issues.push({ field: 'unitPrice', message: `${l.name}: lowest allowed price is ${floor.toFixed(2)} before GST (now ${price.toFixed(2)})` });
+      const shown = (v: number) => (inclusive ? v * (1 + (l.gstRate || 0) / 100) : v).toFixed(2);
+      issues.push({ field: 'unitPrice', message: `${l.name}: lowest allowed price is ${shown(floor)} ${inclusive ? 'incl.' : 'before'} GST (now ${shown(price)})` });
     }
   }
   return issues;
@@ -129,7 +132,7 @@ export function validateCheckout(ctx: CheckoutContext): CheckResult {
   if (!ctx.lines.length) r.errors.push({ message: 'Cart is empty' });
 
   for (const line of ctx.lines) r.errors.push(...validateLine(line, { canOverridePrice: ctx.canOverridePrice }));
-  r.errors.push(...belowMinPrice(ctx.totals, ctx.minPrices, ctx.products));
+  r.errors.push(...belowMinPrice(ctx.totals, ctx.minPrices, ctx.products, ctx.inclusive));
 
   if (ctx.totals.invoiceDiscount > 0 && !ctx.canOverridePrice) {
     r.errors.push({ field: 'invoiceDiscount', message: 'You are not allowed to give a bill discount' });
