@@ -29,13 +29,21 @@ createServer((req, res) => {
   // real files (bundles, fonts, images); every other path is an app screen → index.html
   const target = inside && existsSync(file) && statSync(file).isFile() ? file : join(ROOT, 'index.html');
   const isIndex = target.endsWith('index.html');
+  // `npm run web:build` empties dist for a moment: answer "try again" instead of crashing the server
+  if (!existsSync(target)) {
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Retry-After': '5', 'Cache-Control': 'no-store' });
+    res.end('SAC-POS web is updating. Reload in a few seconds.');
+    return;
+  }
   res.writeHead(200, {
     'Content-Type': TYPES[extname(target)] || 'application/octet-stream',
     // hashed bundles never change; the page itself always re-checks so updates show at once
     'Cache-Control': isIndex ? 'no-cache' : 'public, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
   });
-  createReadStream(target).pipe(res);
+  createReadStream(target)
+    .on('error', () => { if (!res.headersSent) res.writeHead(503); res.end(); })
+    .pipe(res);
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     // web:build replaces dist in place; the copy already running serves the new build
