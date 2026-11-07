@@ -30,7 +30,7 @@ describe('Quick Bill invoice: GST-inclusive rate and amount only', () => {
       expect(text).toContain('236.00'); // amount incl. GST
       expect(text).not.toMatch(/Taxable|Sub-Total|SGST <|CGST <|Within State Tax/i);
       expect(text).not.toMatch(/\b100\.00\b/); // the before-GST rate is not printed
-      expect(text).toMatch(/Includes GST/); // GST still shown once under the total
+      expect(text).not.toMatch(/GST [₹0-9]|CGST|SGST|IGST|Includes GST/i); // no GST amounts at all
     });
   }
   it('a GST bill keeps its tax columns', () => {

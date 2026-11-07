@@ -44,16 +44,21 @@ export function ConnectForm({ title = 'Connect with a pairing code' }: { title?:
         : 'Enter the server address (e.g. http://192.168.1.4:4000) and the device key (sk_live_…).');
       return;
     }
-    // Lost connection (key changed in ERP): a code for this same terminal reconnects, keeping the bills here.
-    const reconnecting = paired && keyRejected && mode === 'code';
-    if (paired && !reconnecting) {
-      if (!mayRepair) { setError('Only staff with "POS Devices – edit" can move this device to another terminal. Ask a manager to sign in first.'); return; }
+    // Already connected: a pairing code is made in the ERP by staff allowed to connect devices, so it
+    // needs no sign-in here. A code for this same terminal reconnects keeping the bills; one for
+    // another terminal switches (only once everything here has synced). A typed key needs a manager.
+    const reconnecting = paired && mode === 'code';
+    if (paired && !reconnecting && !mayRepair) {
+      setError('Moving this device with a device key needs a manager signed in. Use a pairing code instead (ERP → POS Devices & Sync → the terminal → Connect a device).');
+      return;
+    }
+    if (paired && !keyRejected) {
       const left = unsyncedOnPhone();
       const current = `${info?.device.name ?? 'this terminal'}${info?.company?.businessName ? ` (${info.company.businessName})` : ''}`;
       const ok = await confirm(
-        'Switch terminal?',
-        `It stops being ${current}. ${left.total ? `${left.total} record(s) are synced first. ` : ''}Bills, catalogue and staff sign-ins of ${current} are then removed from here (they stay in SACONE), and the new terminal's firm is loaded.`,
-        'Switch',
+        'Connect with this code?',
+        `If the code is for ${current}, the phone reconnects and keeps everything. If it is for another terminal, the phone stops being ${current}: ${left.total ? `${left.total} record(s) are synced first, then ` : ''}bills, catalogue and staff sign-ins of ${current} are removed from here (they stay in SACONE) and the new terminal's firm is loaded.`,
+        'Connect',
         true,
       );
       if (!ok) return;
@@ -109,7 +114,7 @@ export function ConnectForm({ title = 'Connect with a pairing code' }: { title?:
       )}
       {error ? <Banner tone="danger" title="Not connected" messages={[error]} /> : null}
       <Button
-        title={paired && !(keyRejected && mode === 'code') ? 'Switch to this terminal' : 'Connect'}
+        title={paired && mode === 'key' ? 'Switch to this terminal' : 'Connect'}
         icon="link-outline"
         size="lg"
         onPress={go}

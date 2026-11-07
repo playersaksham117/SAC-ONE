@@ -5,7 +5,7 @@ import { Text, View } from 'react-native';
 import { pairingFromParams, type Pairing } from '../domain/pairing';
 import { can } from '../domain/permissions';
 import { useCurrentUser } from '../store/session';
-import { connectWithPairing, switchTerminal, unsyncedOnPhone } from '../lib/pairing';
+import { connectWithPairing, reconnectWithCode, switchTerminal, unsyncedOnPhone } from '../lib/pairing';
 import { confirm } from '../ui/dialogs';
 import { useDevice } from '../store/device';
 import { syncNow } from '../sync/engine';
@@ -68,6 +68,12 @@ export default function Connect() {
     setBusy(true);
     setError(null);
     try {
+      // a pairing code: same terminal reconnects keeping everything, another one switches
+      if (pairing.code) {
+        const how = await reconnectWithCode(pairing.urls, pairing.code);
+        router.replace(how === 'same' ? '/' : '/login');
+        return;
+      }
       await switchTerminal(pairing);
       syncNow().catch(() => undefined);
       router.replace('/login');
@@ -108,9 +114,10 @@ export default function Connect() {
             ]}
           />
           {error ? <Banner tone="danger" messages={[error]} /> : null}
-          {mayRepair ? (
+          {/* A pairing code is made in the ERP by staff allowed to connect devices: no sign-in needed here. */}
+          {mayRepair || pairing.code ? (
             <Button
-              title={`Switch to ${pairing.deviceName ?? 'this terminal'}`}
+              title={pairing.code ? `Connect to ${pairing.deviceName ?? 'this terminal'}` : `Switch to ${pairing.deviceName ?? 'this terminal'}`}
               icon="swap-horizontal"
               size="lg"
               onPress={switchTo}

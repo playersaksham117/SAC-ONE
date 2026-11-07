@@ -90,11 +90,29 @@ export async function switchToSavedTerminal(id: string): Promise<void> {
  * or switched off). A pairing code for the SAME terminal reconnects it keeping its bills; for another
  * terminal it switches as usual (needs everything synced first).
  */
-export async function reconnectWithCode(url: string, code: string): Promise<'same' | 'switched'> {
+export async function reconnectWithCode(urls: string | string[], code: string): Promise<'same' | 'switched'> {
   const device = useDevice.getState();
   const currentId = device.info?.device.id ?? null;
+  // send what can still be sent before the code is used (a switch needs nothing left)
+  if (unsyncedOnPhone().total) await syncNow().catch(() => undefined);
   const left = unsyncedOnPhone();
-  const { key, terminalId } = await device.exchangeCode(url, code);
+  // the code is used on the first server address that answers
+  let url = '';
+  let exchanged: { key: string; terminalId: string } | null = null;
+  const tried: string[] = [];
+  for (const u of Array.isArray(urls) ? urls : [urls]) {
+    try {
+      exchanged = await device.exchangeCode(u, code);
+      url = u;
+      break;
+    } catch (e) {
+      const err = e as ApiError;
+      if (!err.isNetwork) throw e;
+      tried.push(u);
+    }
+  }
+  if (!exchanged) throw new Error(`Could not reach SACONE at ${tried.join(' or ')}. Is this phone on the shop Wi-Fi (or Tailscale) and is the SACONE PC on?`);
+  const { key, terminalId } = exchanged;
   if (!currentId || terminalId === currentId) {
     await device.connect(url, key);
     syncNow().catch(() => undefined);
