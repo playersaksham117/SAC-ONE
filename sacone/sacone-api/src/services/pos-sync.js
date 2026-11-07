@@ -1201,7 +1201,18 @@ export class PosDeviceAdminService {
 
     const code = (str(data.code) || deviceRepo.nextCode()).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
     if (!code) throw new AppError('Device code must be alphanumeric', 400);
-    if (deviceRepo.codeExists(code)) throw new AppError('Device code already exists', 409);
+    if (deviceRepo.codeExists(code)) {
+      const owner = getDatabase().prepare('SELECT name FROM pos_devices WHERE UPPER(code) = UPPER(?)').get(code);
+      const candidate = (n) => `${code.slice(0, 10 - String(n).length)}${n}`;
+      let n = 2;
+      while (deviceRepo.codeExists(candidate(n))) n += 1;
+      const free = candidate(n);
+      throw new AppError(
+        `Invoice prefix ${code}${str(data.code) && str(data.code).toUpperCase() !== code ? ` (from "${str(data.code)}"; only letters and digits are kept)` : ''} is already used by ${owner?.name || 'another terminal'}. Use another, e.g. ${free}, or leave it blank for an automatic one.`,
+        409,
+        'DEVICE_CODE_TAKEN',
+      );
+    }
 
     const { rawKey, keyPrefix, keyHash } = generateApiKeySecret();
     const paymentAccountId = this.#terminalBank(data.paymentAccountId);

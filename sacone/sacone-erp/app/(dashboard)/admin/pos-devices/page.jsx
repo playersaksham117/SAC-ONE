@@ -206,15 +206,20 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
   const { checkPermission } = useAuth();
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  useEffect(() => {
+    if (formError) document.getElementById('device-form-error')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [formError]);
 
-  const open = (device = null) => setForm(device
+  const open = (device = null) => { setFormError(''); setForm(device
     ? { id: device.id, name: device.name, warehouseId: device.warehouseId, actingUserId: device.actingUserId, notes: device.notes || '', paymentAccountId: device.paymentAccountId || '' }
-    : { name: '', code: '', warehouseId: warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || '', actingUserId: '', notes: '', paymentAccountId: '' });
+    : { name: '', code: '', warehouseId: warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || '', actingUserId: '', notes: '', paymentAccountId: '' }); };
 
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
+    setFormError('');
     try {
       if (form.id) {
         await apiRequest(`/api/pos-devices/${form.id}`, { method: 'PUT', body: JSON.stringify(form) });
@@ -225,7 +230,8 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
       setForm(null);
       await onChanged();
     } catch (err) {
-      setError(err.message);
+      // shown in the dialog: the page's own message sits behind it
+      setFormError(err.message);
     } finally {
       setSaving(false);
     }
@@ -339,7 +345,8 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
             {!form.id && (
               <div>
                 <label className="label" htmlFor="dev-code">Invoice prefix (optional)</label>
-                <input id="dev-code" className="input-field uppercase" maxLength={10} placeholder="Auto: POS1, POS2…" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
+                <input id="dev-code" className="input-field uppercase" maxLength={10} placeholder="Auto: POS1, POS2…" value={form.code} onChange={(e) => { setForm({ ...form, code: e.target.value }); setFormError(''); }} />
+                <p className="mt-1 text-xs text-slate-500">Letters and digits only (POS-TR is saved as POSTR); each terminal needs its own.</p>
               </div>
             )}
             <div>
@@ -367,6 +374,7 @@ function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecre
               <label className="label" htmlFor="dev-notes">Notes</label>
               <input id="dev-notes" className="input-field" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </div>
+            {formError ? <div id="device-form-error"><Alert type="error" message={formError} /></div> : null}
           </form>
         )}
       </Modal>
