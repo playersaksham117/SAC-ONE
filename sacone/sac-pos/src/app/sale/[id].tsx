@@ -2,7 +2,9 @@ import { withBuyerAddress } from '../../store/catalog';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Linking, Platform, Text, View } from 'react-native';
+import { invoiceWhatsAppText, whatsAppUrl } from '../../domain/share';
+import { normalizePhone } from '../../domain/validation';
 import { formatNotes } from '../../domain/cash';
 import { formatMoney, formatQty } from '../../domain/money';
 import { inclGst } from '../../domain/tax';
@@ -76,6 +78,19 @@ export default function SaleDetail() {
     }
   };
 
+  // WhatsApp text: invoice, date, customer, products with qty and amount (phone app only)
+  const shareWhatsApp = async () => {
+    const text = invoiceWhatsAppText(
+      { ...sale, number },
+      info?.settings?.labels?.businessName || info?.company?.businessName,
+    );
+    try {
+      await Linking.openURL(whatsAppUrl(text, normalizePhone(sale.customer?.phone)));
+    } catch {
+      notify('WhatsApp', 'WhatsApp is not installed on this phone.');
+    }
+  };
+
   return (
     <Screen padded={false} scroll>
       <Header title={done ? 'Sale complete' : 'Bill'} subtitle={sale.serverNumber ?? sale.number} onBack={() => goBack()} />
@@ -120,6 +135,16 @@ export default function SaleDetail() {
             onPress={share}
             testID="share-invoice"
           />
+          {Platform.OS !== 'web' ? (
+            <Button
+              title={sale.customer?.phone && normalizePhone(sale.customer.phone) ? `WhatsApp bill text to ${sale.customer.name}` : 'WhatsApp bill text'}
+              icon="logo-whatsapp"
+              variant="secondary"
+              style={{ marginTop: space.sm }}
+              onPress={shareWhatsApp}
+              testID="whatsapp-text"
+            />
+          ) : null}
           <Button title="Save PDF" icon="document-outline" variant="secondary" style={{ marginTop: space.sm }} onPress={() => run(() => savePdf(html(pdfSize), pdfSize, number))} />
           {captionCopied ? (
             <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: space.xs }}>
