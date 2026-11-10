@@ -116,10 +116,36 @@ export interface AppRelease {
   versionName: string; versionCode: number; size: number; sha256: string; notes: string; publishedAt: string; tag: string;
 }
 
+/** This app's real version, so ERP → POS Devices shows what each phone / browser runs. */
+let appVersionHeader: string | null = null;
+function appVersion(): string {
+  if (appVersionHeader) return appVersionHeader;
+  let name = '';
+  let build = '';
+  let platform = 'web';
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Platform } = require('react-native');
+    platform = Platform.OS;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Application = require('expo-application');
+    name = Application.nativeApplicationVersion ?? '';
+    build = Application.nativeBuildVersion ?? '';
+  } catch { /* tests / web without the native module */ }
+  if (!name) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      name = require('expo-constants').default?.expoConfig?.version ?? '';
+    } catch { /* ignore */ }
+  }
+  appVersionHeader = `sac-pos/${name || 'unknown'}${build ? ` (${build})` : ''} ${platform}`;
+  return appVersionHeader;
+}
+
 export const deviceHeaders = (c: DeviceConfig) => ({
   'X-API-Key': c.deviceKey,
   'X-Device-Id': c.deviceId,
-  'X-App-Version': 'sac-pos/1.0.0',
+  'X-App-Version': appVersion(),
   'X-Device-Platform': 'sac-pos',
 });
 
