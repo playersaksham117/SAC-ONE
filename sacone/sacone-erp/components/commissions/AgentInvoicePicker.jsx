@@ -36,6 +36,8 @@ export default function AgentInvoicePicker({ agent, onClose, onDone }) {
   const [picked, setPicked] = useState(() => new Set());
   const [form, setForm] = useState({ mode: 'plan', calculationMethod: 'percent_taxable', rate: '', fixedAmount: '' });
   const [allowShared, setAllowShared] = useState(false);
+  // "Amount for each invoice": saleId → ₹ written for that invoice
+  const [amounts, setAmounts] = useState({});
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -54,21 +56,29 @@ export default function AgentInvoicePicker({ agent, onClose, onDone }) {
   useEffect(() => { load(); }, [load]);
 
   const rows = useMemo(() => (data?.items || []).filter((i) => !i.hasMine), [data]);
-  const amountFor = (inv) => (form.mode === 'plan' ? inv.planCommission : customAmount(inv, form));
+  const amountFor = (inv) => (form.mode === 'plan' ? inv.planCommission
+    : form.mode === 'amounts' ? r2(amounts[inv.saleId]) : customAmount(inv, form));
   const chosen = rows.filter((i) => picked.has(i.saleId));
   const total = r2(chosen.reduce((s, i) => s + amountFor(i), 0));
   const allPicked = rows.length > 0 && rows.every((i) => picked.has(i.saleId));
   const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const sharedPicked = chosen.some((i) => i.existingCommissions);
+  const missingAmount = form.mode === 'amounts' && chosen.some((i) => !(Number(amounts[i.saleId]) > 0));
+  const writeAmount = (id, v) => {
+    setAmounts((a) => ({ ...a, [id]: v }));
+    if (Number(v) > 0) setPicked((s) => (s.has(id) ? s : new Set(s).add(id))); // writing an amount ticks the invoice
+  };
 
   const submit = async () => {
     setSaving(true); setError('');
     try {
       const body = { saleIds: chosen.map((i) => i.saleId), mode: form.mode, allowShared };
+      if (form.mode === 'amounts') body.amounts = Object.fromEntries(chosen.map((i) => [i.saleId, Number(amounts[i.saleId] || 0)]));
       if (form.mode === 'custom') Object.assign(body, { calculationMethod: form.calculationMethod, rate: Number(form.rate || 0), fixedAmount: Number(form.fixedAmount || 0) });
       const res = await apiRequest(`/api/sales-agents/${agent.id}/invoices`, { method: 'POST', body: JSON.stringify(body) });
       setResult(res);
       setPicked(new Set());
+      setAmounts({});
       await load();
       onDone?.(res);
     } catch (e) {
@@ -97,7 +107,9 @@ export default function AgentInvoicePicker({ agent, onClose, onDone }) {
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex items-center gap-2"><input type="radio" checked={form.mode === 'plan'} onChange={() => setForm((f) => ({ ...f, mode: 'plan' }))} /> Agent’s plan / rules</label>
             <label className="flex items-center gap-2"><input type="radio" checked={form.mode === 'custom'} onChange={() => setForm((f) => ({ ...f, mode: 'custom' }))} /> Custom for these invoices</label>
+            <label className="flex items-center gap-2"><input type="radio" checked={form.mode === 'amounts'} onChange={() => setForm((f) => ({ ...f, mode: 'amounts' }))} /> Amount for each invoice (₹)</label>
           </div>
+          {form.mode === 'amounts' && <p className="mt-2 text-xs text-slate-500">Write the commission ₹ in the Commission column of each invoice; writing an amount selects the invoice.</p>}
           {form.mode === 'custom' && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <select className="input-field w-auto" value={form.calculationMethod} onChange={(e) => setForm((f) => ({ ...f, calculationMethod: e.target.value }))}>
@@ -148,7 +160,16 @@ export default function AgentInvoicePicker({ agent, onClose, onDone }) {
                     <td className="px-3 py-2 text-right">{money(i.grandTotal)}</td>
                     <td className="px-3 py-2 text-xs">{i.balance > 0.001 ? <span className="text-amber-700">due {money(i.balance)}</span> : <span className="text-emerald-700">paid</span>}</td>
                     <td className="px-3 py-2 text-right">
-                      <div className="font-semibold">{money(amountFor(i))}</div>
+                      {form.mode === 'amounts' ? (
+                        <input
+                          type="number" min="0" step="0.01" placeholder="₹"
+                          aria-label={`Commission for ${i.invoiceNumber}`}
+                          className={`input-field ml-auto w-28 text-right ${picked.has(i.saleId) && !(Number(amounts[i.saleId]) > 0) ? 'border-rose-400' : ''}`}
+                          value={amounts[i.saleId] ?? ''}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => writeAmount(i.saleId, e.target.value)}
+                        />
+                      ) : <div className="font-semibold">{money(amountFor(i))}</div>}
                       {form.mode === 'plan' && <div className="text-[10px] text-slate-400">{i.planLabel}</div>}
                     </td>
                   </tr>
@@ -167,10 +188,13 @@ export default function AgentInvoicePicker({ agent, onClose, onDone }) {
         <p className="text-xs text-slate-500">Commission becomes payable by the plan’s payment rule (e.g. as the customer pays). Invoices billed without an agent get this agent as their sales agent.</p>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-          <div className="text-slate-700">{chosen.length} selected · commission <b>{money(total)}</b></div>
+          <div className="text-slate-700">
+            {chosen.length} selected · commission <b>{money(total)}</b>
+            {missingAmount && <span className="ml-2 text-rose-700">Write an amount for every selected invoice</span>}
+          </div>
           <div className="flex gap-2">
             <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
-            <button type="button" className="btn-primary" disabled={saving || !chosen.length || (form.mode === 'custom' && !(Number(form.calculationMethod === 'fixed_per_invoice' ? form.fixedAmount : form.rate) > 0))} onClick={submit}>
+            <button type="button" className="btn-primary" disabled={saving || !chosen.length || missingAmount || (form.mode === 'custom' && !(Number(form.calculationMethod === 'fixed_per_invoice' ? form.fixedAmount : form.rate) > 0))} onClick={submit}>
               {saving ? 'Saving…' : `Add commission (${chosen.length})`}
             </button>
           </div>

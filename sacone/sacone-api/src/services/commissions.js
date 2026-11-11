@@ -569,7 +569,8 @@ export class CommissionService {
   /**
    * Give an agent commission on chosen invoices. `rate` mode: { mode: 'plan' } uses the agent's
    * plan / rules; { mode: 'custom', calculationMethod, rate, fixedAmount } sets it for these
-   * invoices. Invoices this agent already has commission on are skipped, and so are invoices
+   * invoices; { mode: 'amounts', amounts: { [saleId]: ₹ } } gives the amount written for each
+   * invoice. Invoices this agent already has commission on are skipped, and so are invoices
    * with another agent's commission unless `allowShared` is set. An invoice billed with no agent
    * gets this agent as its sales agent.
    */
@@ -598,6 +599,18 @@ export class CommissionService {
       };
     }
 
+    // an amount written for each invoice (₹, as given; no plan or rule)
+    const amounts = {};
+    if (data.mode === 'amounts') {
+      const given = data.amounts && typeof data.amounts === 'object' ? data.amounts : {};
+      for (const id of saleIds) {
+        const v = round2(Number(given[id]));
+        if (!(v > 0)) throw new AppError('Write the commission amount for every selected invoice', 400);
+        if (v > 10000000) throw new AppError('Commission amount is too large', 400);
+        amounts[id] = v;
+      }
+    }
+
     const created = [];
     const skipped = [];
     const db = this.#db();
@@ -618,7 +631,10 @@ export class CommissionService {
         db.prepare('UPDATE pos_sales SET sales_agent_id = ? WHERE id = ?').run(agent.id, sale.id);
         sale.salesAgentId = agent.id;
       }
-      const made = this.createForSale(sale, { agents: [{ salesAgentId: agent.id, sharePercent: 100 }], actor, req, override });
+      const own = amounts[id] != null
+        ? { calculationMethod: 'fixed_per_invoice', rate: 0, fixedAmount: amounts[id], label: `Selected invoice: ₹${amounts[id]} written for this invoice` }
+        : override;
+      const made = this.createForSale(sale, { agents: [{ salesAgentId: agent.id, sharePercent: 100 }], actor, req, override: own });
       if (!made.length) {
         skipped.push({ saleId: id, invoiceNumber: sale.invoiceNumber, reason: 'No commission: lines below minimum price or plan minimum not met' });
         continue;
