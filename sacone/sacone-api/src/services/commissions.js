@@ -52,6 +52,8 @@ function methodToBasis(method) {
   return 'taxable';
 }
 
+const EXTERNAL_NO_LOGIN = 'External agents have no staff login or password. Use type "Sales staff" for someone who signs in to SAC-POS or the ERP.';
+
 function computeAmount({ method, rate, fixedAmount, salesAmount, taxableAmount, grossProfit, maxCommission }) {
   let amount = 0;
   if (method === 'percent_sales_value') amount = round2(salesAmount * (rate / 100));
@@ -99,6 +101,7 @@ export class CommissionService {
     if (!data.name) throw new AppError('Agent name is required', 400);
     const code = data.agentCode || agentRepo.nextCode();
     if (agentRepo.codeExists(code)) throw new AppError('Agent code already exists', 409);
+    if ((data.createLogin || data.linkUserId) && data.agentType === 'external') throw new AppError(EXTERNAL_NO_LOGIN, 400);
     if (data.createLogin) authService.checkPermission(actor.permissions, 'core.users.create');
     if (data.linkUserId) this.#assertLinkable(data.linkUserId);
 
@@ -124,12 +127,20 @@ export class CommissionService {
    *   link    use an existing ERP user
    *   unlink  keep the user, stop treating them as this agent
    *   reset   new one-time password for the linked login
+   *   remove  unlink the login and switch it off (it can no longer sign in)
+   * External agents have no staff login: create / link / reset are refused for them.
    */
   manageLogin(id, { action, userId, roleId } = {}, actor, req) {
     requirePerm(actor, 'sales.agents.edit');
     const agent = agentRepo.findById(id);
     if (!agent) throw new AppError('Sales agent not found', 404);
 
+    if (agent.agentType === 'external' && ['create', 'link', 'reset'].includes(action)) throw new AppError(EXTERNAL_NO_LOGIN, 400);
+    if (action === 'remove') {
+      if (!agent.userId) return agent;
+      if (repos.users.findById(agent.userId)) userService.update(agent.userId, { isActive: false }, actor, req);
+      return agentRepo.setUserId(id, null);
+    }
     if (action === 'create') {
       authService.checkPermission(actor.permissions, 'core.users.create');
       if (agent.userId) throw new AppError('This agent already has a login', 409);
@@ -148,7 +159,7 @@ export class CommissionService {
       userService.update(agent.userId, { password, isActive: true }, actor, req);
       return { ...agentRepo.findById(id), credentials: { loginId: agent.loginEmail, password } };
     }
-    throw new AppError('action must be create, link, unlink or reset', 400);
+    throw new AppError('action must be create, link, unlink, reset or remove', 400);
   }
 
   #assertLinkable(userId, agentId = null) {
@@ -192,6 +203,9 @@ export class CommissionService {
     if (!existing) throw new AppError('Sales agent not found', 404);
     if (data.agentCode && agentRepo.codeExists(data.agentCode, id)) {
       throw new AppError('Agent code already exists', 409);
+    }
+    if (data.agentType === 'external' && existing.agentType !== 'external' && existing.userId) {
+      throw new AppError(`${existing.name} has a staff login. External agents have none: remove the login first (Remove login), then change the type.`, 400);
     }
     const updated = agentRepo.update(id, data);
     // A new rate / basis / plan applies to this agent's commissions not paid yet, too.

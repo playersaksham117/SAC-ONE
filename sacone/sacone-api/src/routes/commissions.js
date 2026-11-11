@@ -14,7 +14,7 @@ salesAgentRouter.post('/', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.createAgent(req.body, req.actor, req), 201);
 }));
 
-/** Sales staff login for an agent: { action: create | link | unlink | reset, userId?, roleId? } */
+/** Sales staff login for an agent: { action: create | link | unlink | reset | remove, userId?, roleId? } */
 salesAgentRouter.post('/:id/login', asyncHandler(async (req, res) => {
   sendSuccess(res, commissionService.manageLogin(req.params.id, req.body || {}, req.actor, req));
 }));

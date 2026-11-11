@@ -83,6 +83,7 @@ export default function CommissionsPage() {
 
   const manageLogin = async (agent, action) => {
     if (action === 'reset' && !window.confirm(`Issue a new password for ${agent.name}? The old one stops working.`)) return;
+    if (action === 'remove' && !window.confirm(`Remove the staff login of ${agent.name}? External agents have no login: ${agent.loginEmail} is switched off and can no longer sign in.`)) return;
     try {
       const result = await apiRequest(`/api/sales-agents/${agent.id}/login`, { method: 'POST', body: JSON.stringify({ action }) });
       if (result.credentials) setCredentials({ ...result.credentials, name: agent.name });
@@ -151,7 +152,7 @@ export default function CommissionsPage() {
         ...agentForm,
         defaultCommissionRate: Number(agentForm.defaultCommissionRate || 0),
         commissionPlanId: agentForm.commissionPlanId || null,
-        createLogin: !editingAgent && canCreateLogins && agentForm.createLogin,
+        createLogin: !editingAgent && canCreateLogins && agentForm.agentType !== 'external' && agentForm.createLogin,
       };
       if (editingAgent) {
         const saved = await apiRequest(`/api/sales-agents/${editingAgent.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -279,7 +280,8 @@ export default function CommissionsPage() {
                       <td className="px-3 py-2 text-xs">
                         {a.loginEmail
                           ? <span className={a.loginActive ? 'text-slate-700' : 'text-slate-400 line-through'}>{a.loginEmail}</span>
-                          : <span className="text-slate-400">No login</span>}
+                          : <span className="text-slate-400">{a.agentType === 'external' ? 'No login (external)' : 'No login'}</span>}
+                        {a.agentType === 'external' && a.userId && <div className="text-[11px] text-amber-700">External agents have no staff login: remove it</div>}
                       </td>
                       <td className="px-3 py-2 capitalize">{a.status}</td>
                       <td className="px-3 py-2">
@@ -299,11 +301,14 @@ export default function CommissionsPage() {
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setPickAgent(a)}>Select invoices</button>
                           )}
                           {canPay && <button type="button" className="btn-primary !px-2 !py-1 text-xs" onClick={() => openPay(a.id)}>Pay</button>}
-                          {canEditAgents && canCreateLogins && !a.userId && (
+                          {canEditAgents && canCreateLogins && !a.userId && a.agentType !== 'external' && (
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => manageLogin(a, 'create')}>Create login</button>
                           )}
-                          {canEditAgents && a.userId && checkPermission('core.users.edit') && (
+                          {canEditAgents && a.userId && a.agentType !== 'external' && checkPermission('core.users.edit') && (
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => manageLogin(a, 'reset')}>Reset password</button>
+                          )}
+                          {canEditAgents && a.userId && a.agentType === 'external' && checkPermission('core.users.edit') && (
+                            <button type="button" className="btn-secondary !px-2 !py-1 text-xs text-rose-700" onClick={() => manageLogin(a, 'remove')}>Remove login</button>
                           )}
                           {checkPermission('sales.agents.edit') && (
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => {
@@ -520,7 +525,7 @@ export default function CommissionsPage() {
                 </select>
               </label>
               <label className="block text-sm"><span className="mb-1 block">Email</span>
-                <input type="email" className="input w-full" value={agentForm.email} onChange={(e) => setAgentForm((f) => ({ ...f, email: e.target.value }))} placeholder="Optional: used as their login ID" />
+                <input type="email" className="input w-full" value={agentForm.email} onChange={(e) => setAgentForm((f) => ({ ...f, email: e.target.value }))} placeholder={agentForm.agentType === 'external' ? 'Optional' : 'Optional: used as their login ID'} />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm"><span className="mb-1 block">Mobile</span>
@@ -533,7 +538,10 @@ export default function CommissionsPage() {
                   </select>
                 </label>
               </div>
-              {!editingAgent && canCreateLogins && (
+              {agentForm.agentType === 'external' && (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">External agent: no staff login or password. Their commission is added from Select invoices (by plan, rate or an amount per invoice).</p>
+              )}
+              {!editingAgent && canCreateLogins && agentForm.agentType !== 'external' && (
                 <label className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
                   <input type="checkbox" className="mt-0.5" checked={agentForm.createLogin} onChange={(e) => setAgentForm((f) => ({ ...f, createLogin: e.target.checked }))} />
                   <span>
