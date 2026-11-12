@@ -257,9 +257,10 @@ export class ProductRepository {
         LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ? OR LOWER(COALESCE(p.barcode, '')) LIKE ?
         OR LOWER(COALESCE(p.model_variant, '')) LIKE ?
         OR LOWER(COALESCE(p.attributes, '')) LIKE ?
+        OR LOWER(COALESCE(p.hsn_code, '')) LIKE ?
       )`);
       const like = `%${search.toLowerCase()}%`;
-      params.push(like, like, like, like, like);
+      params.push(like, like, like, like, like, like);
     }
     if (barcode) {
       conditions.push('LOWER(p.barcode) = LOWER(?)');

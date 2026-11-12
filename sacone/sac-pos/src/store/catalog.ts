@@ -198,6 +198,7 @@ export function searchProducts(products: Record<string, Product>, query: string,
   const rest = all.filter((p) => !exact.includes(p) && (
     p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
     || (p.barcode ?? '').toLowerCase().includes(q) || (p.brand ?? '').toLowerCase().includes(q)
+    || (p.hsn ?? '').toLowerCase().includes(q)
   ));
   return [...exact, ...rest.sort((a, b) => a.name.localeCompare(b.name))].slice(0, limit);
 }

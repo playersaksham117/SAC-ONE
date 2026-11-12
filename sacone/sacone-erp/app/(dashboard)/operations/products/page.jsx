@@ -697,7 +697,7 @@ export default function ProductsPage() {
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <input
               className="input-field md:col-span-2"
-              placeholder="Search by name, SKU, or barcode..."
+              placeholder="Search by name, SKU, barcode or HSN..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadProducts()}

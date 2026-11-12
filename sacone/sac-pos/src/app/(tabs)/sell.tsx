@@ -243,7 +243,7 @@ export default function Sell() {
           onSubmitEditing={submitSearch}
           value={query}
           onChangeText={setQuery}
-          placeholder={wide ? 'Search or scan a barcode  (F2)' : 'Search name, SKU or barcode'}
+          placeholder={wide ? 'Search or scan a barcode  (F2)' : 'Search name, SKU, barcode or HSN'}
           right={<IconButton icon="barcode-outline" label="Scan barcode" tone="primary" onPress={() => router.push('/scan')} />}
         />
         {categories.length ? (

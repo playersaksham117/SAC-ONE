@@ -434,7 +434,7 @@ export default function QuotationPanel({ bootstrap, checkPermission, onMessage, 
         <input
           ref={searchRef}
           className="input-field text-lg"
-          placeholder="Search / SKU / barcode…"
+          placeholder="Search / SKU / barcode / HSN…"
           value={search}
           onChange={(e) => runSearch(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) { e.preventDefault(); addProduct(results[0]); } }}

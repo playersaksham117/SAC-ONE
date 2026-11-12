@@ -252,7 +252,7 @@ export default function QuickBillPanel({
         <input
           ref={searchRef}
           className="input-field mt-2 text-xl font-medium"
-          placeholder="Barcode, SKU, or name…"
+          placeholder="Barcode, SKU, name or HSN…"
           value={search}
           onChange={(e) => runSearch(e.target.value)}
           onKeyDown={handleSearchKeyDown}
