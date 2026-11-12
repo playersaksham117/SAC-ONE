@@ -14,6 +14,28 @@ import {
 const customerRepo = repos.customers;
 const supplierRepo = repos.suppliers;
 
+/**
+ * Money on receipts / payments not set against an invoice first pays off the party's opening
+ * balance (see openingBalanceFor); only what is left over is an advance. `rows` in date order.
+ * Returns id → ledger note, e.g. " (₹10193 against opening balance)".
+ */
+function unallocatedNotes(rows, opening) {
+  let left = opening && opening.amount > 0 ? round2(opening.amount) : 0;
+  const notes = {};
+  for (const r of rows) {
+    const free = round2(Number(r.unallocated_amount) || 0);
+    if (free <= 0.001) continue;
+    const toOpening = round2(Math.min(free, left));
+    left = round2(left - toOpening);
+    const advance = round2(free - toOpening);
+    const parts = [];
+    if (toOpening > 0.001) parts.push(`₹${toOpening} against opening balance`);
+    if (advance > 0.001) parts.push(`incl. advance ₹${advance}`);
+    notes[r.id] = ` (${parts.join(', ')})`;
+  }
+  return notes;
+}
+
 function daysBetween(fromDate, toDate = new Date().toISOString().slice(0, 10)) {
   const a = new Date(`${String(fromDate).slice(0, 10)}T00:00:00`);
   const b = new Date(`${String(toDate).slice(0, 10)}T00:00:00`);
@@ -140,8 +162,9 @@ export class PartyStatementService {
       }
     }
 
+    const receiptNotes = unallocatedNotes(receipts, openingBalanceFor('customer', customerId));
     for (const r of receipts) {
-      const advanceNote = r.unallocated_amount > 0.001 ? ` (incl. advance ${round2(r.unallocated_amount)})` : '';
+      const advanceNote = receiptNotes[r.id] || '';
       lines.push({
         date: String(r.txn_date).slice(0, 10),
         particulars: `Receipt ${r.voucher_number}${advanceNote}${r.remarks ? ` — ${r.remarks}` : ''}`,
@@ -323,8 +346,9 @@ export class PartyStatementService {
         WHERE supplier_id = ? AND status = 'posted'
         ORDER BY payment_date ASC
       `).all(supplierId);
+      const voucherNotes = unallocatedNotes(vouchers, openingBalanceFor('supplier', supplierId));
       for (const v of vouchers) {
-        const advanceNote = v.unallocated_amount > 0.001 ? ` (incl. advance ${round2(v.unallocated_amount)})` : '';
+        const advanceNote = voucherNotes[v.id] || '';
         lines.push({
           date: String(v.txn_date).slice(0, 10),
           particulars: `Payment ${v.voucher_number}${advanceNote}${v.remarks ? ` — ${v.remarks}` : ''}`,

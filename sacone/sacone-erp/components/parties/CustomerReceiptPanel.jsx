@@ -357,7 +357,10 @@ export default function CustomerReceiptPanel({ customers = [], onMessage, onErro
             </table>
             {preview && (
               <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-xs">
-                Allocated {money(preview.allocatedAmount)} · Unallocated / Advance {money(preview.unallocatedAmount)} · Status: {preview.allocationStatus}
+                Allocated {money(preview.allocatedAmount)}
+                {preview.toOpeningBalance > 0.001 && <> · Against opening balance {money(preview.toOpeningBalance)}</>}
+                {(preview.toOpeningBalance == null ? preview.unallocatedAmount : preview.advanceAmount) > 0.001 && <> · Advance {money(preview.toOpeningBalance == null ? preview.unallocatedAmount : preview.advanceAmount)}</>}
+                {' '}· Status: {preview.allocationStatus}
               </div>
             )}
           </div>

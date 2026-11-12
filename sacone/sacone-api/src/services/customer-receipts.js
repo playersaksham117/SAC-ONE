@@ -3,6 +3,7 @@ import { AppError } from '../core/http.js';
 import { repos } from '../repositories/index.js';
 import { authService } from './index.js';
 import { commissionService } from './commissions.js';
+import { openingBalanceFor } from './opening-balances.js';
 import {
   allocationStatus,
   round2,
@@ -59,6 +60,13 @@ function autoAllocate(openDocs, amount) {
     remaining = round2(remaining - take);
   }
   return { lines, unallocated: remaining };
+}
+
+/** Unallocated money first pays off what is left of the opening balance; the rest is an advance. */
+function splitUnallocated(customerId, unallocated) {
+  const left = openingBalanceFor('customer', customerId)?.remaining || 0;
+  const toOpening = round2(Math.min(Math.max(0, unallocated), Math.max(0, left)));
+  return { toOpeningBalance: toOpening, advanceAmount: round2(Math.max(0, unallocated - toOpening)), openingBalanceDue: round2(left) };
 }
 
 function validateAllocationsAgainstOpen(customerId, amount, allocations) {
@@ -132,6 +140,7 @@ export class CustomerReceiptService {
         }),
         allocatedAmount: sum,
         unallocatedAmount: round2(amount - sum),
+        ...splitUnallocated(customerId, round2(amount - sum)),
         allocationStatus: allocationStatus(amount, sum),
       };
     }
@@ -141,6 +150,7 @@ export class CustomerReceiptService {
       allocations: lines,
       allocatedAmount: allocated,
       unallocatedAmount: unallocated,
+      ...splitUnallocated(customerId, unallocated),
       allocationStatus: allocationStatus(amount, allocated),
     };
   }
