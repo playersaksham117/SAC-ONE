@@ -9,6 +9,10 @@ import { useCart } from '../../store/cart';
 import { useCatalog, type LocalCustomer } from '../../store/catalog';
 import { useLedger } from '../../store/ledger';
 import { useCan } from '../../store/session';
+import { hasUpi } from '../../domain/upi';
+import { useDevice } from '../../store/device';
+import { useUpiQr } from '../../store/upiQr';
+import { UpiQrModal } from '../../ui/UpiQrModal';
 import { DocSyncBadge } from '../../ui/SyncBadge';
 import {
   Banner, Button, Card, Chip, Empty, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, radius, space,
@@ -30,6 +34,14 @@ export default function CustomerDetail() {
   const [method, setMethod] = useState<CustomerPayment['method']>('cash');
   const [reference, setReference] = useState('');
   const [msg, setMsg] = useState<{ tone: 'danger' | 'success'; text: string } | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  // Scan-to-pay QR for a due payment by UPI: the firm's bank for this terminal (same as checkout)
+  const deviceInfo = useDevice((s) => s.info);
+  const invoiceCfg = deviceInfo?.settings?.invoice;
+  const payBank = invoiceCfg?.bank;
+  const cachedQr = useUpiQr((s) => s.image);
+  const qrImage = invoiceCfg?.upiQrSource === 'uploaded' ? cachedQr : null;
+  const canShowQr = Boolean(payBank) && invoiceCfg?.posUpiQr !== false && (Boolean(qrImage) || hasUpi(payBank));
 
   const bills = useMemo(() => sales.filter((s) => s.customer?.id === id).slice(0, 20), [sales, id]);
   const collections = useMemo(() => payments.filter((p) => p.customerId === id).slice(0, 20), [payments, id]);
@@ -45,6 +57,7 @@ export default function CustomerDetail() {
   const local = c.isLocal ? (c as LocalCustomer) : null;
   const amt = Number(amount.replace(/[^0-9.]/g, '')) || 0;
   const live = validateCollection(amt, c);
+  const qrAmount = amt > 0 ? amt : Math.max(c.outstanding, 0);
 
   const collect = () => {
     try {
@@ -97,6 +110,15 @@ export default function CustomerDetail() {
                 <TextInput value={reference} onChangeText={setReference} placeholder="Reference / UTR" placeholderTextColor={colors.textFaint}
                   style={{ marginTop: space.sm, height: 44, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 10, color: colors.text }} />
               ) : null}
+              {method === 'upi' && canShowQr && payBank ? (
+                <Row style={{ marginTop: space.sm, justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', color: colors.text }}>UPI {qrAmount > 0 ? formatMoney(qrAmount) : ''}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{payBank.upiId || 'Your UPI QR'}</Text>
+                  </View>
+                  <Button title="Show QR" icon="qr-code-outline" variant="secondary" size="sm" onPress={() => setQrOpen(true)} testID="show-due-upi-qr" />
+                </Row>
+              ) : null}
               {amount && live.errors.length ? <View style={{ marginTop: space.sm }}><Banner tone="danger" messages={live.errors.map((e) => e.message)} /></View> : null}
               {amount && live.warnings.length ? <View style={{ marginTop: space.sm }}><Banner tone="warning" messages={live.warnings.map((e) => e.message)} /></View> : null}
               {msg ? <View style={{ marginTop: space.sm }}><Banner tone={msg.tone} messages={[msg.text]} /></View> : null}
@@ -132,6 +154,10 @@ export default function CustomerDetail() {
           </Card>
         ))}
       </View>
+      {qrOpen && canShowQr && payBank ? (
+        <UpiQrModal bank={payBank} image={qrImage} amount={qrAmount} payee={deviceInfo?.company?.businessName}
+          note={`Due payment ${c.name}`.slice(0, 50)} onClose={() => setQrOpen(false)} />
+      ) : null}
     </Screen>
   );
 }

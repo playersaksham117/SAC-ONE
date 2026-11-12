@@ -55,7 +55,7 @@ export function UpiQrModal({ bank, amount, payee, note, image, onClose }: {
             {[bank.accountHolder || payee, bank.bankName].filter(Boolean).join(' · ')}
           </Text>
           <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm, textAlign: 'center' }}>
-            Any UPI app: GPay, PhonePe, Paytm, BHIM… Check the money has arrived before completing the sale.
+            Any UPI app: GPay, PhonePe, Paytm, BHIM… Check the money has arrived before you save the sale or collection.
           </Text>
           <Button title="Done" onPress={onClose} style={{ marginTop: space.md, alignSelf: 'stretch' }} />
         </Pressable>
