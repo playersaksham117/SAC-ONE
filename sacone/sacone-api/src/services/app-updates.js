@@ -42,16 +42,32 @@ async function getJson(url) {
   return res.json();
 }
 
-/** Newest published release of the app (tag sac-pos-v*) with both assets. */
-async function newestRelease() {
-  const releases = await getJson(`https://api.github.com/repos/${REPO}/releases?per_page=20`);
-  for (const r of releases) {
-    if (r.draft || !String(r.tag_name).startsWith('sac-pos-v')) continue;
-    const apk = r.assets.find((a) => a.name === 'sac-pos.apk');
-    const meta = r.assets.find((a) => a.name === 'sac-pos.json');
-    if (apk && meta) return { release: r, apk, meta };
+/** Build number from a tag like sac-pos-v1.1.10-b4400 (0 when the tag has none). */
+export function releaseBuild(tag) {
+  const m = String(tag).match(/-b(\d+)$/);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Newest published release of the app (tag sac-pos-v*) with both assets: the highest build
+ * number, else the latest published. GitHub's list order is not by version (1.1.9 can come
+ * before 1.1.10), so the first one listed is not necessarily the newest.
+ */
+export function pickNewest(releases) {
+  let best = null;
+  for (const r of releases || []) {
+    if (r.draft || r.prerelease || !String(r.tag_name).startsWith('sac-pos-v')) continue;
+    const apk = (r.assets || []).find((a) => a.name === 'sac-pos.apk');
+    const meta = (r.assets || []).find((a) => a.name === 'sac-pos.json');
+    if (!apk || !meta) continue;
+    const key = [releaseBuild(r.tag_name), Date.parse(r.published_at || r.created_at || 0) || 0];
+    if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && key[1] > best.key[1])) best = { key, release: r, apk, meta };
   }
-  return null;
+  return best ? { release: best.release, apk: best.apk, meta: best.meta } : null;
+}
+
+async function newestRelease() {
+  return pickNewest(await getJson(`https://api.github.com/repos/${REPO}/releases?per_page=20`));
 }
 
 async function download(url, file) {
