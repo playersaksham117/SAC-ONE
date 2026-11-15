@@ -1,6 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Text, TextInput, View } from 'react-native';
+import { paymentReminderText, whatsAppUrl } from '../../domain/share';
+import { normalizePhone } from '../../domain/validation';
+import { istToday } from '../../domain/billDate';
+import { notify } from '../../ui/dialogs';
 import { formatMoney } from '../../domain/money';
 import type { CustomerPayment } from '../../domain/types';
 import { validateCollection } from '../../domain/validation';
@@ -59,6 +63,27 @@ export default function CustomerDetail() {
   const live = validateCollection(amt, c);
   const qrAmount = amt > 0 ? amt : Math.max(c.outstanding, 0);
 
+  // WhatsApp payment reminder: balance due, unpaid bills, the shop's UPI ID (phone app only)
+  const mobile = normalizePhone(c.phone);
+  const sendReminder = async () => {
+    const dueBills = sales.filter((s) => s.customer?.id === id && !s.cancelledInErp && s.amountDue > 0)
+      .map((s) => ({ number: s.serverNumber ?? s.number, createdAt: s.createdAt, amountDue: s.amountDue, dueDate: s.dueDate }));
+    const text = paymentReminderText({
+      customerName: c.name,
+      outstanding: c.outstanding,
+      bills: dueBills,
+      shopName: deviceInfo?.settings?.labels?.businessName || deviceInfo?.company?.businessName,
+      upiId: hasUpi(payBank) ? payBank.upiId : null,
+      today: istToday(),
+      creditDays: c.creditDays ?? 30,
+    });
+    try {
+      await Linking.openURL(whatsAppUrl(text, mobile));
+    } catch {
+      notify('WhatsApp', 'WhatsApp is not installed on this phone.');
+    }
+  };
+
   const collect = () => {
     try {
       const p = collectPayment(c.id, amt, method, { reference });
@@ -87,6 +112,10 @@ export default function CustomerDetail() {
           {canSell ? (
             <Button title="New bill for this customer" icon="cart-outline" variant="secondary" style={{ marginTop: space.sm }}
               onPress={() => { useCart.getState().setCustomer(c.id); router.push('/sell'); }} />
+          ) : null}
+          {c.outstanding > 0 && Platform.OS !== 'web' ? (
+            <Button title={mobile ? `WhatsApp payment reminder to ${c.name}` : 'WhatsApp payment reminder'} icon="logo-whatsapp" variant="secondary"
+              style={{ marginTop: space.sm }} onPress={sendReminder} testID="whatsapp-payment-reminder" />
           ) : null}
         </Card>
 

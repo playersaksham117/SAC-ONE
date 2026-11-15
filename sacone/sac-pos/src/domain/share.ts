@@ -80,3 +80,60 @@ export function invoiceWhatsAppText(bill: WhatsAppBill, shopName?: string | null
 export function whatsAppUrl(text: string, mobile10?: string | null): string {
   return `whatsapp://send?${mobile10 ? `phone=91${mobile10}&` : ''}text=${encodeURIComponent(text)}`;
 }
+
+export interface ReminderBill {
+  number: string;
+  createdAt: string;
+  amountDue: number;
+  /** 'YYYY-MM-DD' the bill should be paid by, when set. */
+  dueDate?: string | null;
+}
+
+/** Whole days from date a to date b ('YYYY-MM-DD'). */
+function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+}
+
+/**
+ * Payment reminder as a WhatsApp message (SAC-POS phone app): the customer's balance due and,
+ * when the phone's bills add up to no more than that balance, the unpaid bills (oldest first)
+ * with how many days each is overdue, plus the shop's UPI ID to pay to.
+ * The balance is the ERP's figure; bill-wise dues on the phone can be out of date, so the
+ * list is left out when it would claim more than the balance.
+ */
+export function paymentReminderText(input: {
+  customerName: string;
+  outstanding: number;
+  bills?: ReminderBill[];
+  shopName?: string | null;
+  upiId?: string | null;
+  /** 'YYYY-MM-DD' (India date) to count overdue days from. */
+  today: string;
+  /** Days a credit bill may stay unpaid when the bill has no due date. */
+  creditDays?: number | null;
+}): string {
+  const outstanding = Math.max(Number(input.outstanding) || 0, 0);
+  const open = (input.bills ?? [])
+    .filter((b) => (Number(b.amountDue) || 0) > 0.009)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const listed = open.reduce((s, b) => s + b.amountDue, 0);
+  const showBills = open.length > 0 && listed <= outstanding + 1;
+  const shown = open.slice(0, 10);
+  const billLines = showBills ? shown.map((b, i) => {
+    const billDate = billDateText(b.createdAt);
+    const due = b.dueDate || (input.creditDays ? new Date(Date.parse(b.createdAt) + 330 * 60000 + input.creditDays * 86400000).toISOString().slice(0, 10) : null);
+    const late = due ? daysBetween(due, input.today) : 0;
+    return `${i + 1}. ${cleanText(b.number, 40)} | ${billDate} | Due ${formatMoney(b.amountDue)}${late > 0 ? ` (${late} day${late === 1 ? '' : 's'} overdue)` : ''}`;
+  }) : [];
+  return [
+    input.shopName ? `*${cleanText(input.shopName, 60)}*` : null,
+    '*Payment reminder*',
+    '',
+    `Dear ${cleanText(input.customerName, 60) || 'Customer'},`,
+    `Your balance due with us is *${formatMoney(outstanding)}*.`,
+    ...(billLines.length ? ['', 'Pending bills:', ...billLines, open.length > shown.length ? `…and ${open.length - shown.length} more` : null] : []),
+    '',
+    input.upiId ? `Pay by UPI: ${cleanText(input.upiId, 80)}` : null,
+    'Please ignore this if you have already paid. Thank you.',
+  ].filter((x) => x !== null).join('\n');
+}
