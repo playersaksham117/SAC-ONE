@@ -1,21 +1,66 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { siblingAppUrl } from '../../../../lib/api';
+
+const CONFIGURED_POS_URL = process.env.NEXT_PUBLIC_POS_WEB_URL || '';
 
 /**
- * POS billing is no longer part of the ERP web app — it runs only in the SAC-POS mobile app.
- * This route stays so old bookmarks explain where POS went instead of showing a 404.
+ * POS billing inside the ERP: the SAC-POS web app (served on port 3002, or NEXT_PUBLIC_POS_WEB_URL)
+ * shown in the page. It is the same app as on the phones: it keeps its own terminal pairing and
+ * staff PIN sign-in, and its bills sync into SACONE like a phone's.
  */
-export default function PosMovedPage() {
+export default function PosBillingPage() {
+  const [url, setUrl] = useState('');
+  const [status, setStatus] = useState('checking'); // checking | up | down
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => { setUrl(siblingAppUrl('pos', 3002, CONFIGURED_POS_URL)); }, []);
+
+  useEffect(() => {
+    if (!url) return undefined;
+    let live = true;
+    setStatus('checking');
+    // no-cors: only tells us the server answered, which is all we need before showing the frame
+    fetch(`${url}/`, { mode: 'no-cors', cache: 'no-store' })
+      .then(() => { if (live) setStatus('up'); })
+      .catch(() => { if (live) setStatus('down'); });
+    return () => { live = false; };
+  }, [url, attempt]);
+
   return (
-    <div className="mx-auto max-w-xl py-12">
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl ring-1 ring-blue-100">📱</div>
-        <h2 className="mt-4 text-xl font-bold text-slate-900">POS runs on the SAC-POS mobile app</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          Billing, returns and customer collections are done on phones with SAC-POS. Sales sync into SACONE automatically.
-          Register a phone and watch the sync inbox in POS Devices &amp; Sync.
-        </p>
-        <Link href="/admin/pos-devices" className="btn-primary mt-6">Open POS Devices &amp; Sync</Link>
+    <div className="flex h-[calc(100vh-8rem)] min-h-[600px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2">
+        <div className="text-sm font-semibold text-slate-800">
+          POS Billing <span className="font-normal text-slate-500">· SAC-POS web</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <Link href="/admin/pos-devices" className="btn-secondary">Terminals &amp; sync</Link>
+          {url ? <a href={url} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open in new tab ↗</a> : null}
+        </div>
       </div>
+
+      {status === 'down' ? (
+        <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+          <h2 className="text-lg font-bold text-slate-900">SAC-POS web is not running</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Nothing answered at <span className="font-mono">{url}</span>. Start the SAC-POS web server on the shop PC
+            (sac-pos: <span className="font-mono">node web-server.mjs</span>), then try again.
+          </p>
+          <button type="button" className="btn-primary mt-4" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+        </div>
+      ) : url && status === 'up' ? (
+        <iframe
+          key={attempt}
+          src={url}
+          title="SAC-POS web"
+          className="w-full flex-1 border-0 bg-white"
+          allow="camera; clipboard-read; clipboard-write; fullscreen"
+        />
+      ) : (
+        <div className="mt-12 text-center text-sm text-slate-500">Loading SAC-POS…</div>
+      )}
     </div>
   );
 }

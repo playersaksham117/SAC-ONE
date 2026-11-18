@@ -36,6 +36,17 @@ export const NAV_SECTIONS = [
 export const ERP_MODULES = [
   // ── OPERATIONS ──────────────────────────────────────────
   {
+    id: 'pos',
+    section: 'operations',
+    label: 'POS Billing',
+    description: 'SAC-POS web app inside the ERP: bills, quotations, returns and collections',
+    href: '/operations/pos',
+    permission: 'pos.sales.view',
+    permissions: ['pos.sales.view', 'pos.devices.view'],
+    icon: '🧾',
+    placeholder: false,
+  },
+  {
     id: 'pos-devices',
     section: 'operations',
     label: 'POS Devices & Sync',

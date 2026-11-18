@@ -1,6 +1,6 @@
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])$/;
 const IPV4 = /^\d+\.\d+\.\d+\.\d+$/;
-const APP_SUBDOMAINS = ['erp', 'owner', 'api', 'www'];
+const APP_SUBDOMAINS = ['erp', 'owner', 'api', 'pos', 'www'];
 
 /**
  * URL of a SACONE app as seen from this browser, so one build works everywhere:
