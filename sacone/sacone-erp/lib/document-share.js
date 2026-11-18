@@ -94,6 +94,21 @@ export function invoiceShareMessage(documentNumber, amount, link, label = 'Invoi
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
+/**
+ * The PDF libraries, loaded on first use. A tab left open while the ERP was updated (or across
+ * sleep) can no longer fetch them ("Loading chunk … failed"): say to reload instead of that.
+ */
+async function loadPdfLibraries() {
+  try {
+    return await Promise.all([import('jspdf'), import('html2canvas')]);
+  } catch (e) {
+    if (e?.name === 'ChunkLoadError' || /Loading chunk|dynamically imported module|_next\/undefined/i.test(String(e?.message))) {
+      throw new Error('The ERP was updated while this page was open. Reload the page (press F5) and try again.');
+    }
+    throw e;
+  }
+}
+
 /** Render invoice HTML (A4 / A5) to a PDF Blob in the browser. Nothing is uploaded. */
 export async function renderPdf(html, size = 'A4') {
   const [pageW, pageH] = PAGE_MM[size] || PAGE_MM.A4;
@@ -101,7 +116,7 @@ export async function renderPdf(html, size = 'A4') {
   const contentW = pageW - 2 * margin;
   const contentH = pageH - 2 * margin;
 
-  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([import('jspdf'), import('html2canvas')]);
+  const [{ jsPDF }, { default: html2canvas }] = await loadPdfLibraries();
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.setAttribute('sandbox', 'allow-same-origin');
