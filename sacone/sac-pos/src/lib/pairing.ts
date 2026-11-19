@@ -6,6 +6,7 @@ import { useDevice } from '../store/device';
 import { pendingCount, useLedger } from '../store/ledger';
 import { useSession } from '../store/session';
 import { syncNow } from '../sync/engine';
+import { sync } from '../api/sacone';
 
 /**
  * Connect with a scanned pairing code: try each server address in turn (shop Wi-Fi first,
@@ -52,6 +53,13 @@ export function unsyncedOnPhone() {
  * cleared, so a failed attempt leaves the phone exactly as it was.
  */
 export async function switchTerminal(pairing: Pairing): Promise<string> {
+  // A new key for the terminal this phone already is (another phone took it, or Rotate key):
+  // reconnect keeping its bills, so the unsynced ones can still be sent.
+  const same = await reconnectSameTerminal(pairing);
+  if (same) {
+    syncNow().catch(() => undefined);
+    return same;
+  }
   await syncNow().catch(() => undefined);
   const left = unsyncedOnPhone();
   if (left.total) {
@@ -69,6 +77,30 @@ export async function switchTerminal(pairing: Pairing): Promise<string> {
   useCart.getState().clear();
   useSession.getState().forgetAll();
   return url;
+}
+
+/**
+ * When the scanned key belongs to this phone's own terminal, connect with it (nothing cleared)
+ * and return the server address; otherwise null. The key is only checked, never saved, unless
+ * it is for the same terminal.
+ */
+async function reconnectSameTerminal(pairing: Pairing): Promise<string | null> {
+  const device = useDevice.getState();
+  const currentId = device.info?.device.id;
+  if (!pairing.key || !currentId || !device.deviceId) return null;
+  for (const url of pairing.urls) {
+    const baseUrl = url.trim().replace(/\/+$/, '');
+    try {
+      const info = await sync.ping({ baseUrl, deviceKey: pairing.key.trim(), deviceId: device.deviceId });
+      if (info?.device?.id !== currentId) return null;
+      await device.connect(baseUrl, pairing.key);
+      return baseUrl;
+    } catch (e) {
+      if ((e as ApiError).isNetwork) continue;
+      return null; // key refused etc.: the normal switch path reports it
+    }
+  }
+  return null;
 }
 
 /**
