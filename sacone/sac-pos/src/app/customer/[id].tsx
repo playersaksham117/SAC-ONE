@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, Text, TextInput, View } from 'react-native';
 import { paymentReminderText, whatsAppUrl } from '../../domain/share';
 import { normalizePhone } from '../../domain/validation';
@@ -22,6 +22,7 @@ import {
   Banner, Button, Card, Chip, Empty, Header, KeyValue, Row, Screen, SectionTitle, StatTile, colors, font, radius, space,
 } from '../../ui/components';
 import { goBack } from '../../lib/nav';
+import { refreshCustomers } from '../../sync/engine';
 
 const METHODS: { m: CustomerPayment['method']; label: string }[] = [
   { m: 'cash', label: 'Cash' }, { m: 'upi', label: 'UPI' }, { m: 'bank', label: 'Card / Bank' },
@@ -30,6 +31,8 @@ const METHODS: { m: CustomerPayment['method']; label: string }[] = [
 export default function CustomerDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const c = useCatalog((s) => s.customers[id]);
+  // The balance as the ERP has it now (receipts posted there since the last sync).
+  useEffect(() => { refreshCustomers([id]); }, [id]);
   const sales = useLedger((s) => s.sales);
   const payments = useLedger((s) => s.payments);
   const canCollect = useCan('collectPayment');

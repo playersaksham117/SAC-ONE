@@ -9,7 +9,7 @@ import { useCatalog } from '../store/catalog';
 import { deviceConfig, useDevice } from '../store/device';
 import { useLedger } from '../store/ledger';
 import { useSession } from '../store/session';
-import { syncNow } from '../sync/engine';
+import { refreshCustomers, syncNow } from '../sync/engine';
 
 const STORES = [useDevice, useSession, useCatalog, useLedger, useCart];
 const SYNC_EVERY_MS = 60_000;
@@ -47,12 +47,20 @@ export function useBootstrap(): boolean {
 
   useEffect(() => {
     if (!ready) return undefined;
-    const run = () => { if (useDevice.getState().deviceKey) syncNow().catch(() => undefined); };
+    // After each sync, the customer on the bill is fetched again: its balance is always the ERP's.
+    const run = () => {
+      if (!useDevice.getState().deviceKey) return;
+      syncNow().catch(() => undefined).finally(() => { refreshCustomers([useCart.getState().customerId]); });
+    };
     run();
     const timer = setInterval(run, SYNC_EVERY_MS);
     const netSub = NetInfo.addEventListener((s) => { if (s.isConnected) run(); });
     const appSub = AppState.addEventListener('change', (st) => { if (st === 'active') run(); });
-    return () => { clearInterval(timer); netSub(); appSub.remove(); };
+    // A customer put on the bill: show their current balance and credit, not the last synced copy.
+    const cartSub = useCart.subscribe((s, prev) => {
+      if (s.customerId && s.customerId !== prev.customerId) refreshCustomers([s.customerId]);
+    });
+    return () => { clearInterval(timer); netSub(); appSub.remove(); cartSub(); };
   }, [ready]);
 
   // Real time: a long-poll wakes this phone as soon as products, prices, stock,

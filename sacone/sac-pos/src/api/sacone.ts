@@ -179,6 +179,12 @@ export const sync = {
       query: { since, page, limit: 500 }, headers: deviceHeaders(c), timeoutMs: 60000,
     }),
 
+  /** Just these customers as they are now (an older server answers with none: `since` is in the future). */
+  customersById: (c: DeviceConfig, ids: string[]) =>
+    request<Page & { customers: ServerCustomer[] }>(c.baseUrl, '/api/v1/sync/customers', {
+      query: { ids: ids.join(','), since: '9999-12-31T00:00:00.000Z', page: 1, limit: 50 }, headers: deviceHeaders(c), timeoutMs: 15000,
+    }),
+
   /** The uploaded UPI QR image of this terminal's bank (only fetched when its version changes). */
   upiQr: (c: DeviceConfig, series?: 'quick') =>
     request<{ accountId: string | null; version: string | null; image: string | null }>(c.baseUrl, '/api/v1/sync/upi-qr', { headers: deviceHeaders(c), timeoutMs: 30000, query: series ? { series } : undefined }),

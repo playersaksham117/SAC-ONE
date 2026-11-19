@@ -156,6 +156,21 @@ export class FinancePaymentAccountRepository {
     `).all().map(mapAccount);
   }
 
+  /**
+   * Where money taken by this mode lands when nobody picked an account: cash goes to the cash
+   * account (the built-in one first), every other mode to the default bank (else any bank / UPI).
+   */
+  findForMode(mode) {
+    const types = String(mode || '').toLowerCase() === 'cash' ? ['cash'] : ['bank', 'upi'];
+    const row = getDatabase().prepare(`
+      SELECT * FROM financial_payment_accounts
+      WHERE is_active = 1 AND account_type IN (${types.map(() => '?').join(',')})
+      ORDER BY is_default DESC, is_system DESC, CASE account_type WHEN 'bank' THEN 0 ELSE 1 END, created_at ASC
+      LIMIT 1
+    `).get(...types);
+    return row ? mapAccount(row) : null;
+  }
+
   /** The firm's default bank (printed on invoices), if any. */
   findDefault() {
     return mapAccount(getDatabase().prepare(`

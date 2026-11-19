@@ -281,6 +281,28 @@ export function authenticateDeviceKey(rawKey, fingerprint) {
 
 /* ═══════════════════════ Terminal-facing sync service ═══════════════════════ */
 
+/** A customer row as terminals receive it. */
+function wireCustomer(c) {
+  return {
+    uuid: c.id,
+    code: c.code,
+    name: c.name,
+    phone: c.phone,
+    email: c.email,
+    gstin: c.gst_number,
+    gst_state_code: c.gst_state_code,
+    address: c.address,
+    city: c.city,
+    state: c.state,
+    credit_limit: Number(c.credit_limit || 0),
+    credit_days: c.credit_days ?? null,
+    outstanding: Number(c.outstanding_balance || 0),
+    credit_approved: Boolean(c.credit_approved),
+    is_active: Boolean(c.is_active),
+    updated_at: c.updated_at,
+  };
+}
+
 export class PosSyncService {
   /* ---------- handshake ---------- */
 
@@ -991,32 +1013,21 @@ export class PosSyncService {
   }
 
   pullCustomers(device, query) {
+    const serverTime = nowIso();
+    // `ids`: just these customers as they are now (the one on a bill: its current balance).
+    const ids = String(query.ids || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 50);
+    if (ids.length) {
+      const items = catalogRepo.findCustomersByIds(ids);
+      return { customers: items.map(wireCustomer), page: 1, limit: ids.length, total: items.length, has_more: false, server_time: serverTime };
+    }
     const since = normalizeSince(query.since);
     const { limit, page, offset } = pageParams(query);
-    const serverTime = nowIso();
     const { items, total } = catalogRepo.findChangedCustomers(since, { limit, offset });
     deviceRepo.touch(device.id, { kind: 'pull' });
     return {
       // Every registered customer of the firm: a phone holding fewer pulls them all again.
       all_total: catalogRepo.countCustomers(),
-      customers: items.map((c) => ({
-        uuid: c.id,
-        code: c.code,
-        name: c.name,
-        phone: c.phone,
-        email: c.email,
-        gstin: c.gst_number,
-        gst_state_code: c.gst_state_code,
-        address: c.address,
-        city: c.city,
-        state: c.state,
-        credit_limit: Number(c.credit_limit || 0),
-        credit_days: c.credit_days ?? null,
-        outstanding: Number(c.outstanding_balance || 0),
-        credit_approved: Boolean(c.credit_approved),
-        is_active: Boolean(c.is_active),
-        updated_at: c.updated_at,
-      })),
+      customers: items.map(wireCustomer),
       page,
       limit,
       total,

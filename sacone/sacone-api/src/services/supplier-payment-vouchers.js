@@ -183,7 +183,7 @@ export class SupplierPaymentVoucherService {
       paymentDate: data.paymentDate,
       supplierId: supplier.id,
       paymentMode: mode,
-      paymentAccountId: data.paymentAccountId,
+      paymentAccountId: data.paymentAccountId || accountRepo.findForMode(mode)?.id || null,
       amount,
       allocatedAmount,
       allocations,
@@ -262,10 +262,15 @@ export class SupplierPaymentVoucherService {
 
   post(id, actor, req) {
     requirePerm(actor, 'parties.supplier_payments.approve');
-    const voucher = voucherRepo.findById(id);
+    let voucher = voucherRepo.findById(id);
     if (!voucher) throw new AppError('Payment voucher not found', 404);
     if (voucher.status !== 'draft') throw new AppError('Only draft vouchers can be posted', 400);
-    if (!voucher.paymentAccountId) throw new AppError('Payment account is required to post', 400);
+    if (!voucher.paymentAccountId) {
+      // Saved without an account (e.g. paid in cash): use the cash account / default bank for its mode.
+      const account = accountRepo.findForMode(voucher.paymentMode);
+      if (!account) throw new AppError(`Add an active ${voucher.paymentMode === 'cash' ? 'cash' : 'bank'} account in Finance → Accounts, then post`, 400);
+      voucher = voucherRepo.updateDraft(id, { paymentAccountId: account.id });
+    }
 
     const allocations = voucherRepo.listAllocations(id);
     const billAllocs = allocations.filter((a) => a.documentType === 'purchase_bill');

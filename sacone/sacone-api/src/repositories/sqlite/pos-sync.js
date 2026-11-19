@@ -454,6 +454,16 @@ export class PosCatalogRepository {
   }
 
   /** Registered (non walk-in) customers changed since `since` — for terminal credit sales. */
+  /** These customers as they are now (a terminal refreshing the one on its bill). */
+  findCustomersByIds(ids) {
+    if (!ids.length) return [];
+    return getDatabase().prepare(`
+      SELECT c.id, c.code, c.name, c.phone, c.email, c.gst_number, c.gst_state_code, c.address,
+        c.city, c.state, c.credit_limit, c.credit_days, c.outstanding_balance, c.credit_approved, c.is_active, c.updated_at
+      FROM customers c WHERE c.is_walk_in = 0 AND c.id IN (${ids.map(() => '?').join(',')})
+    `).all(...ids);
+  }
+
   findChangedCustomers(since, { limit = 200, offset = 0 } = {}) {
     const db = getDatabase();
     const where = 'WHERE c.is_walk_in = 0 AND c.updated_at > ?';

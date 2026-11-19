@@ -193,7 +193,7 @@ export class CustomerReceiptService {
       receiptDate: data.receiptDate,
       customerId: customer.id,
       paymentMode: mode,
-      paymentAccountId: data.paymentAccountId,
+      paymentAccountId: data.paymentAccountId || accountRepo.findForMode(mode)?.id || null,
       amount,
       allocatedAmount,
       allocations,
@@ -272,10 +272,15 @@ export class CustomerReceiptService {
 
   post(id, actor, req) {
     requirePerm(actor, 'parties.customer_receipts.approve');
-    const receipt = receiptRepo.findById(id);
+    let receipt = receiptRepo.findById(id);
     if (!receipt) throw new AppError('Receipt voucher not found', 404);
     if (receipt.status !== 'draft') throw new AppError('Only draft receipts can be posted', 400);
-    if (!receipt.paymentAccountId) throw new AppError('Payment account is required to post', 400);
+    if (!receipt.paymentAccountId) {
+      // Saved without an account (e.g. a cash receipt): use the cash account / default bank for its mode.
+      const account = accountRepo.findForMode(receipt.paymentMode);
+      if (!account) throw new AppError(`Add an active ${receipt.paymentMode === 'cash' ? 'cash' : 'bank'} account in Finance → Accounts, then post`, 400);
+      receipt = receiptRepo.updateDraft(id, { paymentAccountId: account.id });
+    }
 
     const allocations = receiptRepo.listAllocations(id);
     const invoiceAllocs = allocations.filter((a) => a.documentType === 'sales_invoice');

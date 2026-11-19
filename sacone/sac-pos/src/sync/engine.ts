@@ -9,7 +9,7 @@ import { useCart } from '../store/cart';
 import { useCatalog, type LocalCustomer } from '../store/catalog';
 import { pullProducts } from './productPull';
 import { deviceConfig, useDevice } from '../store/device';
-import { useLedger } from '../store/ledger';
+import { pendingCount, useLedger } from '../store/ledger';
 import { useUpiQr } from '../store/upiQr';
 import { currentUser, useSession } from '../store/session';
 import { serverUrlCandidates } from '../lib/serverDiscovery';
@@ -266,6 +266,26 @@ async function runCycle(): Promise<void> {
 }
 
 /** For callers that need to know who is acting (e.g. building documents). */
+/**
+ * Fetch these customers' current balance / credit from the ERP (the customer on a bill, a customer
+ * page being opened). Skipped while this terminal still holds unsent bills or payments: their
+ * effect on the balance is only on this terminal until they are sent, and the next sync sends
+ * them first and then pulls.
+ */
+export async function refreshCustomers(ids: (string | null | undefined)[]): Promise<void> {
+  const cfg = deviceConfig();
+  const known = useCatalog.getState().customers;
+  const wanted = [...new Set(ids.filter((id): id is string => Boolean(id) && Boolean(known[id as string]) && !(known[id as string] as LocalCustomer).isLocal))];
+  if (!cfg || !wanted.length) return;
+  if (pendingCount(useLedger.getState()).pending) return;
+  try {
+    const res = await sync.customersById(cfg, wanted);
+    if (res.customers?.length) useCatalog.getState().applyCustomers(res.customers);
+  } catch {
+    // offline: the copy on this terminal stays until the next sync
+  }
+}
+
 export function actingUser() {
   const u = currentUser();
   if (!u) throw new Error('Not signed in');
