@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useMemo, useState, type Ref } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { LineRow } from '../app/cart';
 import { formatMoney, formatQty } from '../domain/money';
 import type { CartLine, ComputedLine, Product } from '../domain/types';
@@ -55,10 +55,15 @@ const head = { fontSize: font.xs, color: colors.textMuted, fontWeight: '700' as 
 
 // column widths of the item table (the item name takes the rest)
 const W = { n: 28, hsn: 78, qty: 72, unit: 50, rate: 96, disc: 84, gst: 54, tax: 84, amt: 100, act: 64 };
+/** Narrower than this (e.g. inside the ERP next to its menu) the summary moves under the items. */
+const SIDE_SUMMARY_MIN = 1180;
+const SUMMARY_W = 320;
+/** Item table narrower than this hides the Unit and Tax columns (unit shows with the SKU). */
+const FULL_TABLE_MIN = 900;
 
-function ItemRow({ line, index, canOverride, canCost, computed }: {
+function ItemRow({ line, index, canOverride, canCost, computed, compact }: {
   line: CartLine; index: number; canOverride: boolean; canCost: boolean;
-  computed: ComputedLine | undefined;
+  computed: ComputedLine | undefined; compact: boolean;
 }) {
   const { setQty, updateLine, remove } = useCart.getState();
   const [open, setOpen] = useState(false);
@@ -72,14 +77,14 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
         <View style={{ flex: 1, minWidth: 140 }}>
           <Text style={[cellText, { fontWeight: '700' }]} numberOfLines={2}>{line.name}</Text>
           <Text style={{ fontSize: font.xs, color: colors.textMuted }} numberOfLines={1}>
-            {line.sku}{Math.abs(line.unitPrice - line.listPrice) > 0.001 ? ` · list ${formatMoney(line.listPrice)}` : ''}{extra ? ` · ${extra}` : ''}
+            {line.sku}{compact ? ` · ${line.unit}` : ''}{Math.abs(line.unitPrice - line.listPrice) > 0.001 ? ` · list ${formatMoney(line.listPrice)}` : ''}{extra ? ` · ${extra}` : ''}
           </Text>
           {/* short description: printed under the item on this bill only */}
           <TextInput
             accessibilityLabel={`Short description for ${line.name}`}
             value={desc}
             onChangeText={(t) => { setDesc(t); updateLine(line.productId, { shortDescription: t.trim() || null }); }}
-            placeholder={line.itemType === 'service' ? '+ Work done (prints on the bill)' : '+ Short description (prints under the item)'}
+            placeholder={line.itemType === 'service' ? '+ Work done' : '+ Short description'}
             placeholderTextColor={colors.textFaint}
             maxLength={500}
             style={{ marginTop: 3, fontSize: font.xs, color: colors.text, borderBottomWidth: 1, borderBottomColor: desc ? colors.border : 'transparent', paddingVertical: 2 }}
@@ -88,7 +93,7 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
         </View>
         <Text style={[cellText, { width: W.hsn }]} numberOfLines={1}>{line.hsn || '—'}</Text>
         <Cell key={`q${line.quantity}`} width={W.qty} label={`Quantity of ${line.name}`} value={line.quantity} onCommit={(v) => setQty(line.productId, v)} testID={`inv-qty-${line.productId}`} />
-        <Text style={[cellText, { width: W.unit, color: colors.textMuted }]} numberOfLines={1}>{line.unit}</Text>
+        {compact ? null : <Text style={[cellText, { width: W.unit, color: colors.textMuted }]} numberOfLines={1}>{line.unit}</Text>}
         {canOverride
           ? <Cell key={`r${line.unitPrice}`} width={W.rate} label={`Rate of ${line.name}`} value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} testID={`inv-rate-${line.productId}`} />
           : <Text style={[cellText, { width: W.rate, textAlign: 'right' }]}>{formatMoney(line.unitPrice)}</Text>}
@@ -96,7 +101,7 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
           ? <Cell key={`d${line.discountAmount}`} width={W.disc} label={`Discount on ${line.name}`} value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} testID={`inv-disc-${line.productId}`} />
           : <Text style={[cellText, { width: W.disc, textAlign: 'right' }]}>{line.discountAmount ? formatMoney(line.discountAmount) : '—'}</Text>}
         <Text style={[cellText, { width: W.gst, textAlign: 'right' }]}>{line.gstRate}%</Text>
-        <Text style={[cellText, { width: W.tax, textAlign: 'right', color: colors.textMuted }]}>{formatMoney(computed?.gstAmount ?? 0)}</Text>
+        {compact ? null : <Text style={[cellText, { width: W.tax, textAlign: 'right', color: colors.textMuted }]}>{formatMoney(computed?.gstAmount ?? 0)}</Text>}
         <Text style={[cellText, { width: W.amt, textAlign: 'right', fontWeight: '800' }]}>{formatMoney(computed?.lineTotal ?? 0)}</Text>
         <Row gap={0} style={{ width: W.act, justifyContent: 'flex-end' }}>
           <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
@@ -123,6 +128,28 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
   const { add, setCustomer, setInvoiceDiscount, setNotes } = useCart.getState();
   const [query, setQuery] = useState('');
   const [validDays, setValidDays] = useState(15);
+  // Laid out by the space this form really has (the ERP's POS Billing page is narrower than the window).
+  // Measured again whenever the window changes size (a layout event alone is not always sent on web).
+  const win = useWindowDimensions();
+  const rootRef = useRef<View>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => rootRef.current?.measure?.((_x, _y, w) => { if (w > 0) setWidth(Math.round(w)); }), 50);
+    return () => clearTimeout(t);
+  }, [win.width, win.height]);
+  // Web: follow the form's own size (the ERP's POS Billing frame changes with its side menu).
+  useEffect(() => {
+    const node = rootRef.current as unknown;
+    if (typeof ResizeObserver === 'undefined' || typeof Element === 'undefined' || !(node instanceof Element)) return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const w = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (w > 0) setWidth(w);
+    });
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
+  const side = width === 0 || width >= SIDE_SUMMARY_MIN;
+  const compact = (side ? width - SUMMARY_W : width) < FULL_TABLE_MIN && width > 0;
 
   const results = useMemo(() => (query.trim() ? searchProducts(products, query, 8) : []), [products, query]);
   const computed = useMemo(() => Object.fromEntries(totals.lines.map((l) => [l.productId, l])), [totals.lines]);
@@ -158,15 +185,65 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
     if (await confirm(quoting ? 'Clear quotation?' : 'Clear invoice?', message, 'Clear', true)) useCart.getState().clear();
   };
 
+  const summary = (
+    <>
+          <Text style={head}>Summary</Text>
+          <KeyValue label="Subtotal" value={formatMoney(totals.subtotal)} muted />
+          {totals.itemDiscountTotal > 0 ? <KeyValue label="Item discounts" value={`− ${formatMoney(totals.itemDiscountTotal)}`} muted /> : null}
+          {canOverride ? (
+            <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: colors.textMuted, fontSize: font.sm }}>Bill discount ₹</Text>
+              <Cell key={`b${invoiceDiscount}`} width={110} label="Bill discount before GST" value={invoiceDiscount} onCommit={setInvoiceDiscount} testID="inv-bill-discount" />
+            </Row>
+          ) : totals.invoiceDiscount > 0 ? <KeyValue label="Bill discount" value={`− ${formatMoney(totals.invoiceDiscount)}`} muted /> : null}
+          <KeyValue label="Taxable value" value={formatMoney(totals.taxableAmount)} />
+          {totals.taxSplit === 'igst'
+            ? <KeyValue label="IGST" value={formatMoney(totals.igstAmount)} muted />
+            : (
+              <>
+                <KeyValue label="CGST" value={formatMoney(totals.cgstAmount)} muted />
+                <KeyValue label="SGST" value={formatMoney(totals.sgstAmount)} muted />
+              </>
+            )}
+          {totals.roundOff && Math.abs(totals.roundOff) >= 0.01 ? <KeyValue label="Round off" value={formatMoney(totals.roundOff)} muted /> : null}
+          <Divider />
+          <View style={{ backgroundColor: colors.bg, borderRadius: radius.md, padding: space.md }}>
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700' }}>{quoting ? 'QUOTATION TOTAL' : 'INVOICE TOTAL'}</Text>
+            <Text style={{ fontSize: 30, fontWeight: '900', color: colors.text }} testID="inv-total">{formatMoney(totals.grandTotal)}</Text>
+            {totals.grandTotal > 0 ? <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>Rupees {amountInWords(totals.grandTotal).toLowerCase()}</Text> : null}
+          </View>
+
+          {quoting ? (
+            <>
+              <Row gap={space.xs} style={{ marginTop: space.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Text style={{ color: colors.textMuted, fontSize: font.sm, marginRight: 4 }}>Valid for</Text>
+                {[7, 15, 30].map((d) => <Chip key={d} label={`${d} days`} active={validDays === d} onPress={() => setValidDays(d)} />)}
+              </Row>
+              <Button title="Save quotation" icon="document-text-outline" size="lg" onPress={save} disabled={!lines.length} testID="inv-save-quotation" />
+            </>
+          ) : (
+            <>
+              <Button title="Save & receive payment  (F9)" icon="card-outline" size="lg" onPress={checkout} disabled={!lines.length} style={{ marginTop: space.sm }} testID="inv-checkout" />
+              <Text style={{ color: colors.textFaint, fontSize: font.xs, textAlign: 'center' }}>Next: cash / UPI / card / credit, bill date, PO, transport, print.</Text>
+            </>
+          )}
+          <Row gap={space.sm}>
+            {!quoting ? <Button title="Hold" variant="secondary" icon="pause" onPress={hold} disabled={!lines.length} style={{ flex: 1 }} testID="inv-hold" /> : null}
+            <Button title="Clear" variant="secondary" icon="trash-outline" onPress={clear} disabled={!lines.length} style={{ flex: 1 }} testID="inv-clear" />
+          </Row>
+    </>
+  );
+
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }}>
+    <View style={{ flex: 1, flexDirection: 'row' }} ref={rootRef} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w > 0) setWidth(w); }}>
+      <View style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.lg, paddingTop: space.sm, gap: space.md }} keyboardShouldPersistTaps="handled">
         {quoting ? <Banner tone="info" messages={['Quotation: no stock or money moves. Customers can be walk-in.']} /> : null}
         {!quoting && fromQuotation ? <Banner tone="info" messages={[`From quotation ${fromQuotation.number}: completing this sale marks it converted.`]} /> : null}
 
         {/* Bill to · Invoice details */}
-        <Row gap={space.md} style={{ alignItems: 'stretch' }}>
-          <Card style={{ flex: 3, padding: space.md }}>
+        <Row gap={space.md} style={{ alignItems: 'stretch', flexWrap: 'wrap' }}>
+          <Card style={{ flex: 3, minWidth: 300, padding: space.md }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <Text style={head}>Bill to</Text>
               <Row gap={space.xs}>
@@ -194,7 +271,7 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
               </Pressable>
             )}
           </Card>
-          <Card style={{ flex: 2, padding: space.md }}>
+          <Card style={{ flex: 2, minWidth: 260, padding: space.md }}>
             <Text style={head}>{quoting ? 'Quotation details' : 'Invoice details'}</Text>
             <View style={{ marginTop: space.xs }}>
               <KeyValue label={quoting ? 'Quotation no.' : 'Invoice no.'} value="Given on save" muted />
@@ -252,16 +329,16 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
             <Text style={[head, { flex: 1, minWidth: 140 }]}>Item</Text>
             <Text style={[head, { width: W.hsn }]}>HSN/SAC</Text>
             <Text style={[head, { width: W.qty, textAlign: 'right' }]}>Qty</Text>
-            <Text style={[head, { width: W.unit }]}>Unit</Text>
+            {compact ? null : <Text style={[head, { width: W.unit }]}>Unit</Text>}
             <Text style={[head, { width: W.rate, textAlign: 'right' }]}>Rate ₹</Text>
             <Text style={[head, { width: W.disc, textAlign: 'right' }]}>Disc ₹</Text>
             <Text style={[head, { width: W.gst, textAlign: 'right' }]}>GST</Text>
-            <Text style={[head, { width: W.tax, textAlign: 'right' }]}>Tax ₹</Text>
+            {compact ? null : <Text style={[head, { width: W.tax, textAlign: 'right' }]}>Tax ₹</Text>}
             <Text style={[head, { width: W.amt, textAlign: 'right' }]}>Amount ₹</Text>
             <View style={{ width: W.act }} />
           </Row>
           {lines.length ? lines.map((l, i) => (
-            <ItemRow key={l.productId} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[l.productId]} />
+            <ItemRow key={l.productId} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[l.productId]} compact={compact} />
           )) : (
             <View style={{ paddingVertical: space.xl, alignItems: 'center' }}>
               <Ionicons name="receipt-outline" size={32} color={colors.textFaint} />
@@ -285,57 +362,32 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
             testID="inv-notes"
           />
         </Card>
+
+        {/* Narrow: the summary under the items */}
+        {side ? null : <Card style={{ padding: space.md, gap: space.sm }}>{summary}</Card>}
       </ScrollView>
-
-      {/* Summary and actions */}
-      <View style={{ width: 340, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
-        <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }} keyboardShouldPersistTaps="handled">
-          <Text style={head}>Summary</Text>
-          <KeyValue label="Subtotal" value={formatMoney(totals.subtotal)} muted />
-          {totals.itemDiscountTotal > 0 ? <KeyValue label="Item discounts" value={`− ${formatMoney(totals.itemDiscountTotal)}`} muted /> : null}
-          {canOverride ? (
-            <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: colors.textMuted, fontSize: font.sm }}>Bill discount ₹</Text>
-              <Cell key={`b${invoiceDiscount}`} width={110} label="Bill discount before GST" value={invoiceDiscount} onCommit={setInvoiceDiscount} testID="inv-bill-discount" />
-            </Row>
-          ) : totals.invoiceDiscount > 0 ? <KeyValue label="Bill discount" value={`− ${formatMoney(totals.invoiceDiscount)}`} muted /> : null}
-          <KeyValue label="Taxable value" value={formatMoney(totals.taxableAmount)} />
-          {totals.taxSplit === 'igst'
-            ? <KeyValue label="IGST" value={formatMoney(totals.igstAmount)} muted />
-            : (
-              <>
-                <KeyValue label="CGST" value={formatMoney(totals.cgstAmount)} muted />
-                <KeyValue label="SGST" value={formatMoney(totals.sgstAmount)} muted />
-              </>
-            )}
-          {totals.roundOff && Math.abs(totals.roundOff) >= 0.01 ? <KeyValue label="Round off" value={formatMoney(totals.roundOff)} muted /> : null}
-          <Divider />
-          <View style={{ backgroundColor: colors.bg, borderRadius: radius.md, padding: space.md }}>
-            <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700' }}>{quoting ? 'QUOTATION TOTAL' : 'INVOICE TOTAL'}</Text>
-            <Text style={{ fontSize: 30, fontWeight: '900', color: colors.text }} testID="inv-total">{formatMoney(totals.grandTotal)}</Text>
-            {totals.grandTotal > 0 ? <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>Rupees {amountInWords(totals.grandTotal).toLowerCase()}</Text> : null}
+      {side ? null : (
+        <Row gap={space.md} style={{ paddingHorizontal: space.lg, paddingVertical: space.sm, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.textMuted, fontSize: font.xs, fontWeight: '700' }}>{quoting ? 'QUOTATION TOTAL' : 'INVOICE TOTAL'} · {lines.length} item{lines.length === 1 ? '' : 's'}</Text>
+            <Text style={{ fontSize: font.xl, fontWeight: '900', color: colors.text }}>{formatMoney(totals.grandTotal)}</Text>
           </View>
-
-          {quoting ? (
-            <>
-              <Row gap={space.xs} style={{ marginTop: space.sm, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Text style={{ color: colors.textMuted, fontSize: font.sm, marginRight: 4 }}>Valid for</Text>
-                {[7, 15, 30].map((d) => <Chip key={d} label={`${d} days`} active={validDays === d} onPress={() => setValidDays(d)} />)}
-              </Row>
-              <Button title="Save quotation" icon="document-text-outline" size="lg" onPress={save} disabled={!lines.length} testID="inv-save-quotation" />
-            </>
-          ) : (
-            <>
-              <Button title="Save & receive payment  (F9)" icon="card-outline" size="lg" onPress={checkout} disabled={!lines.length} style={{ marginTop: space.sm }} testID="inv-checkout" />
-              <Text style={{ color: colors.textFaint, fontSize: font.xs, textAlign: 'center' }}>Next: cash / UPI / card / credit, bill date, PO, transport, print.</Text>
-            </>
-          )}
-          <Row gap={space.sm}>
-            {!quoting ? <Button title="Hold" variant="secondary" icon="pause" onPress={hold} disabled={!lines.length} style={{ flex: 1 }} testID="inv-hold" /> : null}
-            <Button title="Clear" variant="secondary" icon="trash-outline" onPress={clear} disabled={!lines.length} style={{ flex: 1 }} testID="inv-clear" />
-          </Row>
-        </ScrollView>
+          {quoting
+            ? <Button title="Save quotation" icon="document-text-outline" onPress={save} disabled={!lines.length} />
+            : <Button title="Save & receive payment (F9)" icon="card-outline" onPress={checkout} disabled={!lines.length} testID="inv-checkout-bar" />}
+        </Row>
+      )}
       </View>
+
+      {/* Wide: summary and actions beside the items */}
+      {side ? (
+        <View style={{ width: SUMMARY_W, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface }}>
+          <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.sm }} keyboardShouldPersistTaps="handled">
+            {summary}
+          </ScrollView>
+        </View>
+      ) : null}
+
     </View>
   );
 }

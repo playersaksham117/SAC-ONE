@@ -12,6 +12,7 @@ import DocumentDialog from '../../../../components/documents/DocumentDialog';
 import { documentHtml, purchaseDocument } from '../../../../lib/bill-document';
 import { loadDebitNote } from '../../../../lib/note-documents';
 import DebitNoteDialog from '../../../../components/notes/DebitNoteDialog';
+import PurchaseBillForm from '../../../../components/purchases/PurchaseBillForm';
 import { downloadCsv, toCsv } from '../../../../lib/csv';
 
 function money(n) {
@@ -186,7 +187,6 @@ export default function PurchasesPage() {
   const [billForm, setBillForm] = useState({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: '', purchaseOrderId: '', notes: '' });
   const [gstFilter, setGstFilter] = useState('');
   const [billLines, setBillLines] = useState([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]);
-  const [billPreview, setBillPreview] = useState(null);
 
   const [priceForm, setPriceForm] = useState({ supplierId: '', name: '', csv: '' });
   const [pricePreview, setPricePreview] = useState(null);
@@ -269,12 +269,6 @@ export default function PurchasesPage() {
     const t = setTimeout(() => previewDoc(poForm.supplierId, poLines, setPoPreview), 300);
     return () => clearTimeout(t);
   }, [poModal, poForm.supplierId, poLines]);
-
-  useEffect(() => {
-    if (!billModal) return;
-    const t = setTimeout(() => previewDoc(billForm.supplierId, billLines, setBillPreview, Boolean(billForm.unregistered)), 300);
-    return () => clearTimeout(t);
-  }, [billModal, billForm.supplierId, billLines, billForm.unregistered]);
 
   const savePo = async (e) => {
     e.preventDefault();
@@ -467,11 +461,13 @@ export default function PurchasesPage() {
       });
       setBillLines((bill.items || []).map((i) => ({
         productId: i.productId,
-        productLabel: `${i.sku || ''} — ${i.productName}`,
+        productLabel: i.productName,
+        sku: i.sku || '',
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         discountPercent: i.discountPercent || 0,
         hsnCode: i.hsnCode || '',
+        gstPercentage: i.gstPercentage,
       })));
       setEditBillId(bill.id);
       setBillModal(true);
@@ -489,8 +485,12 @@ export default function PurchasesPage() {
       purchaseOrderId: po.id,
       notes: `GRN for ${po.poNumber}`,
     });
+    setError('');
     setBillLines(po.items?.map((i) => ({
       productId: i.productId,
+      productLabel: i.productName,
+      sku: i.sku || '',
+      gstPercentage: i.gstPercentage,
       quantity: Math.max(0, i.quantity - i.receivedQty),
       unitPrice: i.unitPrice,
       discountPercent: i.discountPercent,
@@ -501,6 +501,27 @@ export default function PurchasesPage() {
 
   const suppliers = bootstrap?.suppliers || [];
   const warehouses = bootstrap?.warehouses || [];
+
+  // Purchase bill entry is a full page, laid out like the GST sale invoice.
+  if (billModal) {
+    return (
+      <RequirePermission permission="purchases.orders.view">
+        <PurchaseBillForm
+          editing={Boolean(editBillId)}
+          form={billForm}
+          setForm={setBillForm}
+          lines={billLines}
+          setLines={setBillLines}
+          suppliers={suppliers}
+          warehouses={warehouses}
+          saving={saving}
+          error={error}
+          onSubmit={saveBill}
+          onCancel={() => { setBillModal(false); setEditBillId(null); setError(''); }}
+        />
+      </RequirePermission>
+    );
+  }
 
   return (
     <RequirePermission permission="purchases.orders.view">
@@ -516,7 +537,7 @@ export default function PurchasesPage() {
               <button type="button" className="btn-primary" onClick={() => { setPoForm({ supplierId: '', warehouseId: '', orderDate: '', notes: '' }); setPoLines([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]); setEditPoId(null); setPoModal(true); }}>+ Purchase Order</button>
             )}
             {checkPermission('purchases.bills.create') && tab === 'bills' && (
-              <button type="button" className="btn-primary" onClick={() => { setBillForm({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: '', purchaseOrderId: '', notes: '' }); setBillLines([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]); setEditBillId(null); setBillModal(true); }}>+ Purchase Bill</button>
+              <button type="button" className="btn-primary" onClick={() => { setError(''); setMessage(''); setBillForm({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: new Date().toISOString().slice(0, 10), dueDate: '', purchaseOrderId: '', notes: '' }); setBillLines([]); setEditBillId(null); setBillModal(true); }}>+ Purchase Bill</button>
             )}
             {checkPermission('purchases.returns.create') && tab === 'returns' && (
               <button type="button" className="btn-secondary" onClick={() => { setMessage(''); setReturnModal(true); }}>+ Debit Note</button>
@@ -840,35 +861,6 @@ export default function PurchasesPage() {
           {editPoId && poLines.some((l) => l.receivedQty > 0) ? <p className="text-xs text-amber-700">Some goods are already received on this PO; those lines cannot go below the received quantity.</p> : null}
           <LineEditor lines={poLines} setLines={setPoLines} products={products} onSearch={loadProducts} />
           {poPreview?.totals && <div className="rounded-lg bg-slate-50 p-3 text-sm">Total: <strong>{money(poPreview.totals.grandTotal)}</strong> (GST {money(poPreview.totals.gstAmount)})</div>}
-        </form>
-      </Modal>
-
-      <Modal open={billModal} title={editBillId ? 'Edit Purchase Bill' : 'Purchase Bill Entry'} onClose={() => { setBillModal(false); setEditBillId(null); }} size="xl"
-        footer={<><button type="button" className="btn-secondary" onClick={() => { setBillModal(false); setEditBillId(null); }}>Cancel</button><button type="submit" form="bill-form" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : editBillId ? 'Save changes' : 'Post Bill & Stock IN'}</button></>}>
-        <form id="bill-form" onSubmit={saveBill} className="space-y-4">
-          <Alert type="error" message={error} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <div><label className="label">Supplier *</label><select className="input-field" required value={billForm.supplierId} onChange={(e) => { const sup = suppliers.find((s) => s.id === e.target.value); setBillForm({ ...billForm, supplierId: e.target.value, unregistered: Boolean(sup && !String(sup.gstNumber || '').trim()) }); }}><option value="">Select</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-            <div><label className="label">Supplier Invoice #</label><input className="input-field" value={billForm.supplierInvoiceNumber} onChange={(e) => setBillForm({ ...billForm, supplierInvoiceNumber: e.target.value })} /></div>
-            <div><label className="label">Warehouse</label><select className="input-field" value={billForm.warehouseId} onChange={(e) => setBillForm({ ...billForm, warehouseId: e.target.value })}><option value="">Default</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-            <div><label className="label">Bill Date</label><input type="date" className="input-field" value={billForm.billDate} onChange={(e) => setBillForm({ ...billForm, billDate: e.target.value })} /></div>
-          </div>
-          {editBillId ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div><label className="label">Due Date</label><input type="date" className="input-field" value={billForm.dueDate || ''} onChange={(e) => setBillForm({ ...billForm, dueDate: e.target.value })} /></div>
-              <div><label className="label">Notes</label><input className="input-field" value={billForm.notes || ''} onChange={(e) => setBillForm({ ...billForm, notes: e.target.value })} /></div>
-            </div>
-          ) : null}
-          <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${billForm.unregistered ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
-            <input type="checkbox" className="mt-0.5" checked={Boolean(billForm.unregistered)} onChange={(e) => setBillForm({ ...billForm, unregistered: e.target.checked })} />
-            <span>
-              <span className="font-semibold">Unregistered supplier (no GSTIN)</span>
-              <span className="block text-xs text-slate-500">No GST on this bill and no input tax credit; the rate paid is the cost. Stock, purchases and margins still count. Ticked for suppliers without a GSTIN: untick if they are registered.</span>
-            </span>
-          </label>
-          <p className="text-xs text-slate-500">Each line: product, HSN / SAC, qty, rate, discount %. Leave HSN blank to use the product&apos;s code.</p>
-          <LineEditor lines={billLines} setLines={setBillLines} products={products} onSearch={loadProducts} />
-          {billPreview?.totals && <div className="rounded-lg bg-emerald-50 p-3 text-sm">{editBillId ? 'New bill total (stock and supplier balance move by the difference):' : 'Posts stock IN + supplier payable:'} <strong>{money(billPreview.totals.grandTotal)}</strong></div>}
         </form>
       </Modal>
 
