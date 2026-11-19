@@ -63,10 +63,8 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
   const { setQty, updateLine, remove } = useCart.getState();
   const [open, setOpen] = useState(false);
   const issues = validateLine(line, { canOverridePrice: canOverride });
-  const extra = [
-    line.shortDescription,
-    line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : null,
-  ].filter(Boolean).join(' · ');
+  const extra = line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '';
+  const [desc, setDesc] = useState(line.shortDescription ?? '');
   return (
     <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <Row gap={space.sm} style={{ paddingVertical: 8, alignItems: 'center' }}>
@@ -76,6 +74,17 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
           <Text style={{ fontSize: font.xs, color: colors.textMuted }} numberOfLines={1}>
             {line.sku}{Math.abs(line.unitPrice - line.listPrice) > 0.001 ? ` · list ${formatMoney(line.listPrice)}` : ''}{extra ? ` · ${extra}` : ''}
           </Text>
+          {/* short description: printed under the item on this bill only */}
+          <TextInput
+            accessibilityLabel={`Short description for ${line.name}`}
+            value={desc}
+            onChangeText={(t) => { setDesc(t); updateLine(line.productId, { shortDescription: t.trim() || null }); }}
+            placeholder={line.itemType === 'service' ? '+ Work done (prints on the bill)' : '+ Short description (prints under the item)'}
+            placeholderTextColor={colors.textFaint}
+            maxLength={500}
+            style={{ marginTop: 3, fontSize: font.xs, color: colors.text, borderBottomWidth: 1, borderBottomColor: desc ? colors.border : 'transparent', paddingVertical: 2 }}
+            testID={`inv-desc-${line.productId}`}
+          />
         </View>
         <Text style={[cellText, { width: W.hsn }]} numberOfLines={1}>{line.hsn || '—'}</Text>
         <Cell key={`q${line.quantity}`} width={W.qty} label={`Quantity of ${line.name}`} value={line.quantity} onCommit={(v) => setQty(line.productId, v)} testID={`inv-qty-${line.productId}`} />
@@ -90,7 +99,7 @@ function ItemRow({ line, index, canOverride, canCost, computed }: {
         <Text style={[cellText, { width: W.tax, textAlign: 'right', color: colors.textMuted }]}>{formatMoney(computed?.gstAmount ?? 0)}</Text>
         <Text style={[cellText, { width: W.amt, textAlign: 'right', fontWeight: '800' }]}>{formatMoney(computed?.lineTotal ?? 0)}</Text>
         <Row gap={0} style={{ width: W.act, justifyContent: 'flex-end' }}>
-          <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: description, serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
+          <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
           <IconButton icon="trash-outline" tone="danger" label={`Remove ${line.name}`} size={18} onPress={() => remove(line.productId)} />
         </Row>
       </Row>
@@ -259,7 +268,7 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
               <Text style={{ color: colors.textMuted, marginTop: space.xs }}>No items yet. Type above or scan a barcode to add products.</Text>
             </View>
           )}
-          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. ⋯ on a row: description, serial numbers{canCost ? ', cost' : ''}.</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. Short description prints under the item. ⋯ on a row: serial numbers{canCost ? ', cost' : ''}.</Text>
         </Card>
 
         {/* Notes */}

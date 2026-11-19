@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { DENOMINATIONS, notesTotal, suggestChange, type NoteCounts } from '../domain/cash';
 import { formatMoney, round2 } from '../domain/money';
 import { readCustomerPo, todayPoText } from '../domain/po';
@@ -12,7 +12,8 @@ import type { Payment, PaymentMethod } from '../domain/types';
 import { useCartTotals } from '../lib/useCartTotals';
 import { ValidationError, checkCheckout, completeSale, withExchangeCredit } from '../services/pos';
 import { useCart } from '../store/cart';
-import { Badge, Banner, Button, Card, Chip, Field, Header, IconButton, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
+import { Badge, Banner, Button, Card, Chip, Divider, Field, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper, colors, font, radius, space } from '../ui/components';
+import { useWide } from '../ui/layout';
 import { emptyShipTo, emptyTransport, readShipTo, readTransport } from '../domain/dispatch';
 import { DispatchSection } from '../ui/DispatchSection';
 import { DEFAULT_CREDIT_DAYS, addDays, billTimestamp, daysAgo, isAdminRole, istToday } from '../domain/billDate';
@@ -92,6 +93,7 @@ export default function Checkout() {
   const [busy, setBusy] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const deviceInfo = useDevice((s) => s.info);
+  const wide = useWide();
   const invoiceCfg = deviceInfo?.settings?.invoice;
   const series = useCart((s) => s.series);
   const quickBill = series === 'quick';
@@ -190,32 +192,9 @@ export default function Checkout() {
 
   const single = !split ? rows[0] : null;
 
-  return (
-    <Screen
-      padded={false}
-      scroll
-      footer={(
-        <View style={{ padding: space.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
-          <Button
-            testID="complete-sale"
-            title={blocked ? 'Fix the issues above' : `Complete sale · ${formatMoney(total)}`}
-            icon="checkmark-circle"
-            variant="success"
-            size="lg"
-            onPress={submit}
-            loading={busy}
-            disabled={blocked}
-          />
-        </View>
-      )}
-    >
-      <Header title={quickBill ? 'Payment · Quick Bill' : 'Payment'} subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => goBack()} />
-      {quickB2b ? (
-        <View style={{ paddingHorizontal: space.lg }}>
-          <Banner tone="danger" title="Quick Bill is for walk-in / unregistered customers" messages={[`${customer?.name} has a GSTIN. Switch to GST Bill on the Sell screen, or remove the customer.`]} />
-        </View>
-      ) : null}
-      <View style={{ paddingHorizontal: space.lg }}>
+  // SAC-POS web: two columns (bill, PO, dispatch, date | payment); phones: one column
+  const payPart = (
+    <>
         <Card style={{ alignItems: 'center', backgroundColor: colors.dark, borderColor: colors.dark }}>
           <Text style={{ color: '#94A3B8', fontWeight: '600' }}>{exchange ? 'To collect after exchange' : 'Amount payable'}</Text>
           <Text style={{ color: '#fff', fontSize: 40, fontWeight: '800', marginTop: 4, letterSpacing: -1 }}>{formatMoney(due)}</Text>
@@ -381,6 +360,10 @@ export default function Checkout() {
           <UpiQrModal bank={payBank} image={qrImage} amount={upiAmount} payee={deviceInfo?.company?.businessName} note={`${deviceInfo?.device.code || 'POS'} sale`} onClose={() => setQrOpen(false)} />
         ) : null}
 
+    </>
+  );
+  const detailsPart = (
+    <>
         <View style={{ marginTop: space.md }}>
           <SectionTitle right={<Chip label={poOn ? 'Customer PO on' : 'Add customer PO'} icon="document-text-outline" active={poOn} onPress={() => setPoOn(!poOn)} />}>
             Customer PO
@@ -430,13 +413,87 @@ export default function Checkout() {
           </View>
         ) : null}
 
+    </>
+  );
+  const issuesPart = (
         <View style={{ marginTop: space.md }}>
           {check.errors.length ? <Banner tone="danger" title="Cannot complete yet" messages={check.errors.map((e) => e.message)} /> : null}
           {drawerErrors.length ? <Banner tone="danger" title="Cash drawer" messages={drawerErrors} /> : null}
           {check.warnings.length ? <Banner tone="warning" messages={check.warnings.map((e) => e.message)} /> : null}
           {submitError.length ? <Banner tone="danger" messages={submitError} /> : null}
         </View>
-      </View>
+  );
+  const billSummary = (
+    <Card style={{ marginTop: space.md }}>
+      <Text style={{ fontWeight: '800', color: colors.text, marginBottom: space.sm }}>{quickBill ? 'Quick Bill' : 'GST invoice'} · {totals.lines.length} item{totals.lines.length === 1 ? '' : 's'}</Text>
+      {totals.lines.slice(0, 12).map((l) => (
+        <Row key={l.productId} style={{ justifyContent: 'space-between', paddingVertical: 3 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text }} numberOfLines={1}>{l.name}</Text>
+            {l.shortDescription ? <Text style={{ color: colors.textMuted, fontSize: font.xs }} numberOfLines={1}>{l.shortDescription}</Text> : null}
+          </View>
+          <Text style={{ color: colors.textMuted, width: 90, textAlign: 'right' }}>{l.quantity} {l.unit}</Text>
+          <Text style={{ color: colors.text, fontWeight: '700', width: 110, textAlign: 'right' }}>{formatMoney(l.lineTotal)}</Text>
+        </Row>
+      ))}
+      {totals.lines.length > 12 ? <Text style={{ color: colors.textMuted, fontSize: font.xs }}>…and {totals.lines.length - 12} more</Text> : null}
+      <Divider />
+      {quickBill ? null : (
+        <>
+          <KeyValue label="Taxable value" value={formatMoney(totals.taxableAmount)} muted />
+          {totals.taxSplit === 'igst'
+            ? <KeyValue label="IGST" value={formatMoney(totals.igstAmount)} muted />
+            : (<><KeyValue label="CGST" value={formatMoney(totals.cgstAmount)} muted /><KeyValue label="SGST" value={formatMoney(totals.sgstAmount)} muted /></>)}
+        </>
+      )}
+      <KeyValue label="Total" value={formatMoney(total)} bold />
+    </Card>
+  );
+
+  return (
+    <Screen
+      padded={false}
+      scroll={!wide}
+      full={wide}
+      footer={(
+        <View style={{ padding: space.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <Button
+            testID="complete-sale"
+            title={blocked ? 'Fix the issues above' : `Complete sale · ${formatMoney(total)}`}
+            icon="checkmark-circle"
+            variant="success"
+            size="lg"
+            onPress={submit}
+            loading={busy}
+            disabled={blocked}
+          />
+        </View>
+      )}
+    >
+      <Header title={quickBill ? 'Payment · Quick Bill' : 'Payment'} subtitle={customer ? customer.name : 'Walk-in customer'} onBack={() => goBack()} />
+      {quickB2b ? (
+        <View style={{ paddingHorizontal: space.lg }}>
+          <Banner tone="danger" title="Quick Bill is for walk-in / unregistered customers" messages={[`${customer?.name} has a GSTIN. Switch to GST Bill on the Sell screen, or remove the customer.`]} />
+        </View>
+      ) : null}
+      {wide ? (
+        <Row gap={0} style={{ flex: 1, alignItems: 'stretch' }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.lg, paddingTop: 0 }} keyboardShouldPersistTaps="handled">
+            {billSummary}
+            {detailsPart}
+          </ScrollView>
+          <ScrollView style={{ width: 460, flexGrow: 0, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface }} contentContainerStyle={{ padding: space.lg, paddingTop: 0 }} keyboardShouldPersistTaps="handled">
+            {payPart}
+            {issuesPart}
+          </ScrollView>
+        </Row>
+      ) : (
+        <View style={{ paddingHorizontal: space.lg }}>
+          {payPart}
+          {detailsPart}
+          {issuesPart}
+        </View>
+      )}
     </Screen>
   );
 }
