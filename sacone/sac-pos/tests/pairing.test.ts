@@ -62,6 +62,12 @@ describe('pairing codes', () => {
     expect(p).toMatchObject({ key: '', code: 'K7QM3XPD', urls: ['http://192.168.1.4:4000'], deviceName: 'COUNTER SAC' });
   });
 
+  it('a QR with both the code and the reserve key uses the code', () => {
+    const k = 'reserve-key-from-erp';
+    const p = parsePairingCode(`sacpos://connect?k=${k}&c=K7QM3XPD&u=${encodeURIComponent('http://192.168.1.7:4000')}`);
+    expect(p).toMatchObject({ key: '', code: 'K7QM3XPD', urls: ['http://192.168.1.7:4000'] });
+  });
+
   it('typed codes in any case, with a dash or space', async () => {
     const { cleanPairingCode } = await import('../src/domain/pairing');
     expect(cleanPairingCode('k7qm 3xpd')).toBe('K7QM3XPD');

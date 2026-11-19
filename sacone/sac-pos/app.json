@@ -2,7 +2,7 @@
   "expo": {
     "name": "SAC-POS",
     "slug": "sac-pos",
-    "version": "1.1.12",
+    "version": "1.1.13",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

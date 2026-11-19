@@ -49,8 +49,10 @@ export function buildPairingLink({ urls, key, deviceName, firm }: { urls: string
 
 /** Turn already-decoded link parameters (expo-router route params) into a Pairing. */
 export function pairingFromParams(params: { k?: string; u?: string; n?: string; f?: string; c?: string }): Pairing {
-  const key = (params.k ?? '').trim();
-  const code = key ? null : cleanPairingCode(params.c);
+  // The ERP's "Connect a device" QR has both the code and the key held in reserve (older apps
+  // only read k=). Prefer the code: it reconnects this phone's own terminal keeping unsynced bills.
+  const code = cleanPairingCode(params.c);
+  const key = code ? '' : (params.k ?? '').trim();
   if (!KEY.test(key) && !code) throw new Error('This QR code has no valid device key or pairing code. Show the QR from SACONE ERP → POS Devices again.');
   const urls = [...new Set(String(params.u ?? '').split(',').map(validUrl).filter((u): u is string => Boolean(u)))].slice(0, MAX_URLS);
   if (!urls.length) throw new Error('This QR code has no server address. Show the QR from SACONE ERP → POS Devices again.');
