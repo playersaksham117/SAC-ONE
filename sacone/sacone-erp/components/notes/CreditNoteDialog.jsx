@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { money } from '../../lib/bill-document';
-import { Alert, LoadingState, Modal } from '../ui';
+import { LoadingState } from '../ui';
+import { NoteCard, NotePage, SumRow } from './NotePage';
 
 const r2 = (n) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
 const qtyText = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
@@ -88,144 +89,175 @@ export default function CreditNoteDialog({ saleId: givenSaleId, editNote = null,
     }
   };
 
-  return (
-    <Modal
-      open
-      size="xl"
-      title={editNote ? `✏ Edit credit note ${editNote.noteNumber || editNote.returnNumber}` : sale ? `Credit note · return against ${sale.invoiceNumber}` : 'New credit note'}
-      onClose={onClose}
-      footer={(
+  const igst = Number(sale?.igstAmount || 0) > 0;
+  const taxable = r2(lines.reduce((s, l) => s + l.value - l.gst, 0));
+  const returning = lines.filter((l) => l.q > 0);
+
+  const main = (
+    <>
+      <div className="grid gap-4 lg:grid-cols-5">
+        <NoteCard className="lg:col-span-3" title="Against invoice">
+          {!fixedSaleId && (
+            <div className="relative">
+              <input
+                className="input-field"
+                autoFocus
+                placeholder="Type invoice number, customer name or phone"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setSaleId(''); }}
+                data-testid="cn-invoice-search"
+              />
+              {!saleId && matches.length > 0 && (
+                <div className="absolute z-30 mt-1 max-h-80 w-full divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {matches.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { setSaleId(s.id); setSearch(s.invoiceNumber); }}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <span><span className="font-mono text-xs font-semibold">{s.invoiceNumber}</span> · {s.customerIsWalkIn ? 'Walk-in' : s.customerName}</span>
+                      <span className="whitespace-nowrap text-slate-500">{new Date(s.createdAt).toLocaleDateString('en-IN')} · {money(s.grandTotal)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {saleId && !sale && !error && <LoadingState />}
+          {sale ? (
+            <div className={fixedSaleId ? '' : 'mt-3'}>
+              <div className="text-lg font-bold text-slate-900">{sale.customerIsWalkIn ? 'Walk-in customer' : sale.customerName}</div>
+              <div className="text-sm text-slate-500">{[sale.customerPhone, sale.customerGstin ? `GSTIN ${sale.customerGstin}` : null].filter(Boolean).join(' · ')}</div>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-mono font-semibold text-slate-700">{sale.invoiceNumber}</span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-600">{new Date(sale.createdAt).toLocaleDateString('en-IN')}</span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-600">Invoice {money(sale.grandTotal)}</span>
+                <span className={`rounded-full px-2.5 py-0.5 font-semibold ${due > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{due > 0 ? `Due ${money(due)}` : 'Paid'}</span>
+              </div>
+            </div>
+          ) : !saleId && (
+            <p className="mt-2 text-sm text-slate-500">Find the sales invoice the goods were sold on: the rates and GST of the return come from it.</p>
+          )}
+        </NoteCard>
+        <NoteCard className="lg:col-span-2" title="Note details">
+          <SumRow label="Credit note no." value={editNote ? (editNote.noteNumber || editNote.returnNumber) : 'Given on save'} muted />
+          <SumRow label="Date" value={new Date(editNote?.createdAt || Date.now()).toLocaleDateString('en-IN')} muted />
+          <SumRow label="GST" value={!sale ? '—' : igst ? 'IGST (other state)' : 'CGST + SGST (same state)'} muted />
+          <label className="label mt-2">Reason</label>
+          <input className="input-field" placeholder="e.g. Damaged, wrong size, defective" value={reason} onChange={(e) => setReason(e.target.value)} data-testid="cn-reason" />
+        </NoteCard>
+      </div>
+
+      {sale && (
+        <NoteCard title={`Items returned · ${returning.length} line${returning.length === 1 ? '' : 's'}`}>
+          {!canReturn ? (
+            <p className="text-sm text-slate-600">This invoice is {String(sale.status).replace(/_/g, ' ')} and cannot take another return.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b-2 border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="w-8 py-2 pr-2">#</th>
+                    <th className="min-w-[180px] py-2 pr-2">Item</th>
+                    <th className="py-2 pr-2">HSN/SAC</th>
+                    <th className="py-2 pr-2 text-right">Rate ₹</th>
+                    <th className="py-2 pr-2 text-right">Sold</th>
+                    <th className="py-2 pr-2 text-right">Returned</th>
+                    <th className="py-2 pr-2 text-right">Return qty</th>
+                    <th className="py-2 pr-2 text-right">GST</th>
+                    <th className="py-2 pr-2 text-right">Tax ₹</th>
+                    <th className="py-2 text-right">Amount ₹</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {lines.map(({ item, remaining, value, gst: tax }, i) => (
+                    <tr key={item.id} className={value > 0 ? 'bg-brand-50/40' : ''}>
+                      <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
+                      <td className="py-2 pr-2"><div className="font-semibold text-slate-900">{item.productName}</div>{item.shortDescription && <div className="text-xs text-slate-500">{item.shortDescription}</div>}</td>
+                      <td className="py-2 pr-2 font-mono text-xs">{item.hsnCode || '—'}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{money(item.unitPrice)}</td>
+                      <td className="py-2 pr-2 text-right">{qtyText(item.quantity)}</td>
+                      <td className="py-2 pr-2 text-right text-slate-500">{item.quantityReturned - mine(item.id) > 0 ? qtyText(item.quantityReturned - mine(item.id)) : '—'}</td>
+                      <td className="py-2 pr-2 text-right">
+                        {remaining > 0 ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number" inputMode="decimal" min="0" max={remaining} step="any" placeholder="0"
+                              className="input-field !min-h-0 w-24 !py-1.5 text-right"
+                              value={qty[item.id] ?? ''}
+                              onChange={(e) => setQty({ ...qty, [item.id]: e.target.value })}
+                              aria-label={`Return quantity of ${item.productName}`}
+                              data-testid={`cn-qty-${i}`}
+                            />
+                            <button type="button" className="whitespace-nowrap text-xs font-medium text-brand-700 hover:underline" onClick={() => setQty({ ...qty, [item.id]: remaining })}>
+                              all {qtyText(remaining)}
+                            </button>
+                          </div>
+                        ) : <span className="text-xs text-slate-400">fully returned</span>}
+                      </td>
+                      <td className="py-2 pr-2 text-right text-slate-600">{item.gstPercentage}%</td>
+                      <td className="py-2 pr-2 text-right tabular-nums text-slate-500">{tax > 0 ? money(tax) : '—'}</td>
+                      <td className="py-2 text-right font-semibold tabular-nums">{value > 0 ? money(value) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-slate-400">Rates, discounts and GST are the invoice&apos;s. Stock comes back for goods; services have no stock.</p>
+            </div>
+          )}
+        </NoteCard>
+      )}
+    </>
+  );
+
+  const summary = (
+    <>
+      <SumRow label="Taxable value" value={money(taxable)} />
+      {igst ? <SumRow label="IGST" value={money(gst)} muted /> : (
         <>
-          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={save} disabled={saving || !canReturn || total <= 0}>
-            {saving ? 'Saving…' : `${editNote ? 'Save credit note' : 'Issue credit note'}${total > 0 ? ` · ${money(total)}` : ''}`}
-          </button>
+          <SumRow label="CGST" value={money(r2(gst / 2))} muted />
+          <SumRow label="SGST" value={money(r2(gst - r2(gst / 2)))} muted />
         </>
       )}
-    >
-      <div className="space-y-4">
-        <Alert message={error} />
-
-        {!fixedSaleId && (
-          <div>
-            <label className="label">Original invoice *</label>
-            <input
-              className="input-field"
-              placeholder="Type invoice number, customer name or phone"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setSaleId(''); }}
-            />
-            {!saleId && matches.length > 0 && (
-              <div className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                {matches.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => { setSaleId(s.id); setSearch(s.invoiceNumber); }}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                  >
-                    <span><span className="font-mono text-xs font-semibold">{s.invoiceNumber}</span> · {s.customerIsWalkIn ? 'Walk-in' : s.customerName}</span>
-                    <span className="text-slate-500">{new Date(s.createdAt).toLocaleDateString('en-IN')} · {money(s.grandTotal)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+      {canReturn && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Settle by</div>
+          <div className="space-y-1.5">
+            {SETTLE.map((m) => (
+              <label key={m.value} title={m.hint} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${method === m.value ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}>
+                <input type="radio" name="settle" checked={method === m.value} onChange={() => setMethod(m.value)} />
+                <span className="font-medium">{m.label}</span>
+              </label>
+            ))}
           </div>
-        )}
+          <div className="mt-2 border-t border-slate-100 pt-2">
+            <SumRow label="Set against invoice due" value={money(againstDue)} />
+            {method === 'credit_note'
+              ? <SumRow label="Kept as customer credit" value={money(keptCredit)} />
+              : <SumRow label={`Pay back now (${method.toUpperCase()})`} value={money(refund)} strong />}
+          </div>
+        </div>
+      )}
+    </>
+  );
 
-        {saleId && !sale && !error && <LoadingState />}
-
-        {sale && (
-          <>
-            <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-4">
-              <div><div className="text-xs text-slate-500">Invoice</div><div className="font-mono text-xs font-semibold">{sale.invoiceNumber}</div></div>
-              <div><div className="text-xs text-slate-500">Date</div><div>{new Date(sale.createdAt).toLocaleDateString('en-IN')}</div></div>
-              <div><div className="text-xs text-slate-500">Customer</div><div>{sale.customerIsWalkIn ? 'Walk-in' : sale.customerName}</div></div>
-              <div><div className="text-xs text-slate-500">Invoice due</div><div className={due > 0 ? 'font-semibold text-amber-700' : ''}>{due > 0 ? money(due) : 'Paid'}</div></div>
-            </div>
-
-            {!canReturn ? (
-              <p className="text-sm text-slate-600">This invoice is {String(sale.status).replace(/_/g, ' ')} and cannot take another return.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Item</th>
-                      <th className="px-3 py-2 text-right">Sold</th>
-                      <th className="px-3 py-2 text-right">Already returned</th>
-                      <th className="px-3 py-2 text-right">Return qty</th>
-                      <th className="px-3 py-2 text-right">Value incl. GST</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {lines.map(({ item, remaining, value }) => (
-                      <tr key={item.id}>
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{item.productName}</div>
-                          <div className="text-xs text-slate-500">{item.hsnCode ? `HSN/SAC ${item.hsnCode} · ` : ''}{money(item.unitPrice)} · GST {item.gstPercentage}%</div>
-                        </td>
-                        <td className="px-3 py-2 text-right">{qtyText(item.quantity)}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{item.quantityReturned - mine(item.id) > 0 ? qtyText(item.quantityReturned - mine(item.id)) : '—'}</td>
-                        <td className="px-3 py-2 text-right">
-                          {remaining > 0 ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                min="0"
-                                max={remaining}
-                                step="any"
-                                className="input-field w-24 text-right"
-                                value={qty[item.id] ?? ''}
-                                placeholder="0"
-                                onChange={(e) => setQty({ ...qty, [item.id]: e.target.value })}
-                              />
-                              <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => setQty({ ...qty, [item.id]: remaining })}>
-                                all {qtyText(remaining)}
-                              </button>
-                            </div>
-                          ) : <span className="text-xs text-slate-400">fully returned</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">{value > 0 ? money(value) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {canReturn && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="label">Settle the credit note by</label>
-                  <div className="space-y-2">
-                    {SETTLE.map((m) => (
-                      <label key={m.value} className={`flex cursor-pointer gap-2 rounded-lg border p-2 text-sm ${method === m.value ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}>
-                        <input type="radio" name="settle" checked={method === m.value} onChange={() => setMethod(m.value)} />
-                        <span><span className="font-medium">{m.label}</span><span className="block text-xs text-slate-500">{m.hint}</span></span>
-                      </label>
-                    ))}
-                  </div>
-                  <label className="label mt-3">Reason</label>
-                  <input className="input-field" placeholder="e.g. Damaged, wrong size, defective" value={reason} onChange={(e) => setReason(e.target.value)} />
-                </div>
-                <div className="rounded-xl border border-slate-200 p-3 text-sm">
-                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Credit note</div>
-                  <div className="flex justify-between"><span>Value (incl. GST)</span><span className="font-semibold">{money(total)}</span></div>
-                  <div className="flex justify-between text-slate-500"><span>of which GST</span><span>{money(gst)}</span></div>
-                  <hr className="my-2" />
-                  <div className="flex justify-between"><span>Set against invoice due</span><span>{money(againstDue)}</span></div>
-                  {method === 'credit_note'
-                    ? <div className="flex justify-between"><span>Kept as customer credit</span><span>{money(keptCredit)}</span></div>
-                    : <div className="flex justify-between font-semibold"><span>Pay back now ({method.toUpperCase()})</span><span>{money(refund)}</span></div>}
-                  <p className="mt-2 text-xs text-slate-500">{editNote ? 'Saving undoes the old note (stock, invoice due, customer balance) and books this one under the same number.' : 'Stock comes back for goods; services have no stock. The note gets the next credit note number for this financial year.'}</p>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </Modal>
+  return (
+    <NotePage
+      testId="credit-note-page"
+      title={editNote ? `Edit credit note ${editNote.noteNumber || editNote.returnNumber}` : sale ? `Credit note · return against ${sale.invoiceNumber}` : 'New credit note'}
+      subtitle="Customer return: reduces output GST and what the customer owes. Esc back · Ctrl+S save"
+      error={error}
+      main={main}
+      summary={summary}
+      total={total}
+      totalLabel="Credit note total (incl. GST)"
+      actionLabel={editNote ? 'Save credit note' : 'Issue credit note'}
+      onAction={save}
+      actionDisabled={!canReturn || total <= 0}
+      saving={saving}
+      onClose={onClose}
+      footnote={editNote ? 'Saving undoes the old note (stock, invoice due, customer balance) and books this one under the same number.' : 'The note gets the next credit note number for this financial year.'}
+    />
   );
 }

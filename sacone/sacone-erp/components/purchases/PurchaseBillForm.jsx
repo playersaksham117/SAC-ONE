@@ -40,7 +40,7 @@ function Row({ label, value, strong = false, muted = false }) {
   );
 }
 
-function SupplierPicker({ suppliers, value, onChange, disabled }) {
+export function SupplierPicker({ suppliers, value, onChange, disabled }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const matches = useMemo(() => {

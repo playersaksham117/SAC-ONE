@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { useCart } from '../store/cart';
-import { searchCustomers, useCatalog } from '../store/catalog';
+import { sameNameCounts, searchCustomers, useCatalog } from '../store/catalog';
 import { useCan } from '../store/session';
 import { CustomerRow } from '../ui/CustomerRow';
 import { Button, Empty, Header, Screen, SearchBar, space } from '../ui/components';
@@ -16,6 +16,8 @@ export default function CustomerPicker() {
   const [q, setQ] = useState('');
   const list = useMemo(() => (canView ? searchCustomers(customers, q, 100) : []), [customers, q, canView]);
 
+  const twins = useMemo(() => sameNameCounts(Object.values(customers).filter((c) => c.isActive)), [customers]);
+
   const pick = (id: string | null) => {
     useCart.getState().setCustomer(id);
     goBack();
@@ -25,7 +27,7 @@ export default function CustomerPicker() {
     <Screen padded={false}>
       <Header title="Select customer" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
-        <SearchBar value={q} onChangeText={setQ} placeholder="Name, mobile or GSTIN" autoFocus />
+        <SearchBar value={q} onChangeText={setQ} placeholder="Name, area, city, mobile or GSTIN  (e.g. pims garha)" autoFocus />
         <Button title="Walk-in customer (no details)" variant="secondary" icon="walk-outline" onPress={() => pick(null)} />
         {canCreate ? <Button title="Add new customer" variant="ghost" icon="person-add-outline" onPress={() => router.push({ pathname: '/customer/new', params: { pick: '1' } })} /> : null}
       </View>
@@ -34,7 +36,7 @@ export default function CustomerPicker() {
         keyExtractor={(c) => c.id}
         contentContainerStyle={{ padding: space.lg }}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => <CustomerRow c={item} selected={item.id === selected} onPress={() => pick(item.id)} />}
+        renderItem={({ item }) => <CustomerRow c={item} sameName={twins[item.name.trim().toLowerCase()]} selected={item.id === selected} onPress={() => pick(item.id)} />}
         ListEmptyComponent={<Empty icon="search-outline" title={canView ? 'No match' : 'Customer list not allowed'} message={canView ? 'Try a mobile number or add a new customer.' : 'Your ERP role needs "Customers – view".'} />}
       />
     </Screen>

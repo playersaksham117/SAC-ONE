@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
-import { searchCustomers, useCatalog } from '../../store/catalog';
+import { sameNameCounts, searchCustomers, useCatalog } from '../../store/catalog';
 import { useCan } from '../../store/session';
 import { CustomerRow } from '../../ui/CustomerRow';
 import { Chip, Empty, Header, IconButton, Row, Screen, SearchBar, StatTile, space } from '../../ui/components';
@@ -18,6 +18,7 @@ export default function Customers() {
     return dueOnly ? hits.filter((c) => c.outstanding > 0).sort((a, b) => b.outstanding - a.outstanding) : hits;
   }, [customers, q, dueOnly]);
 
+  const twins = useMemo(() => sameNameCounts(Object.values(customers).filter((c) => c.isActive)), [customers]);
   const totalDue = useMemo(() => Object.values(customers).reduce((s, c) => s + Math.max(c.outstanding, 0), 0), [customers]);
 
   return (
@@ -31,7 +32,7 @@ export default function Customers() {
         <Row>
           <StatTile label="Total dues" value={formatMoney(totalDue)} tone="warning" icon="time-outline" />
         </Row>
-        <SearchBar value={q} onChangeText={setQ} placeholder="Name, mobile, GSTIN" />
+        <SearchBar value={q} onChangeText={setQ} placeholder="Name, area, city, mobile or GSTIN  (e.g. pims garha)" />
         <Row gap={space.sm}>
           <Chip label="All" active={!dueOnly} onPress={() => setDueOnly(false)} />
           <Chip label="With dues" icon="alert-circle-outline" active={dueOnly} onPress={() => setDueOnly(true)} />
@@ -41,7 +42,7 @@ export default function Customers() {
         data={list}
         keyExtractor={(c) => c.id}
         contentContainerStyle={{ padding: space.lg }}
-        renderItem={({ item }) => <CustomerRow c={item} onPress={() => router.push({ pathname: '/customer/[id]', params: { id: item.id } })} />}
+        renderItem={({ item }) => <CustomerRow c={item} sameName={twins[item.name.trim().toLowerCase()]} onPress={() => router.push({ pathname: '/customer/[id]', params: { id: item.id } })} />}
         ListEmptyComponent={<Empty icon="people-outline" title="No customers" message="Registered customers sync from SACONE ERP. Walk-in sales need no customer." />}
       />
     </Screen>

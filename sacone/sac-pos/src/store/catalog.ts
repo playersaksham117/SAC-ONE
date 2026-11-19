@@ -208,14 +208,36 @@ export function findByCode(products: Record<string, Product>, code: string): Pro
   return Object.values(products).find((p) => p.barcode?.toLowerCase() === c || p.sku.toLowerCase() === c) ?? null;
 }
 
+/**
+ * Customers matching every word typed, in the name, address, city, state, phone, GSTIN or code:
+ * "pims garha" finds the PIMS on Garha Road and not the other PIMS. Names starting with the
+ * first word come first; same names are then ordered by city and address.
+ */
 export function searchCustomers(customers: Record<string, Customer>, query: string, limit = 60): Customer[] {
-  const q = query.trim().toLowerCase();
-  const digits = q.replace(/\D/g, '');
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const all = Object.values(customers).filter((c) => c.isActive);
-  const hits = !q ? all : all.filter((c) =>
-    c.name.toLowerCase().includes(q)
-    || (digits.length >= 3 && (c.phone ?? '').replace(/\D/g, '').includes(digits))
-    || (c.gstin ?? '').toLowerCase().includes(q)
-    || (c.code ?? '').toLowerCase().includes(q));
-  return hits.sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
+  const haystack = (c: Customer) => [c.name, c.address, c.city, c.state, c.gstin, c.code, c.email].filter(Boolean).join(' ').toLowerCase();
+  const phone = (c: Customer) => (c.phone ?? '').replace(/\D/g, '');
+  const hits = !words.length ? all : all.filter((c) => {
+    const text = haystack(c);
+    const tel = phone(c);
+    // a word of 3+ digits also matches inside the mobile number
+    return words.every((w) => text.includes(w) || (/^\+?\d{3,}$/.test(w) && tel.includes(w.replace(/\D/g, ''))));
+  });
+  const first = words[0] ?? '';
+  const rank = (c: Customer) => (first && c.name.toLowerCase().startsWith(first) ? 0 : first && c.name.toLowerCase().includes(first) ? 1 : 2);
+  const place = (c: Customer) => `${c.city ?? ''} ${c.address ?? ''}`.toLowerCase();
+  return hits
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name) || place(a).localeCompare(place(b)))
+    .slice(0, limit);
+}
+
+/** How many customers in this list share each name (to mark look-alikes). */
+export function sameNameCounts(list: Customer[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const c of list) {
+    const k = c.name.trim().toLowerCase();
+    counts[k] = (counts[k] ?? 0) + 1;
+  }
+  return counts;
 }

@@ -194,6 +194,8 @@ export class PurchaseService {
     return {
       suppliers: supplierRepo.findAll({ includeInactive: false, limit: 500, offset: 0 }).items,
       warehouses: warehouseRepo.findAll({ includeInactive: false }),
+      // the firm's GST state: same state = CGST + SGST, another = IGST (shown on purchase forms)
+      companyStateCode: stateCodeOf(companyRepo.get()) || null,
     };
   }
 
