@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CartLine, HeldBill, Product, Quotation } from '../domain/types';
@@ -39,6 +40,10 @@ interface CartState {
   clear: () => void;
 }
 
+/** GST invoices are made on SAC-POS web only; the phone / tablet app makes Quick Bills and quotations. */
+export const GST_BILLS_HERE = Platform.OS === 'web';
+const allowedSeries = (series: 'gst' | 'quick' | null | undefined): 'gst' | 'quick' => (GST_BILLS_HERE && series !== 'quick' ? 'gst' : 'quick');
+
 const clampQty = (q: number) => Math.min(Math.max(Math.round(q * 1000) / 1000, 0), MAX_QTY);
 
 export const useCart = create<CartState>()(
@@ -51,10 +56,10 @@ export const useCart = create<CartState>()(
       exchange: null,
       mode: 'sale',
       fromQuotation: null,
-      series: 'gst',
+      series: allowedSeries('gst'),
 
       setSeries(series) {
-        set({ series });
+        set({ series: allowedSeries(series) });
       },
 
       setMode(mode) {
@@ -132,6 +137,14 @@ export const useCart = create<CartState>()(
         set({ lines: [], customerId: null, invoiceDiscount: 0, notes: '', exchange: null, fromQuotation: null });
       },
     }),
-    { name: 'sacpos.cart', storage: jsonStorage },
+    {
+      name: 'sacpos.cart',
+      storage: jsonStorage,
+      // a cart saved as a GST bill on a phone becomes a Quick Bill there
+      merge: (saved, current) => {
+        const s = (saved ?? {}) as Partial<CartState>;
+        return { ...current, ...s, series: allowedSeries(s.series ?? current.series) };
+      },
+    },
   ),
 );

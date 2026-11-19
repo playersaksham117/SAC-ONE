@@ -9,7 +9,7 @@ import { inclGst } from '../../domain/tax';
 import type { Product } from '../../domain/types';
 import { usePendingQty, useSyncBadge } from '../../lib/useSyncInfo';
 import { useCartTotals } from '../../lib/useCartTotals';
-import { useCart } from '../../store/cart';
+import { GST_BILLS_HERE, useCart } from '../../store/cart';
 import { findByCode, searchProducts, useCatalog } from '../../store/catalog';
 import { CartPanel } from '../cart';
 import { GstInvoiceForm } from '../../ui/GstInvoiceForm';
@@ -56,8 +56,8 @@ export default function Sell() {
   const wide = useWide();
   const columns = useProductColumns();
   const searchRef = useRef<TextInput>(null);
-  // Wide screens: GST bills and quotations use the full invoice form; Quick Bill keeps the product tiles
-  const invoiceForm = wide && !quickRates;
+  // SAC-POS web (wide): GST bills and quotations use the full invoice form; Quick Bill keeps the product tiles
+  const invoiceForm = wide && !quickRates && GST_BILLS_HERE;
   // F2: search (or scan) · F9: checkout — counter PCs with a keyboard and USB scanner
   const hotkeys = useMemo(() => ({
     F2: () => searchRef.current?.focus(),
@@ -230,7 +230,7 @@ export default function Sell() {
             value={quoting ? 'quotation' : series}
             onChange={pickType}
             options={[
-              { value: 'gst', label: 'GST Bill' },
+              ...(GST_BILLS_HERE ? [{ value: 'gst' as const, label: 'GST Bill' }] : []),
               { value: 'quick', label: 'Quick Bill' },
               ...(canQuote ? [{ value: 'quotation' as const, label: 'Quotation' }] : []),
             ]}
