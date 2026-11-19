@@ -100,41 +100,6 @@ const TABS = [
   { id: 'reports', label: 'Reports', permission: 'purchases.reports.view' },
 ];
 
-function LineEditor({ lines, setLines, products, onSearch }) {
-  const addLine = () => setLines((prev) => [...prev, { productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]);
-  const update = (idx, patch) => setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  const remove = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
-
-  return (
-    <div className="space-y-2">
-      {lines.map((line, idx) => (
-        <div key={idx} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]">
-          <select className="input-field" value={line.productId} onChange={(e) => {
-            const p = products.find((x) => x.id === e.target.value);
-            update(idx, { productId: e.target.value, unitPrice: p?.purchasePrice || p?.sellingPrice || '', hsnCode: p?.hsnCode || '' });
-          }}>
-            <option value="">Select product</option>
-            {line.productId && !products.some((p) => p.id === line.productId) ? <option value={line.productId}>{line.productLabel || line.productId}</option> : null}
-            {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-          </select>
-          <input className="input-field font-mono" placeholder="HSN / SAC" inputMode="numeric" maxLength={8} title="HSN / SAC code (4–8 digits); blank = the product's code"
-            value={line.hsnCode || ''} onChange={(e) => update(idx, { hsnCode: e.target.value.replace(/\D/g, '') })} />
-          <input type="number" className="input-field" placeholder="Qty" min="0.001" step="any" value={line.quantity} onChange={(e) => update(idx, { quantity: e.target.value })} />
-          <input type="number" className="input-field" placeholder="Rate" step="0.01" value={line.unitPrice} onChange={(e) => update(idx, { unitPrice: e.target.value })} />
-          <input type="number" className="input-field" placeholder="Disc %" step="0.01" value={line.discountPercent} onChange={(e) => update(idx, { discountPercent: e.target.value })} />
-          <button type="button" className="btn-secondary" onClick={() => remove(idx)}>×</button>
-        </div>
-      ))}
-      <div className="flex gap-2">
-        <button type="button" className="btn-secondary" onClick={addLine}>+ Add line</button>
-        {onSearch && (
-          <input className="input-field max-w-xs" placeholder="Search product…" onChange={(e) => onSearch(e.target.value)} />
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function PurchasesPage() {
   const { checkPermission, session } = useAuth();
   // Only the owner may change a posted purchase bill.
@@ -165,7 +130,6 @@ export default function PurchasesPage() {
   const [priceLists, setPriceLists] = useState([]);
   const [returns, setReturns] = useState([]);
   const [reports, setReports] = useState(null);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -182,7 +146,6 @@ export default function PurchasesPage() {
 
   const [poForm, setPoForm] = useState({ supplierId: '', warehouseId: '', orderDate: '', notes: '' });
   const [poLines, setPoLines] = useState([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]);
-  const [poPreview, setPoPreview] = useState(null);
 
   const [billForm, setBillForm] = useState({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: '', purchaseOrderId: '', notes: '' });
   const [gstFilter, setGstFilter] = useState('');
@@ -195,13 +158,6 @@ export default function PurchasesPage() {
   const loadBootstrap = useCallback(async () => {
     const data = await apiRequest('/api/purchases/bootstrap');
     setBootstrap(data);
-  }, []);
-
-  const loadProducts = useCallback(async (search = '') => {
-    const q = new URLSearchParams({ limit: '200', isActive: '1' });
-    if (search) q.set('search', search);
-    const data = await apiRequest(`/api/products?${q}`);
-    setProducts(data.items || []);
   }, []);
 
   const loadTab = useCallback(async (silent = false) => {
@@ -232,8 +188,7 @@ export default function PurchasesPage() {
 
   useEffect(() => {
     loadBootstrap().catch((e) => setError(e.message));
-    loadProducts();
-  }, [loadBootstrap, loadProducts]);
+  }, [loadBootstrap]);
 
   useEffect(() => { loadTab(); }, [loadTab]);
 
@@ -241,34 +196,6 @@ export default function PurchasesPage() {
     loadBootstrap().catch(() => {});
     loadTab(true);
   });
-
-  const previewDoc = async (supplierId, lines, setter, unregistered = false) => {
-    if (!supplierId || !lines.some((l) => l.productId)) return;
-    try {
-      const data = await apiRequest('/api/purchases/preview', {
-        method: 'POST',
-        body: JSON.stringify({
-          supplierId,
-          unregistered,
-          items: lines.filter((l) => l.productId).map((l) => ({
-            productId: l.productId,
-            quantity: Number(l.quantity) || 1,
-            unitPrice: Number(l.unitPrice) || 0,
-            discountPercent: Number(l.discountPercent) || 0,
-          })),
-        }),
-      });
-      setter(data);
-    } catch {
-      setter(null);
-    }
-  };
-
-  useEffect(() => {
-    if (!poModal) return;
-    const t = setTimeout(() => previewDoc(poForm.supplierId, poLines, setPoPreview), 300);
-    return () => clearTimeout(t);
-  }, [poModal, poForm.supplierId, poLines]);
 
   const savePo = async (e) => {
     e.preventDefault();
@@ -415,13 +342,16 @@ export default function PurchasesPage() {
       });
       setPoLines((full.items || []).map((i) => ({
         productId: i.productId,
-        productLabel: `${i.sku || ''} — ${i.productName}`,
+        productLabel: i.productName,
+        sku: i.sku || '',
+        gstPercentage: i.gstPercentage,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         discountPercent: i.discountPercent || 0,
         hsnCode: i.hsnCode || '',
         receivedQty: i.receivedQty || 0,
       })));
+      setError('');
       setEditPoId(full.id);
       setPoModal(true);
     } catch (e) {
@@ -476,16 +406,27 @@ export default function PurchasesPage() {
     }
   };
 
-  const billFromPo = async (po) => {
+  const billFromPo = async (row) => {
+    setError('');
+    // The list has no item lines: load the order with them.
+    let po = row;
+    try {
+      po = await apiRequest(`/api/purchases/orders/${row.id}`);
+    } catch (e) {
+      setError(e.message);
+      return;
+    }
+    const sup = (bootstrap?.suppliers || []).find((s) => s.id === po.supplierId);
     setBillForm({
       supplierId: po.supplierId,
       warehouseId: po.warehouseId || '',
       supplierInvoiceNumber: '',
       billDate: new Date().toISOString().slice(0, 10),
+      dueDate: '',
       purchaseOrderId: po.id,
       notes: `GRN for ${po.poNumber}`,
+      unregistered: Boolean(sup && !String(sup.gstNumber || '').trim()),
     });
-    setError('');
     setBillLines(po.items?.map((i) => ({
       productId: i.productId,
       productLabel: i.productName,
@@ -501,6 +442,28 @@ export default function PurchasesPage() {
 
   const suppliers = bootstrap?.suppliers || [];
   const warehouses = bootstrap?.warehouses || [];
+
+  // Purchase order entry: the same full page as the bill.
+  if (poModal) {
+    return (
+      <RequirePermission permission="purchases.orders.view">
+        <PurchaseBillForm
+          kind="order"
+          editing={Boolean(editPoId)}
+          form={poForm}
+          setForm={setPoForm}
+          lines={poLines}
+          setLines={setPoLines}
+          suppliers={suppliers}
+          warehouses={warehouses}
+          saving={saving}
+          error={error}
+          onSubmit={savePo}
+          onCancel={() => { setPoModal(false); setEditPoId(null); setError(''); }}
+        />
+      </RequirePermission>
+    );
+  }
 
   // Purchase bill entry is a full page, laid out like the GST sale invoice.
   if (billModal) {
@@ -534,7 +497,7 @@ export default function PurchasesPage() {
               <button type="button" className="btn-secondary" onClick={() => { setPriceForm({ supplierId: '', name: '', csv: '' }); setPricePreview(null); setPriceModal(true); }}>Import Price List</button>
             )}
             {checkPermission('purchases.orders.create') && tab === 'orders' && (
-              <button type="button" className="btn-primary" onClick={() => { setPoForm({ supplierId: '', warehouseId: '', orderDate: '', notes: '' }); setPoLines([{ productId: '', quantity: 1, unitPrice: '', discountPercent: 0, hsnCode: '' }]); setEditPoId(null); setPoModal(true); }}>+ Purchase Order</button>
+              <button type="button" className="btn-primary" onClick={() => { setError(''); setMessage(''); setPoForm({ supplierId: '', warehouseId: '', orderDate: new Date().toISOString().slice(0, 10), expectedDate: '', notes: '' }); setPoLines([]); setEditPoId(null); setPoModal(true); }}>+ Purchase Order</button>
             )}
             {checkPermission('purchases.bills.create') && tab === 'bills' && (
               <button type="button" className="btn-primary" onClick={() => { setError(''); setMessage(''); setBillForm({ supplierId: '', warehouseId: '', supplierInvoiceNumber: '', billDate: new Date().toISOString().slice(0, 10), dueDate: '', purchaseOrderId: '', notes: '' }); setBillLines([]); setEditBillId(null); setBillModal(true); }}>+ Purchase Bill</button>
@@ -846,23 +809,6 @@ export default function PurchasesPage() {
           )}
         </>
       )}
-
-      <Modal open={poModal} title={editPoId ? 'Edit Purchase Order' : 'Create Purchase Order'} onClose={() => { setPoModal(false); setEditPoId(null); }} size="xl"
-        footer={<><button type="button" className="btn-secondary" onClick={() => { setPoModal(false); setEditPoId(null); }}>Cancel</button><button type="submit" form="po-form" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : editPoId ? 'Save changes' : 'Save PO'}</button></>}>
-        <form id="po-form" onSubmit={savePo} className="space-y-4">
-          <Alert type="error" message={error} />
-          <div className="grid gap-4 md:grid-cols-2">
-            <div><label className="label">Supplier *</label><select className="input-field" required value={poForm.supplierId} onChange={(e) => setPoForm({ ...poForm, supplierId: e.target.value })}><option value="">Select</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-            <div><label className="label">Warehouse</label><select className="input-field" value={poForm.warehouseId} onChange={(e) => setPoForm({ ...poForm, warehouseId: e.target.value })}><option value="">Default</option>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-            <div><label className="label">Order Date</label><input type="date" className="input-field" value={poForm.orderDate || ''} onChange={(e) => setPoForm({ ...poForm, orderDate: e.target.value })} /></div>
-            <div><label className="label">Expected Date</label><input type="date" className="input-field" value={poForm.expectedDate || ''} onChange={(e) => setPoForm({ ...poForm, expectedDate: e.target.value })} /></div>
-            <div className="md:col-span-2"><label className="label">Notes</label><input className="input-field" value={poForm.notes || ''} onChange={(e) => setPoForm({ ...poForm, notes: e.target.value })} /></div>
-          </div>
-          {editPoId && poLines.some((l) => l.receivedQty > 0) ? <p className="text-xs text-amber-700">Some goods are already received on this PO; those lines cannot go below the received quantity.</p> : null}
-          <LineEditor lines={poLines} setLines={setPoLines} products={products} onSearch={loadProducts} />
-          {poPreview?.totals && <div className="rounded-lg bg-slate-50 p-3 text-sm">Total: <strong>{money(poPreview.totals.grandTotal)}</strong> (GST {money(poPreview.totals.gstAmount)})</div>}
-        </form>
-      </Modal>
 
       <Modal open={priceModal} title="Supplier Price List Reader" onClose={() => setPriceModal(false)} size="xl"
         footer={<><button type="button" className="btn-secondary" onClick={() => setPriceModal(false)}>Cancel</button><button type="button" className="btn-secondary" onClick={parsePriceList} disabled={saving}>Preview Match</button><button type="submit" form="price-form" className="btn-primary" disabled={saving}>Save List</button></>}>

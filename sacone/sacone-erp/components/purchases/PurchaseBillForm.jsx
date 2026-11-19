@@ -6,7 +6,7 @@ import { amountInWords } from '../../lib/bill-document';
 import { Alert } from '../ui';
 
 /**
- * Purchase bill entry laid out like the GST sale invoice: supplier and bill details on top,
+ * Purchase bill (kind="bill") or purchase order (kind="order") entry laid out like the GST sale invoice: supplier and bill details on top,
  * an item table with a search box (name, SKU, barcode or HSN; Enter adds), the GST summary
  * on the right and the post button always in view. Totals come from the server's preview
  * (the same calculation that posts the bill).
@@ -85,7 +85,7 @@ function SupplierPicker({ suppliers, value, onChange, disabled }) {
 }
 
 export default function PurchaseBillForm({
-  editing, form, setForm, lines, setLines, suppliers, warehouses, saving, error, onSubmit, onCancel,
+  kind = 'bill', editing, form, setForm, lines, setLines, suppliers, warehouses, saving, error, onSubmit, onCancel,
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -94,6 +94,8 @@ export default function PurchaseBillForm({
   const [pickingSupplier, setPickingSupplier] = useState(!form.supplierId);
   const searchRef = useRef(null);
   const formRef = useRef(null);
+  const order = kind === 'order';
+  const docName = order ? 'purchase order' : 'purchase bill';
 
   const supplier = suppliers.find((s) => s.id === form.supplierId) || null;
   const items = lines.filter((l) => l.productId);
@@ -125,7 +127,7 @@ export default function PurchaseBillForm({
           method: 'POST',
           body: JSON.stringify({
             supplierId: form.supplierId,
-            unregistered: Boolean(form.unregistered),
+            unregistered: !order && Boolean(form.unregistered),
             items: items.map((l) => ({
               productId: l.productId,
               quantity: Number(l.quantity) || 1,
@@ -182,7 +184,7 @@ export default function PurchaseBillForm({
   }, []);
 
   const pickSupplier = (s) => {
-    setForm({ ...form, supplierId: s.id, unregistered: !String(s.gstNumber || '').trim() });
+    setForm(order ? { ...form, supplierId: s.id } : { ...form, supplierId: s.id, unregistered: !String(s.gstNumber || '').trim() });
     setPickingSupplier(false);
     setTimeout(() => searchRef.current?.focus(), 0);
   };
@@ -194,14 +196,18 @@ export default function PurchaseBillForm({
   const discount = t ? Math.max(0, Number(t.subtotal || 0) - Number(t.taxableAmount ?? t.subtotal ?? 0)) : 0;
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="space-y-4" data-testid="purchase-bill-form">
+    <form ref={formRef} onSubmit={onSubmit} className="space-y-4" data-testid={order ? 'purchase-order-form' : 'purchase-bill-form'}>
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button type="button" className="btn-secondary !px-3" onClick={onCancel} title="Back to purchase bills">← Back</button>
+          <button type="button" className="btn-secondary !px-3" onClick={onCancel} title={`Back to ${docName}s`}>← Back</button>
           <div>
-            <h2 className="text-xl font-bold text-slate-900">{editing ? 'Edit purchase bill' : 'New purchase bill'}</h2>
-            <p className="text-xs text-slate-500">Stock comes IN to the warehouse and the amount is added to the supplier&apos;s payable. F2 item search · Ctrl+S post</p>
+            <h2 className="text-xl font-bold text-slate-900">{editing ? `Edit ${docName}` : `New ${docName}`}</h2>
+            <p className="text-xs text-slate-500">
+              {order
+                ? 'What you are ordering from the supplier: no stock or money moves until the goods are received on a purchase bill. F2 item search · Ctrl+S save'
+                : <>Stock comes IN to the warehouse and the amount is added to the supplier&apos;s payable. F2 item search · Ctrl+S post</>}
+            </p>
           </div>
         </div>
         {form.purchaseOrderId && !editing && <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">Receiving against a purchase order</span>}
@@ -216,7 +222,7 @@ export default function PurchaseBillForm({
             {/* supplier */}
             <Card
               className="lg:col-span-3"
-              title="Bill from (supplier)"
+              title={order ? 'Order to (supplier)' : 'Bill from (supplier)'}
               right={supplier && !editing && (
                 <button type="button" className="btn-secondary !min-h-0 !px-3 !py-1 text-xs" onClick={() => setPickingSupplier(true)}>Change</button>
               )}
@@ -235,18 +241,31 @@ export default function PurchaseBillForm({
                   </div>
                 </div>
               )}
-              <label className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${form.unregistered ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
+              {!order && <label className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${form.unregistered ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}`}>
                 <input type="checkbox" className="mt-0.5" checked={Boolean(form.unregistered)} onChange={(e) => setForm({ ...form, unregistered: e.target.checked })} data-testid="pb-unregistered" />
                 <span>
                   <span className="font-semibold">Unregistered supplier (no GSTIN)</span>
                   <span className="block text-xs text-slate-500">No GST and no input tax credit on this bill; the rate paid is the cost.</span>
                 </span>
-              </label>
+              </label>}
             </Card>
 
             {/* bill details */}
-            <Card className="lg:col-span-2" title="Bill details">
+            <Card className="lg:col-span-2" title={order ? 'Order details' : 'Bill details'}>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+                {order ? (
+                  <>
+                    <div>
+                      <label className="label">Order date</label>
+                      <input type="date" className="input-field" value={form.orderDate || ''} onChange={(e) => setForm({ ...form, orderDate: e.target.value })} data-testid="po-order-date" />
+                    </div>
+                    <div>
+                      <label className="label">Expected delivery</label>
+                      <input type="date" className="input-field" value={form.expectedDate || ''} onChange={(e) => setForm({ ...form, expectedDate: e.target.value })} data-testid="po-expected-date" />
+                    </div>
+                  </>
+                ) : (
+                <>
                 <div>
                   <label className="label">Supplier invoice no.</label>
                   <input className="input-field" value={form.supplierInvoiceNumber || ''} onChange={(e) => setForm({ ...form, supplierInvoiceNumber: e.target.value })} placeholder="As printed on their bill" data-testid="pb-invoice-no" />
@@ -259,8 +278,10 @@ export default function PurchaseBillForm({
                   <label className="label">Due date</label>
                   <input type="date" className="input-field" value={form.dueDate || ''} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
                 </div>
+                </>
+                )}
                 <div>
-                  <label className="label">Stock into</label>
+                  <label className="label">{order ? 'Deliver to' : 'Stock into'}</label>
                   <select className="input-field" value={form.warehouseId || ''} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
                     <option value="">Default warehouse</option>
                     {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -268,8 +289,8 @@ export default function PurchaseBillForm({
                 </div>
               </div>
               <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                <div className="flex justify-between"><span>Bill no.</span><span className="font-semibold">{editing ? 'Unchanged' : 'Given on save'}</span></div>
-                <div className="flex justify-between"><span>GST</span><span className="font-semibold">{form.unregistered ? 'None (unregistered)' : !t ? '—' : igst ? 'IGST (other state)' : 'CGST + SGST (same state)'}</span></div>
+                <div className="flex justify-between"><span>{order ? 'PO no.' : 'Bill no.'}</span><span className="font-semibold">{editing ? 'Unchanged' : 'Given on save'}</span></div>
+                <div className="flex justify-between"><span>GST</span><span className="font-semibold">{!order && form.unregistered ? 'None (unregistered)' : !t ? '—' : igst ? 'IGST (other state)' : 'CGST + SGST (same state)'}</span></div>
               </div>
             </Card>
           </div>
@@ -377,7 +398,7 @@ export default function PurchaseBillForm({
           </Card>
 
           <Card title="Notes">
-            <input className="input-field" value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="e.g. Transport by ABC Roadways · LR 1234" />
+            <input className="input-field" value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={order ? 'e.g. Deliver before the 25th · Payment 30 days' : 'e.g. Transport by ABC Roadways · LR 1234'} />
           </Card>
         </div>
 
@@ -387,7 +408,7 @@ export default function PurchaseBillForm({
             <Row label="Subtotal" value={money(t?.subtotal)} muted />
             {discount > 0.004 && <Row label="Discounts" value={`− ${money(discount)}`} muted />}
             <Row label="Taxable value" value={money(t?.taxableAmount ?? t?.subtotal)} />
-            {form.unregistered ? (
+            {!order && form.unregistered ? (
               <Row label="GST" value="None (unregistered)" muted />
             ) : igst ? (
               <Row label="IGST" value={money(t?.igstAmount)} muted />
@@ -399,16 +420,18 @@ export default function PurchaseBillForm({
             )}
             {t?.roundOff && Math.abs(t.roundOff) >= 0.01 ? <Row label="Round off" value={money(t.roundOff)} muted /> : null}
             <div className="mt-3 rounded-xl bg-slate-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bill total</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{order ? 'Order total' : 'Bill total'}</div>
               <div className="text-3xl font-black tabular-nums text-slate-900" data-testid="pb-total">{money(t?.grandTotal)}</div>
               {t?.grandTotal > 0 && <div className="mt-1 text-xs text-slate-500">{amountInWords(t.grandTotal)}</div>}
             </div>
             <button type="submit" className="btn-primary mt-4 w-full !py-3 text-base" disabled={saving || !form.supplierId || !items.length} data-testid="pb-post">
-              {saving ? 'Saving…' : editing ? 'Save changes (Ctrl+S)' : 'Post bill & stock IN (Ctrl+S)'}
+              {saving ? 'Saving…' : editing ? 'Save changes (Ctrl+S)' : order ? 'Save purchase order (Ctrl+S)' : 'Post bill & stock IN (Ctrl+S)'}
             </button>
             <button type="button" className="btn-secondary mt-2 w-full" onClick={onCancel}>Cancel</button>
             <p className="mt-3 text-xs text-slate-500">
-              {editing
+              {order
+                ? 'Saved as a draft: approve / send it from Purchase Orders, then use Receive / Bill when the goods arrive.'
+                : editing
                 ? 'Stock and the supplier balance move by the difference from the bill as it was.'
                 : 'Posting adds the stock to the warehouse and the total to the supplier’s payable. Pay it later from Payment Vouchers.'}
             </p>
