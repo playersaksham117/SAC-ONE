@@ -49,7 +49,7 @@ function quickLineAmount(line: CartLine, quick: boolean): number {
     : line.unitPrice * line.quantity - line.discountAmount;
 }
 
-function LineRow({ line, canOverride, canCost, quick = false }: { line: CartLine; canOverride: boolean; canCost: boolean; quick?: boolean }) {
+export function LineRow({ line, canOverride, canCost, quick = false }: { line: CartLine; canOverride: boolean; canCost: boolean; quick?: boolean }) {
   const { setQty, updateLine } = useCart.getState();
   const [open, setOpen] = useState(false);
   // services start with their details open: the work differs for every customer

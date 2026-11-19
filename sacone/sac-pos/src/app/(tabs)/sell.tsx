@@ -12,6 +12,7 @@ import { useCartTotals } from '../../lib/useCartTotals';
 import { useCart } from '../../store/cart';
 import { findByCode, searchProducts, useCatalog } from '../../store/catalog';
 import { CartPanel } from '../cart';
+import { GstInvoiceForm } from '../../ui/GstInvoiceForm';
 import { useHotkeys, useProductColumns, useWide } from '../../ui/layout';
 import { useLedger } from '../../store/ledger';
 import { useCan, useCurrentUser } from '../../store/session';
@@ -55,6 +56,8 @@ export default function Sell() {
   const wide = useWide();
   const columns = useProductColumns();
   const searchRef = useRef<TextInput>(null);
+  // Wide screens: GST bills and quotations use the full invoice form; Quick Bill keeps the product tiles
+  const invoiceForm = wide && !quickRates;
   // F2: search (or scan) · F9: checkout — counter PCs with a keyboard and USB scanner
   const hotkeys = useMemo(() => ({
     F2: () => searchRef.current?.focus(),
@@ -205,7 +208,7 @@ export default function Sell() {
       <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
       <View style={{ flex: 1 }}>
       <Header
-        title="Sell"
+        title={invoiceForm ? (quoting ? 'Quotation' : 'GST Invoice') : 'Sell'}
         subtitle={`${user?.name ?? ''} · ${badge.label}`}
         right={(
           <Row gap={2}>
@@ -237,6 +240,7 @@ export default function Sell() {
           ) : null}
         </View>
         <ExchangeNotice />
+        {invoiceForm ? null : (<>
         <SearchBar
           inputRef={searchRef}
           autoFocus={wide}
@@ -252,12 +256,13 @@ export default function Sell() {
             {categories.map((c) => <Chip key={c} label={c} active={category === c} onPress={() => setCategory(category === c ? null : c)} />)}
           </ScrollView>
         ) : null}
+        </>)}
       </View>
 
-      {productList}
+      {invoiceForm ? <GstInvoiceForm searchRef={searchRef} /> : productList}
       </View>
 
-      {wide ? (
+      {wide && !invoiceForm ? (
         <View style={{ width: 420, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.bg }}>
           <CartPanel />
         </View>
