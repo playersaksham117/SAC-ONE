@@ -163,8 +163,19 @@ export async function renderPdf(html, size = 'A4') {
     try {
       // The browser's own layout: text sits in its rows exactly as on screen (html2canvas's own
       // text drawing puts it a little low, onto the cell borders).
-      canvas = await html2canvas(doc.documentElement, { ...options, foreignObjectRendering: true });
-      if (isBlank(canvas)) throw new Error('blank capture');
+      // html2canvas 1.4.1 draws this capture scale x scale image px right and down (it puts the
+      // foreignObject at x=y=scale), which cut the sheet's right border off. Capture a little
+      // larger and crop that offset away.
+      const { scale } = options;
+      const raw = await html2canvas(doc.documentElement, { ...options, width: width + scale, height: height + scale, foreignObjectRendering: true });
+      if (isBlank(raw)) throw new Error('blank capture');
+      canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(raw, scale * scale, scale * scale, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
     } catch {
       canvas = await html2canvas(doc.body, options);
     }
