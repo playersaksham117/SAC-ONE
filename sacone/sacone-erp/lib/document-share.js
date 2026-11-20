@@ -94,6 +94,24 @@ export function invoiceShareMessage(documentNumber, amount, link, label = 'Invoi
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
 
+/** True when a capture came out empty (foreignObject drawing is not supported everywhere). */
+function isBlank(canvas) {
+  try {
+    const probe = document.createElement('canvas');
+    probe.width = 64;
+    probe.height = 64;
+    const ctx = probe.getContext('2d');
+    ctx.drawImage(canvas, 0, 0, 64, 64);
+    const { data } = ctx.getImageData(0, 0, 64, 64);
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The PDF libraries, loaded on first use. A tab left open while the ERP was updated (or across
  * sleep) can no longer fetch them ("Loading chunk … failed"): say to reload instead of that.
@@ -131,11 +149,42 @@ export async function renderPdf(html, size = 'A4') {
     doc.write(html);
     doc.close();
     await doc.fonts?.ready;
+    await Promise.all([...doc.images].map((img) => (img.complete ? null : new Promise((ok) => { img.onload = ok; img.onerror = ok; }))));
     await nextFrame();
 
-    const canvas = await html2canvas(doc.body, { scale: 2, backgroundColor: '#ffffff', logging: false, windowWidth: doc.body.scrollWidth });
+    // Capture the whole document (a sheet a hair taller than the page must not lose its bottom
+    // border), at 3x (~290 dpi) for crisp text and lines.
+    const width = Math.ceil(Math.max(doc.documentElement.scrollWidth, doc.body.scrollWidth));
+    const height = Math.ceil(Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight));
+    frame.style.height = `${height}px`;
+    await nextFrame();
+    const options = { scale: 3, backgroundColor: '#ffffff', logging: false, useCORS: true, width, height, windowWidth: width, windowHeight: height, x: 0, y: 0, scrollX: 0, scrollY: 0 };
+    let canvas;
+    try {
+      // The browser's own layout: text sits in its rows exactly as on screen (html2canvas's own
+      // text drawing puts it a little low, onto the cell borders).
+      canvas = await html2canvas(doc.documentElement, { ...options, foreignObjectRendering: true });
+      if (isBlank(canvas)) throw new Error('blank capture');
+    } catch {
+      canvas = await html2canvas(doc.body, options);
+    }
+
     const pdf = new jsPDF({ unit: 'mm', format: size.toLowerCase(), orientation: 'portrait', compress: true });
-    const mmPerPx = contentW / canvas.width;
+    let mmPerPx = contentW / canvas.width;
+    const fullH = canvas.height * mmPerPx;
+    // One page that came out up to 4% too tall (rounding, a long address) is shrunk onto the
+    // page and centred, instead of spilling a sliver onto page 2.
+    if (fullH > contentH && fullH <= contentH * 1.04) {
+      mmPerPx = contentH / canvas.height;
+      const w = canvas.width * mmPerPx;
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - w) / 2, margin, w, contentH, undefined, 'FAST');
+      return pdf.output('blob');
+    }
+    if (fullH <= contentH) {
+      // fits: centred across the page, top margin as set by the document
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin, contentW, fullH, undefined, 'FAST');
+      return pdf.output('blob');
+    }
     const pagePx = Math.floor(contentH / mmPerPx);
     const slice = document.createElement('canvas');
     slice.width = canvas.width;
@@ -148,7 +197,7 @@ export async function renderPdf(html, size = 'A4') {
       ctx.fillRect(0, 0, slice.width, h);
       ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
       if (page > 0) pdf.addPage();
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentW, h * mmPerPx);
+      pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, contentW, h * mmPerPx, undefined, 'FAST');
     }
     return pdf.output('blob');
   } finally {
