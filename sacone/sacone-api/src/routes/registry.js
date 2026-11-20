@@ -16,6 +16,7 @@ import { financeRouter } from './finance.js';
 import { quotationRouter, documentNumberingRouter } from './quotations.js';
 import { purchaseRouter } from './purchases.js';
 import { customerReceiptRouter, supplierPaymentVoucherRouter, cashBookRouter } from './party-payments.js';
+import { dashboardRouter } from './dashboards.js';
 import { deliveryChallanRouter } from './delivery-challans.js';
 import { bankImportRouter, bankTransactionRouter } from './bank-import.js';
 import { approvalRouter } from './approvals.js';
@@ -59,6 +60,7 @@ export const ROUTES = [
   ['/api/commission-payments', commissionPaymentRouter],
 
   // Parties & purchasing
+  ['/api/dashboards', dashboardRouter],
   ['/api/customers', customerRouter],
   ['/api/suppliers', supplierRouter],
   ['/api/purchases', purchaseRouter],

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../../../lib/api';
 import { useLiveRefresh } from '../../../../lib/live';
 import HsnSummary from '../../../../components/inventory/HsnSummary';
+import InventoryDashboard from '../../../../components/dashboards/InventoryDashboard';
 import { useAuth, RequirePermission } from '../../../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../../../../components/ui';
 
@@ -52,6 +53,7 @@ export default function InventoryPage() {
   const canApprove = checkPermission('inventory.adjustments.approve');
 
   const tabs = useMemo(() => ([
+    { id: 'dashboard', label: 'Dashboard', show: checkPermission('inventory.stock.view') },
     { id: 'stock', label: 'Stock Levels', show: checkPermission('inventory.stock.view') },
     { id: 'ledger', label: 'Movement Ledger', show: checkPermission('inventory.movements.view') },
     { id: 'adjustments', label: 'Pending Adjustments', show: checkPermission('inventory.adjustments.view') },
@@ -304,7 +306,9 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {loading || !tab ? (
+      {tab === 'dashboard' ? (
+        <InventoryDashboard warehouses={warehouses} />
+      ) : loading || !tab ? (
         <LoadingState />
       ) : tab === 'stock' ? (
         <div className="card overflow-hidden p-0">

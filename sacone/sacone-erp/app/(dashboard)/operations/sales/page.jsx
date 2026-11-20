@@ -9,14 +9,16 @@ import SaleProfit from '../../../../components/sales/SaleProfit';
 import EwayBills from '../../../../components/sales/EwayBills';
 import DeliveryChallans from '../../../../components/sales/DeliveryChallans';
 import PageHeader from '../../../../components/ui';
+import SalesDashboard from '../../../../components/dashboards/SalesDashboard';
 
 export default function Page() {
   const { checkPermission } = useAuth();
   const canQuotes = checkPermission('pos.quotations.view');
   const canSales = checkPermission('pos.sales.view');
   const canProfit = canSales && checkPermission('purchases.bills.view');
-  const [tab, setTab] = useState('invoices');
+  const [tab, setTab] = useState(canSales ? 'dashboard' : 'invoices');
   const tabs = [
+    ...(canSales ? [['dashboard', 'Dashboard']] : []),
     ['invoices', 'Invoices'],
     ...(canQuotes ? [['quotations', 'Quotations']] : []),
     ...(canSales ? [['above', 'Sold Above Price']] : []),
@@ -47,7 +49,12 @@ export default function Page() {
           ))}
         </div>
       )}
-      {tab === 'quotations' && canQuotes ? (
+      {tab === 'dashboard' && canSales ? (
+        <>
+          <PageHeader title="Sales Dashboard" description="Sales, profit, payments, products and customers for the dates you pick, compared with the period before." />
+          <SalesDashboard />
+        </>
+      ) : tab === 'quotations' && canQuotes ? (
         <>
           <PageHeader title="Quotations" description="Quotations from SAC-POS phones (Sale / Quotation toggle). Selling one on the phone marks it converted." />
           <SalesQuotations />
