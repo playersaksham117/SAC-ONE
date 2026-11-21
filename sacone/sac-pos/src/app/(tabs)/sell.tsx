@@ -22,6 +22,19 @@ import { ExchangeNotice } from '../../ui/ExchangeNotice';
 import { QtyPrompt } from '../../ui/QtyPrompt';
 import { Badge, Chip, Empty, Header, IconButton, Row, Screen, SearchBar, Segmented, colors, font, radius, space } from '../../ui/components';
 
+/** Retail price (billed by default) with its label, and the minimum when it is lower. */
+function RetailPrice({ product, shown }: { product: Product; shown: (p: Product) => number }) {
+  const min = product.minPrice != null && product.minPrice > 0 && product.minPrice < product.price - 0.001
+    ? shown({ ...product, price: product.minPrice }) : null;
+  return (
+    <View style={{ alignItems: 'flex-end' }} testID={`retail-${product.sku}`}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.5 }}>RETAIL</Text>
+      <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(shown(product))}</Text>
+      {min != null ? <Text style={{ fontSize: 10, color: colors.textFaint }}>Min {formatMoney(min)}</Text> : null}
+    </View>
+  );
+}
+
 function stockTone(available: number) {
   if (available <= 0) return 'danger' as const;
   if (available <= 5) return 'warning' as const;
@@ -159,7 +172,7 @@ export default function Sell() {
             ? <Badge tone="info" label="Service" />
             : <Badge tone={stockTone(available)} label={available <= 0 ? 'Out of stock' : `${formatQty(available)} ${item.unit}`} />}
           <Row style={{ justifyContent: 'space-between', marginTop: space.sm }}>
-            <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(shownPrice(item))}</Text>
+            <RetailPrice product={item} shown={shownPrice} />
             {inCart ? (
               <Pressable onPress={() => setQtyFor(item)} hitSlop={8} accessibilityLabel={`Change quantity of ${item.name}`}
                 style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 }}>
@@ -203,7 +216,7 @@ export default function Sell() {
           </View>
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <Text style={{ fontSize: font.lg, fontWeight: '800', color: colors.text }}>{formatMoney(shownPrice(item))}</Text>
+          <RetailPrice product={item} shown={shownPrice} />
           {inCart ? (
             <Pressable
               onPress={() => setQtyFor(item)}

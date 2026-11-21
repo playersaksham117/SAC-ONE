@@ -70,10 +70,10 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '700', fontSize: font.md, color: colors.text }} numberOfLines={2}>{line.name}</Text>
           <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
-            {formatMoney(rate)} × {formatQty(line.quantity)} {line.unit}{quick ? ' · incl. GST' : ` · GST ${line.gstRate}%`}
+            {formatMoney(rate)} × {formatQty(line.quantity)} {line.unit}{quick ? ' · incl. GST' : ` · GST ${line.gstRate}%`} · Retail {formatMoney(listRate)}
           </Text>
           {line.discountAmount > 0 ? <Badge tone="success" label={`− ${formatMoney(discount)} discount`} /> : null}
-          {Math.abs(line.unitPrice - line.listPrice) > 0.001 ? <Badge tone="warning" label={`Price changed (list ${formatMoney(listRate)})`} /> : null}
+          {Math.abs(line.unitPrice - line.listPrice) > 0.001 ? <Badge tone="warning" label={`Price changed (retail ${formatMoney(listRate)})`} /> : null}
           {!detailsOpen && line.shortDescription ? <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }} numberOfLines={2}>{line.shortDescription}</Text> : null}
           {!detailsOpen && canCost && line.costAmount != null ? <Text style={{ color: colors.textFaint, fontSize: font.xs }}>Cost to us {formatMoney(line.costAmount)}</Text> : null}
         </View>

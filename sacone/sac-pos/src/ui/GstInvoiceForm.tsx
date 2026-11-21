@@ -100,7 +100,7 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact, onTripl
             <Text style={[cellText, { fontWeight: '700' }]} numberOfLines={2} selectable={false}>{line.name}</Text>
           </Pressable>
           <Text style={{ fontSize: font.xs, color: colors.textMuted }} numberOfLines={1}>
-            {line.sku}{compact ? ` · ${line.unit}` : ''}{Math.abs(line.unitPrice - line.listPrice) > 0.001 ? ` · list ${formatMoney(line.listPrice)}` : ''}{extra ? ` · ${extra}` : ''}
+            {line.sku}{compact ? ` · ${line.unit}` : ''} · Retail {formatMoney(line.listPrice)}{extra ? ` · ${extra}` : ''}
           </Text>
           {/* short description: printed under the item on this bill only */}
           <TextInput
@@ -358,7 +358,11 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
                         <Text style={{ fontSize: font.xs, color: colors.textMuted }} numberOfLines={1}>{[p.sku, p.hsn && `HSN ${p.hsn}`, `GST ${p.gstRate}%`].filter(Boolean).join(' · ')}</Text>
                       </View>
                       <Text style={{ fontSize: font.xs, color: available > 0 ? colors.success : colors.danger, fontWeight: '700' }}>{p.itemType === 'service' ? 'Service' : `${formatQty(available)} ${p.unit}`}</Text>
-                      <Text style={{ fontWeight: '800', color: colors.text, width: 100, textAlign: 'right' }}>{formatMoney(p.price)}</Text>
+                      <View style={{ width: 110, alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textMuted }}>RETAIL</Text>
+                        <Text style={{ fontWeight: '800', color: colors.text }}>{formatMoney(p.price)}</Text>
+                        {p.minPrice != null && p.minPrice > 0 && p.minPrice < p.price - 0.001 ? <Text style={{ fontSize: 10, color: colors.textFaint }}>Min {formatMoney(p.minPrice)}</Text> : null}
+                      </View>
                     </Pressable>
                   );
                 })}
