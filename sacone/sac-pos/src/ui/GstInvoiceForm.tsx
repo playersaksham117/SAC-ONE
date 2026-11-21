@@ -11,6 +11,7 @@ import { amountInWords } from '../lib/receipt';
 import { useCartTotals } from '../lib/useCartTotals';
 import { holdCurrentBill, saveQuotation } from '../services/pos';
 import { lineKey, useCart } from '../store/cart';
+import { nextTap, usePrefs, type TapTrack } from '../store/prefs';
 import { findByCode, searchProducts, useCatalog } from '../store/catalog';
 import { useDevice } from '../store/device';
 import { useCan } from '../store/session';
@@ -61,10 +62,28 @@ const SUMMARY_W = 320;
 /** Item table narrower than this hides the Unit and Tax columns (unit shows with the SKU). */
 const FULL_TABLE_MIN = 900;
 
-function ItemRow({ line, index, canOverride, canCost, computed, compact }: {
+/** The product of a bill line (from the catalogue, or rebuilt from the line if it is gone). */
+function productOf(line: CartLine, products: Record<string, Product>): Product {
+  return products[line.productId] ?? {
+    id: line.productId, name: line.name, sku: line.sku, barcode: line.barcode ?? null, hsn: line.hsn ?? null, unit: line.unit,
+    gstRate: line.gstRate, mrp: line.listPrice, price: line.listPrice, onHand: 0, available: 0, isActive: true, updatedAt: '',
+    warranty: line.warranty ?? null, guarantee: line.guarantee ?? null, itemType: line.itemType,
+  } as Product;
+}
+
+function ItemRow({ line, index, canOverride, canCost, computed, compact, onTripleTap }: {
   line: CartLine; index: number; canOverride: boolean; canCost: boolean;
   computed: ComputedLine | undefined; compact: boolean;
+  /** Set when triple tap is on: the item name tapped 3 times quickly. */
+  onTripleTap?: (line: CartLine) => void;
 }) {
+  const taps = useRef<TapTrack | null>(null);
+  const tapName = () => {
+    if (!onTripleTap) return;
+    const { track, third } = nextTap(taps.current, lineKey(line), Date.now(), () => null);
+    taps.current = track;
+    if (third) onTripleTap(line);
+  };
   const { setQty, updateLine, remove } = useCart.getState();
   const [open, setOpen] = useState(false);
   const issues = validateLine(line, { canOverridePrice: canOverride });
@@ -75,7 +94,11 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact }: {
       <Row gap={space.sm} style={{ paddingVertical: 8, alignItems: 'center' }}>
         <Text style={[cellText, { width: W.n, color: colors.textMuted }]}>{index + 1}</Text>
         <View style={{ flex: 1, minWidth: 140 }}>
-          <Text style={[cellText, { fontWeight: '700' }]} numberOfLines={2}>{line.name}</Text>
+          <Pressable onPress={tapName} disabled={!onTripleTap} testID={`inv-name-${lineKey(line)}`}
+            accessibilityHint={onTripleTap ? 'Tap 3 times quickly to add this item on a new line' : undefined}
+            style={{ alignSelf: 'flex-start', ...(onTripleTap ? { cursor: 'pointer', userSelect: 'none' } : {}) } as object}>
+            <Text style={[cellText, { fontWeight: '700' }]} numberOfLines={2} selectable={false}>{line.name}</Text>
+          </Pressable>
           <Text style={{ fontSize: font.xs, color: colors.textMuted }} numberOfLines={1}>
             {line.sku}{compact ? ` · ${line.unit}` : ''}{Math.abs(line.unitPrice - line.listPrice) > 0.001 ? ` · list ${formatMoney(line.listPrice)}` : ''}{extra ? ` · ${extra}` : ''}
           </Text>
@@ -156,6 +179,18 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
   const qty = lines.reduce((n, l) => n + l.quantity, 0);
 
   const addProduct = (p: Product) => { add(p, 1); setQuery(''); };
+  // Triple tap on an item's name: the same product again, on a new line straight under it
+  const tripleTap = usePrefs((s) => s.tripleTapNewLine);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(null), 2000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  const newLineOf = (line: CartLine) => {
+    add(productOf(line, products), 1, { newLine: true, after: lineKey(line) });
+    setNotice(`${line.name}: added on a new line`);
+  };
   const submitSearch = () => {
     const code = query.trim();
     if (!code) return;
@@ -286,7 +321,15 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
         {/* Items */}
         <Card style={{ padding: space.md }}>
           <Row style={{ justifyContent: 'space-between', marginBottom: space.sm }}>
-            <Text style={head}>Items · {lines.length} line{lines.length === 1 ? '' : 's'} · qty {formatQty(qty)}</Text>
+            <Row gap={space.sm} style={{ flex: 1, flexWrap: 'wrap' }}>
+              <Text style={head}>Items · {lines.length} line{lines.length === 1 ? '' : 's'} · qty {formatQty(qty)}</Text>
+              {notice ? (
+                <View testID="inv-tap-notice" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primarySoft, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 2 }}>
+                  <Ionicons name="return-down-forward" size={13} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: font.xs }} numberOfLines={1}>{notice}</Text>
+                </View>
+              ) : null}
+            </Row>
             <IconButton icon="barcode-outline" label="Scan barcode" tone="primary" onPress={() => router.push('/scan')} />
           </Row>
           <View style={{ zIndex: 2 }}>
@@ -338,14 +381,14 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
             <View style={{ width: W.act }} />
           </Row>
           {lines.length ? lines.map((l, i) => (
-            <ItemRow key={lineKey(l)} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[lineKey(l)]} compact={compact} />
+            <ItemRow key={lineKey(l)} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[lineKey(l)]} compact={compact} onTripleTap={tripleTap ? newLineOf : undefined} />
           )) : (
             <View style={{ paddingVertical: space.xl, alignItems: 'center' }}>
               <Ionicons name="receipt-outline" size={32} color={colors.textFaint} />
               <Text style={{ color: colors.textMuted, marginTop: space.xs }}>No items yet. Type above or scan a barcode to add products.</Text>
             </View>
           )}
-          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. Short description prints under the item. ⋯ on a row: serial numbers{canCost ? ', cost' : ''}.</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. Short description prints under the item.{tripleTap ? ' Tap an item name 3 times for the same item on a new line.' : ''} ⋯ on a row: serial numbers{canCost ? ', cost' : ''}.</Text>
         </Card>
 
         {/* Notes */}

@@ -73,6 +73,13 @@ describe('triple tap: new line in the cart', () => {
     ]);
   });
 
+  it('GST invoice page: a new line goes straight under the tapped line', () => {
+    const a = product('a'); const b = product('b');
+    cart().add(a, 1); cart().add(b, 2);
+    cart().add(a, 1, { newLine: true, after: 'a' });
+    expect(cart().lines.map((l) => [lineKey(l), l.quantity])).toEqual([['a', 1], ['a#2', 1], ['b', 2]]);
+  });
+
   it('the bill keeps both lines and returns treat the product as one item', () => {
     const p = product('a');
     cart().add(p, 2);

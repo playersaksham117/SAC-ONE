@@ -29,7 +29,7 @@ interface CartState {
   setMode: (mode: 'sale' | 'quotation') => void;
   loadQuotation: (q: Quotation) => void;
   /** Adds to the product's last line, or (newLine) as a separate line under it. */
-  add: (p: Product, qty?: number, opts?: { newLine?: boolean }) => void;
+  add: (p: Product, qty?: number, opts?: { newLine?: boolean; after?: string }) => void;
   /** key = lineKey(line); a product's first line is keyed by its productId. */
   setQty: (key: string, qty: number) => void;
   updateLine: (key: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount'>>) => void;
@@ -109,6 +109,8 @@ export const useCart = create<CartState>()(
             quantity: clampQty(qty), unitPrice: p.price, listPrice: p.price, discountAmount: 0, gstRate: p.gstRate,
             warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: null, itemType: p.itemType, // typed per bill in the cart, not taken from the product
           };
+          const at = opts?.after ? s.lines.findIndex((l) => lineKey(l) === opts.after) : -1;
+          if (at >= 0) return { lines: [...s.lines.slice(0, at + 1), line, ...s.lines.slice(at + 1)] };
           return { lines: [...s.lines, line] };
         });
       },
