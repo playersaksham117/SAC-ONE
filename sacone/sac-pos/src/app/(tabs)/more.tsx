@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, Switch, Text, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
 import { CAPABILITY_LABELS, can, type Capability } from '../../domain/permissions';
 import { useSyncBadge } from '../../lib/useSyncInfo';
@@ -12,6 +12,7 @@ import { installedVersion } from '../../lib/appUpdate';
 import { ReconnectBanner } from '../../ui/ConnectForm';
 import { useDevice } from '../../store/device';
 import { useLedger } from '../../store/ledger';
+import { usePrefs } from '../../store/prefs';
 import { useCurrentUser, useSession } from '../../store/session';
 import { syncNow, useSyncStatus } from '../../sync/engine';
 import { confirm } from '../../ui/dialogs';
@@ -125,6 +126,7 @@ export default function More() {
   };
 
   const caps = Object.keys(CAPABILITY_LABELS) as Capability[];
+  const tripleTap = usePrefs((s) => s.tripleTapNewLine);
 
   return (
     <Screen padded={false} scroll>
@@ -165,6 +167,20 @@ export default function More() {
           <KeyValue label="GST collected" value={formatMoney(summary.gst)} muted />
           <Divider />
           <KeyValue label="Expected cash in drawer" value={formatMoney(summary.cashInDrawer)} bold />
+        </Card>
+
+        <SectionTitle>Billing</SectionTitle>
+        <Card>
+          <Row style={{ justifyContent: 'space-between' }} gap={space.md}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: '700', color: colors.text }}>Triple tap = new line</Text>
+              <Text style={{ color: colors.textMuted, fontSize: font.xs, marginTop: 2 }}>
+                Tap a product 3 times quickly to put it on the next line of the bill (e.g. the same item at another rate or with its own description). One tap still adds 1.
+              </Text>
+            </View>
+            <Switch value={tripleTap} onValueChange={(on) => usePrefs.getState().setTripleTapNewLine(on)}
+              trackColor={{ true: colors.primary, false: colors.border }} accessibilityLabel="Triple tap adds a new line" testID="pref-triple-tap" />
+          </Row>
         </Card>
 
         <SectionTitle right={<Badge tone={badge.tone} label={badge.label} />}>Sync with SACONE</SectionTitle>

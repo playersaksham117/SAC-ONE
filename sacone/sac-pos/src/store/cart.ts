@@ -28,10 +28,14 @@ interface CartState {
   setSeries: (series: 'gst' | 'quick') => void;
   setMode: (mode: 'sale' | 'quotation') => void;
   loadQuotation: (q: Quotation) => void;
-  add: (p: Product, qty?: number) => void;
-  setQty: (productId: string, qty: number) => void;
-  updateLine: (productId: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount'>>) => void;
-  remove: (productId: string) => void;
+  /** Adds to the product's last line, or (newLine) as a separate line under it. */
+  add: (p: Product, qty?: number, opts?: { newLine?: boolean }) => void;
+  /** key = lineKey(line); a product's first line is keyed by its productId. */
+  setQty: (key: string, qty: number) => void;
+  updateLine: (key: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount'>>) => void;
+  remove: (key: string) => void;
+  /** Put the lines back as they were (undo of a triple tap's first two taps). */
+  restoreLines: (lines: CartLine[]) => void;
   setCustomer: (id: string | null) => void;
   setInvoiceDiscount: (amount: number) => void;
   setNotes: (notes: string) => void;
@@ -43,6 +47,9 @@ interface CartState {
 /** GST invoices are made on SAC-POS web only; the phone / tablet app makes Quick Bills and quotations. */
 export const GST_BILLS_HERE = Platform.OS === 'web';
 const allowedSeries = (series: 'gst' | 'quick' | null | undefined): 'gst' | 'quick' => (GST_BILLS_HERE && series !== 'quick' ? 'gst' : 'quick');
+
+/** A cart line's key: the product id, or its own id when it is an extra line of that product. */
+export const lineKey = (l: Pick<CartLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId;
 
 const clampQty = (q: number) => Math.min(Math.max(Math.round(q * 1000) / 1000, 0), MAX_QTY);
 
@@ -82,14 +89,23 @@ export const useCart = create<CartState>()(
         });
       },
 
-      add(p, qty = 1) {
+      add(p, qty = 1, opts) {
         set((s) => {
-          const existing = s.lines.find((l) => l.productId === p.id);
-          if (existing) {
-            return { lines: s.lines.map((l) => (l.productId === p.id ? { ...l, quantity: clampQty(l.quantity + qty) } : l)) };
+          const same = s.lines.filter((l) => l.productId === p.id);
+          const existing = same[same.length - 1];
+          if (existing && !opts?.newLine) {
+            const key = lineKey(existing);
+            return { lines: s.lines.map((l) => (lineKey(l) === key ? { ...l, quantity: clampQty(l.quantity + qty) } : l)) };
+          }
+          const taken = new Set(s.lines.map(lineKey));
+          let lineId: string | undefined;
+          if (taken.has(p.id)) {
+            let n = 2;
+            while (taken.has(`${p.id}#${n}`)) n += 1;
+            lineId = `${p.id}#${n}`;
           }
           const line: CartLine = {
-            productId: p.id, name: p.name, sku: p.sku, barcode: p.barcode, hsn: p.hsn, unit: p.unit,
+            productId: p.id, ...(lineId ? { lineId } : {}), name: p.name, sku: p.sku, barcode: p.barcode, hsn: p.hsn, unit: p.unit,
             quantity: clampQty(qty), unitPrice: p.price, listPrice: p.price, discountAmount: 0, gstRate: p.gstRate,
             warranty: p.warranty ?? null, guarantee: p.guarantee ?? null, shortDescription: null, itemType: p.itemType, // typed per bill in the cart, not taken from the product
           };
@@ -97,20 +113,24 @@ export const useCart = create<CartState>()(
         });
       },
 
-      setQty(productId, qty) {
+      setQty(key, qty) {
         set((s) => ({
           lines: qty <= 0
-            ? s.lines.filter((l) => l.productId !== productId)
-            : s.lines.map((l) => (l.productId === productId ? { ...l, quantity: clampQty(qty) } : l)),
+            ? s.lines.filter((l) => lineKey(l) !== key)
+            : s.lines.map((l) => (lineKey(l) === key ? { ...l, quantity: clampQty(qty) } : l)),
         }));
       },
 
-      updateLine(productId, patch) {
-        set((s) => ({ lines: s.lines.map((l) => (l.productId === productId ? { ...l, ...patch } : l)) }));
+      updateLine(key, patch) {
+        set((s) => ({ lines: s.lines.map((l) => (lineKey(l) === key ? { ...l, ...patch } : l)) }));
       },
 
-      remove(productId) {
-        set((s) => ({ lines: s.lines.filter((l) => l.productId !== productId) }));
+      remove(key) {
+        set((s) => ({ lines: s.lines.filter((l) => lineKey(l) !== key) }));
+      },
+
+      restoreLines(lines) {
+        set({ lines });
       },
 
       setCustomer(id) {

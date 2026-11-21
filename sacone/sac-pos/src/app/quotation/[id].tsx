@@ -96,8 +96,8 @@ export default function QuotationDetail() {
           <KeyValue label="Prepared by" value={quote.userName} muted />
           <KeyValue label="Customer" value={quote.customer?.name ?? 'Walk-in'} muted />
           <Divider />
-          {t.lines.map((l) => (
-            <View key={l.productId} style={{ paddingVertical: 6 }}>
+          {t.lines.map((l, i) => (
+            <View key={`${l.productId}-${i}`} style={{ paddingVertical: 6 }}>
               <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Text style={{ flex: 1, fontWeight: '600', color: colors.text }}>{l.name}</Text>
                 <Text style={{ fontWeight: '700', color: colors.text }}>{formatMoney(l.lineTotal)}</Text>

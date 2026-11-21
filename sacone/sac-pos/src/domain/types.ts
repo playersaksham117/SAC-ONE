@@ -54,6 +54,8 @@ export interface Customer {
 
 export interface CartLine {
   productId: string;
+  /** Set on a second line of the same product (triple tap); lines are told apart by lineKey(). */
+  lineId?: string;
   name: string;
   sku: string;
   barcode?: string | null;

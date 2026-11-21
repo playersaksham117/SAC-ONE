@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { formatMoney } from '../../domain/money';
-import { lineRefundValue, roundRupee } from '../../domain/tax';
+import { lineRefundValue, linesByProduct, roundRupee } from '../../domain/tax';
 import type { Approval, RefundMethod } from '../../domain/types';
 import { validateReturn } from '../../domain/validation';
 import { ValidationError, createReturn } from '../../services/pos';
@@ -41,7 +41,7 @@ export default function ReturnScreen() {
     if (!sale) return 0;
     // whole rupees, like the ERP's credit note
     return roundRupee(Object.entries(qty).reduce((s, [pid, q]) => {
-      const line = sale.totals.lines.find((l) => l.productId === pid);
+      const line = linesByProduct(sale.totals.lines).find((l) => l.productId === pid);
       return s + (line ? lineRefundValue(line, q) : 0);
     }, 0));
   }, [qty, sale]);
@@ -59,7 +59,7 @@ export default function ReturnScreen() {
   const selected = Object.values(qty).some((q) => q > 0);
   const ready = live.errors.length === 0 && Boolean(approval);
 
-  const selectAll = () => setQty(Object.fromEntries(sale.totals.lines.map((l) => [l.productId, l.quantity - (sale.returned[l.productId] || 0)]).filter(([, q]) => (q as number) > 0)));
+  const selectAll = () => setQty(Object.fromEntries(linesByProduct(sale.totals.lines).map((l) => [l.productId, l.quantity - (sale.returned[l.productId] || 0)]).filter(([, q]) => (q as number) > 0)));
 
   const submit = async () => {
     if (!approval) return;
@@ -119,7 +119,7 @@ export default function ReturnScreen() {
         </View>
 
         <SectionTitle right={<Chip label="Select all" icon="checkbox-outline" onPress={selectAll} />}>Items</SectionTitle>
-        {sale.totals.lines.map((l) => {
+        {linesByProduct(sale.totals.lines).map((l) => {
           const remaining = l.quantity - (sale.returned[l.productId] || 0);
           return (
             <Card key={l.productId} style={{ marginBottom: space.sm, padding: space.md }}>

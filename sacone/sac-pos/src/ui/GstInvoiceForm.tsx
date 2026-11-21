@@ -10,7 +10,7 @@ import { INDIA_STATES } from '../lib/indiaPlaces';
 import { amountInWords } from '../lib/receipt';
 import { useCartTotals } from '../lib/useCartTotals';
 import { holdCurrentBill, saveQuotation } from '../services/pos';
-import { useCart } from '../store/cart';
+import { lineKey, useCart } from '../store/cart';
 import { findByCode, searchProducts, useCatalog } from '../store/catalog';
 import { useDevice } from '../store/device';
 import { useCan } from '../store/session';
@@ -83,7 +83,7 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact }: {
           <TextInput
             accessibilityLabel={`Short description for ${line.name}`}
             value={desc}
-            onChangeText={(t) => { setDesc(t); updateLine(line.productId, { shortDescription: t.trim() || null }); }}
+            onChangeText={(t) => { setDesc(t); updateLine(lineKey(line), { shortDescription: t.trim() || null }); }}
             placeholder={line.itemType === 'service' ? '+ Work done' : '+ Short description'}
             placeholderTextColor={colors.textFaint}
             maxLength={500}
@@ -92,20 +92,20 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact }: {
           />
         </View>
         <Text style={[cellText, { width: W.hsn }]} numberOfLines={1}>{line.hsn || '—'}</Text>
-        <Cell key={`q${line.quantity}`} width={W.qty} label={`Quantity of ${line.name}`} value={line.quantity} onCommit={(v) => setQty(line.productId, v)} testID={`inv-qty-${line.productId}`} />
+        <Cell key={`q${line.quantity}`} width={W.qty} label={`Quantity of ${line.name}`} value={line.quantity} onCommit={(v) => setQty(lineKey(line), v)} testID={`inv-qty-${lineKey(line)}`} />
         {compact ? null : <Text style={[cellText, { width: W.unit, color: colors.textMuted }]} numberOfLines={1}>{line.unit}</Text>}
         {canOverride
-          ? <Cell key={`r${line.unitPrice}`} width={W.rate} label={`Rate of ${line.name}`} value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} testID={`inv-rate-${line.productId}`} />
+          ? <Cell key={`r${line.unitPrice}`} width={W.rate} label={`Rate of ${line.name}`} value={line.unitPrice} onCommit={(v) => updateLine(lineKey(line), { unitPrice: v })} testID={`inv-rate-${line.productId}`} />
           : <Text style={[cellText, { width: W.rate, textAlign: 'right' }]}>{formatMoney(line.unitPrice)}</Text>}
         {canOverride
-          ? <Cell key={`d${line.discountAmount}`} width={W.disc} label={`Discount on ${line.name}`} value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} testID={`inv-disc-${line.productId}`} />
+          ? <Cell key={`d${line.discountAmount}`} width={W.disc} label={`Discount on ${line.name}`} value={line.discountAmount} onCommit={(v) => updateLine(lineKey(line), { discountAmount: v })} testID={`inv-disc-${line.productId}`} />
           : <Text style={[cellText, { width: W.disc, textAlign: 'right' }]}>{line.discountAmount ? formatMoney(line.discountAmount) : '—'}</Text>}
         <Text style={[cellText, { width: W.gst, textAlign: 'right' }]}>{line.gstRate}%</Text>
         {compact ? null : <Text style={[cellText, { width: W.tax, textAlign: 'right', color: colors.textMuted }]}>{formatMoney(computed?.gstAmount ?? 0)}</Text>}
         <Text style={[cellText, { width: W.amt, textAlign: 'right', fontWeight: '800' }]}>{formatMoney(computed?.lineTotal ?? 0)}</Text>
         <Row gap={0} style={{ width: W.act, justifyContent: 'flex-end' }}>
           <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
-          <IconButton icon="trash-outline" tone="danger" label={`Remove ${line.name}`} size={18} onPress={() => remove(line.productId)} />
+          <IconButton icon="trash-outline" tone="danger" label={`Remove ${line.name}`} size={18} onPress={() => remove(lineKey(line))} />
         </Row>
       </Row>
       {issues.length && !open ? <Text style={{ color: colors.danger, fontSize: font.xs, marginLeft: W.n + space.sm, marginBottom: 6 }}>{issues.map((i) => i.message).join(' · ')}</Text> : null}
@@ -152,7 +152,7 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
   const compact = (side ? width - SUMMARY_W : width) < FULL_TABLE_MIN && width > 0;
 
   const results = useMemo(() => (query.trim() ? searchProducts(products, query, 8) : []), [products, query]);
-  const computed = useMemo(() => Object.fromEntries(totals.lines.map((l) => [l.productId, l])), [totals.lines]);
+  const computed = useMemo(() => Object.fromEntries(totals.lines.map((l) => [lineKey(l), l])), [totals.lines]);
   const qty = lines.reduce((n, l) => n + l.quantity, 0);
 
   const addProduct = (p: Product) => { add(p, 1); setQuery(''); };
@@ -338,7 +338,7 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
             <View style={{ width: W.act }} />
           </Row>
           {lines.length ? lines.map((l, i) => (
-            <ItemRow key={l.productId} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[l.productId]} compact={compact} />
+            <ItemRow key={lineKey(l)} line={l} index={i} canOverride={canOverride} canCost={canCost} computed={computed[lineKey(l)]} compact={compact} />
           )) : (
             <View style={{ paddingVertical: space.xl, alignItems: 'center' }}>
               <Ionicons name="receipt-outline" size={32} color={colors.textFaint} />

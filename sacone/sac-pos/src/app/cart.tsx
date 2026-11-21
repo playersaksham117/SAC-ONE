@@ -8,7 +8,7 @@ import type { CartLine } from '../domain/types';
 import { validateLine } from '../domain/validation';
 import { useCartTotals } from '../lib/useCartTotals';
 import { holdCurrentBill, saveQuotation } from '../services/pos';
-import { useCart } from '../store/cart';
+import { lineKey, useCart } from '../store/cart';
 import { ExchangeNotice } from '../ui/ExchangeNotice';
 import { useCan } from '../store/session';
 import { confirm, notify } from '../ui/dialogs';
@@ -80,7 +80,7 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
         <Text style={{ fontWeight: '800', fontSize: font.md, color: colors.text }}>{formatMoney(lineGross)}</Text>
       </Row>
       <Row style={{ marginTop: space.sm, justifyContent: 'space-between', flexWrap: 'wrap', rowGap: space.sm }}>
-        <Stepper value={line.quantity} onChange={(v) => setQty(line.productId, v)} />
+        <Stepper value={line.quantity} onChange={(v) => setQty(lineKey(line), v)} />
         <Pressable onPress={() => setSerialOpen(!serialOpen)} hitSlop={8}>
           <Row gap={4}>
             <Ionicons name="barcode-outline" size={16} color={hasWarranty ? colors.primary : colors.textMuted} />
@@ -110,13 +110,13 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
         <Row style={{ marginTop: space.sm }} gap={space.sm}>
           {quick ? (
             <>
-              <NumberInput key={`r${line.unitPrice}`} label="Rate ₹ (incl. GST)" value={rate} onCommit={(v) => updateLine(line.productId, { unitPrice: exclGst(v, line.gstRate, line.listPrice) })} testID={`rate-${line.productId}`} />
-              <NumberInput key={`d${line.discountAmount}`} label="Line discount ₹ (incl. GST)" value={discount} onCommit={(v) => updateLine(line.productId, { discountAmount: exclGst(v, line.gstRate) })} testID={`disc-${line.productId}`} />
+              <NumberInput key={`r${line.unitPrice}`} label="Rate ₹ (incl. GST)" value={rate} onCommit={(v) => updateLine(lineKey(line), { unitPrice: exclGst(v, line.gstRate, line.listPrice) })} testID={`rate-${line.productId}`} />
+              <NumberInput key={`d${line.discountAmount}`} label="Line discount ₹ (incl. GST)" value={discount} onCommit={(v) => updateLine(lineKey(line), { discountAmount: exclGst(v, line.gstRate) })} testID={`disc-${line.productId}`} />
             </>
           ) : (
             <>
-              <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(line.productId, { unitPrice: v })} />
-              <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(line.productId, { discountAmount: v })} />
+              <NumberInput label="Unit price (excl. GST)" value={line.unitPrice} onCommit={(v) => updateLine(lineKey(line), { unitPrice: v })} />
+              <NumberInput label="Line discount ₹" value={line.discountAmount} onCommit={(v) => updateLine(lineKey(line), { discountAmount: v })} />
             </>
           )}
         </Row>
@@ -131,7 +131,7 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
             </Text>
             <TextInput
               value={descText}
-              onChangeText={(t) => { setDescText(t); updateLine(line.productId, { shortDescription: t.trim() || null }); }}
+              onChangeText={(t) => { setDescText(t); updateLine(lineKey(line), { shortDescription: t.trim() || null }); }}
               placeholder={line.itemType === 'service' ? 'e.g. AC gas refill + coil cleaning, 2 units, Sector 21' : 'e.g. 1200 mm, 75 W, 5-star, colour white'}
               placeholderTextColor={colors.textFaint}
               multiline
@@ -144,7 +144,7 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
             <NumberInput
               label={line.itemType === 'service' ? 'Cost to us for this job ₹ (not printed)' : 'Cost to us for this line ₹ (not printed)'}
               value={line.costAmount ?? 0}
-              onCommit={(v) => updateLine(line.productId, { costAmount: v > 0 ? v : null })}
+              onCommit={(v) => updateLine(lineKey(line), { costAmount: v > 0 ? v : null })}
               testID={`cost-${line.productId}`}
             />
           ) : null}
@@ -157,7 +157,7 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
             onChangeText={(t) => {
               setSerialText(t);
               const next = parseSerials(t, line.quantity);
-              if (!next.error) updateLine(line.productId, { serialNumbers: next.serials });
+              if (!next.error) updateLine(lineKey(line), { serialNumbers: next.serials });
             }}
             placeholder={`Serial number${line.quantity > 1 ? 's, one per line' : ''}${hasWarranty ? ' (for warranty)' : ''}`}
             placeholderTextColor={colors.textFaint}
@@ -295,7 +295,7 @@ function CartView({ embedded = false }: { embedded?: boolean }) {
         </Card>
 
         <SectionTitle>Items</SectionTitle>
-        {lines.map((l) => <LineRow key={l.productId} line={l} canOverride={canOverride} canCost={canCost} quick={quick} />)}
+        {lines.map((l) => <LineRow key={lineKey(l)} line={l} canOverride={canOverride} canCost={canCost} quick={quick} />)}
 
         <SectionTitle>Bill</SectionTitle>
         <Card>

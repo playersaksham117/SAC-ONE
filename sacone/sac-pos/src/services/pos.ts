@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { round2 } from '../domain/money';
 import { can } from '../domain/permissions';
-import { calculateCart, lineRefundValue, roundRupee } from '../domain/tax';
+import { calculateCart, lineRefundValue, linesByProduct, roundRupee } from '../domain/tax';
 import type { Approval, Customer, CustomerPayment, Payment, Quotation, RefundMethod, Sale, SaleReturn } from '../domain/types';
 import { compactNotes, type CashDrawer } from '../domain/cash';
 import {
@@ -213,7 +213,7 @@ export function createReturn(
   if (refundMethod === 'credit_note' && !sale.customer) throw new Error('Credit note needs a registered customer');
 
   const lines = Object.entries(qtyByProduct).filter(([, q]) => q > 0).map(([productId, quantity]) => {
-    const sold = sale.totals.lines.find((l) => l.productId === productId)!;
+    const sold = linesByProduct(sale.totals.lines).find((l) => l.productId === productId)!;
     return { productId, sku: sold.sku, name: sold.name, quantity, amount: lineRefundValue(sold, quantity) };
   });
   const ret: SaleReturn = {

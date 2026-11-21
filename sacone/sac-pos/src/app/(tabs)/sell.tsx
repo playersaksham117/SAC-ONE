@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, Text, View, type TextInput } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { formatMoney, formatQty } from '../../domain/money';
 import { inclGst } from '../../domain/tax';
-import type { Product } from '../../domain/types';
+import type { CartLine, Product } from '../../domain/types';
 import { usePendingQty, useSyncBadge } from '../../lib/useSyncInfo';
 import { useCartTotals } from '../../lib/useCartTotals';
-import { GST_BILLS_HERE, useCart } from '../../store/cart';
+import { GST_BILLS_HERE, lineKey, useCart } from '../../store/cart';
+import { nextTap, usePrefs, type TapTrack } from '../../store/prefs';
 import { findByCode, searchProducts, useCatalog } from '../../store/catalog';
 import { CartPanel } from '../cart';
 import { GstInvoiceForm } from '../../ui/GstInvoiceForm';
@@ -76,13 +77,50 @@ export default function Sell() {
     return category ? list.filter((p) => p.category === category) : list;
   }, [products, query, category]);
 
-  const qtyInCart = useMemo(() => Object.fromEntries(lines.map((l) => [l.productId, l.quantity])), [lines]);
+  // a product on two lines (triple tap) shows its total; the quantity prompt edits its last line
+  const qtyInCart = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const l of lines) out[l.productId] = (out[l.productId] || 0) + l.quantity;
+    return out;
+  }, [lines]);
+  const lastLine = useMemo(() => Object.fromEntries(lines.map((l) => [l.productId, l])), [lines]);
+  const lineCount = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const l of lines) out[l.productId] = (out[l.productId] || 0) + 1;
+    return out;
+  }, [lines]);
   const totals = useCart(useShallow((s) => ({ count: s.lines.reduce((n, l) => n + l.quantity, 0), n: s.lines.length })));
   const grand = useCartTotals().totals.grandTotal;
+
+  const tripleTap = usePrefs((s) => s.tripleTapNewLine);
+  const taps = useRef<TapTrack | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(null), 1800);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const addProduct = (p: Product) => {
     add(p, 1);
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  };
+
+  /**
+   * A tap on a product adds one. Three quick taps (when switched on in More) take back the first
+   * two and put the product on a new line of the bill instead.
+   */
+  const tapProduct = (p: Product) => {
+    if (!tripleTap) { addProduct(p); return; }
+    const prev = taps.current;
+    const { track, third } = nextTap(prev, p.id, Date.now(), () => useCart.getState().lines);
+    taps.current = track;
+    if (!third) { addProduct(p); return; }
+    useCart.getState().restoreLines((prev?.before as CartLine[]) ?? useCart.getState().lines);
+    const onBill = useCart.getState().lines.some((l) => l.productId === p.id);
+    add(p, 1, { newLine: true });
+    setNotice(onBill ? `${p.name}: added on a new line` : `${p.name} added`);
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   };
 
   /** Enter in the search box: a USB scanner's barcode (or an exact SKU) adds the item at once. */
@@ -102,7 +140,7 @@ export default function Sell() {
     const inCart = qtyInCart[item.id];
     return (
       <Pressable
-        onPress={() => addProduct(item)}
+        onPress={() => tapProduct(item)}
         onLongPress={() => setQtyFor(item)}
         delayLongPress={350}
         testID={`product-${item.sku}`}
@@ -125,7 +163,7 @@ export default function Sell() {
             {inCart ? (
               <Pressable onPress={() => setQtyFor(item)} hitSlop={8} accessibilityLabel={`Change quantity of ${item.name}`}
                 style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 }}>
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}</Text>
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}{lineCount[item.id] > 1 ? ` · ${lineCount[item.id]} lines` : ''}</Text>
               </Pressable>
             ) : <Ionicons name="add-circle" size={24} color={colors.primary} />}
           </Row>
@@ -139,10 +177,10 @@ export default function Sell() {
     const inCart = qtyInCart[item.id];
     return (
       <Pressable
-        onPress={() => addProduct(item)}
+        onPress={() => tapProduct(item)}
         onLongPress={() => setQtyFor(item)}
         delayLongPress={350}
-        accessibilityHint="Tap to add one, press and hold to type a quantity"
+        accessibilityHint={tripleTap ? 'Tap to add one, tap 3 times quickly for a new line, press and hold to type a quantity' : 'Tap to add one, press and hold to type a quantity'}
         testID={`product-${item.sku}`}
         style={({ pressed }) => ({
           flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.surface, padding: space.md,
@@ -173,7 +211,7 @@ export default function Sell() {
               accessibilityLabel={`Change quantity of ${item.name}`}
               style={{ backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
-              <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}</Text>
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: font.xs }}>× {formatQty(inCart)}{lineCount[item.id] > 1 ? ` · ${lineCount[item.id]} lines` : ''}</Text>
               <Ionicons name="create-outline" size={12} color="#fff" />
             </Pressable>
           ) : (
@@ -288,14 +326,25 @@ export default function Sell() {
         </Pressable>
       ) : null}
 
+      {notice ? (
+        <View pointerEvents="none" testID="tap-notice"
+          style={{ position: 'absolute', left: space.lg, right: space.lg, bottom: !wide && totals.n ? 92 : space.lg, alignItems: 'center' }}>
+          <View style={{ backgroundColor: colors.dark, borderRadius: radius.pill, paddingHorizontal: space.lg, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="return-down-forward" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '700' }} numberOfLines={1}>{notice}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <QtyPrompt
         product={qtyFor}
         inclusive={quickRates}
-        current={qtyFor ? qtyInCart[qtyFor.id] || 0 : 0}
+        current={qtyFor ? lastLine[qtyFor.id]?.quantity || 0 : 0}
         available={qtyFor ? qtyFor.available - (pending[qtyFor.id] || 0) : 0}
         onSet={(q) => {
           if (!qtyFor) return;
-          if (qtyInCart[qtyFor.id]) setQty(qtyFor.id, q);
+          const last = lastLine[qtyFor.id];
+          if (last) setQty(lineKey(last), q);
           else if (q > 0) add(qtyFor, q);
         }}
         onClose={() => setQtyFor(null)}

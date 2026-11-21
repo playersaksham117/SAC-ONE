@@ -1,4 +1,5 @@
 import { round2 } from './money';
+import { linesByProduct } from './tax';
 import type { CartLine, CartTotals, Customer, Payment, Product, Sale } from './types';
 
 export interface Issue {
@@ -198,7 +199,7 @@ export function validateReturn(sale: Sale, qtyByProduct: Record<string, number>,
   const entries = Object.entries(qtyByProduct).filter(([, q]) => q > 0);
   if (!entries.length) r.errors.push({ message: 'Select at least one item to return' });
   for (const [productId, qty] of entries) {
-    const soldLine = sale.totals.lines.find((l) => l.productId === productId);
+    const soldLine = linesByProduct(sale.totals.lines).find((l) => l.productId === productId);
     if (!soldLine) { r.errors.push({ message: 'Item not on this bill' }); continue; }
     const sold = sale.totals.lines.filter((l) => l.productId === productId).reduce((s, l) => s + l.quantity, 0);
     const remaining = sold - (sale.returned[productId] || 0);

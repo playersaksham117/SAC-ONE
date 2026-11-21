@@ -785,15 +785,25 @@ export class PosSyncService {
       throw syncError(`Original sale ${ret.sale_number || '—'} is not synced yet`, 'SALE_NOT_SYNCED');
     }
     const remaining = new Map(sale.items.map((i) => [i.id, i.quantity - i.quantityReturned]));
-    const lines = (ret.items || []).map((item) => {
+    // A product billed on two lines (the POS's triple tap) is returned as one item: take it from
+    // its lines in bill order.
+    const lines = (ret.items || []).flatMap((item) => {
       const product = this.#resolveProduct(item);
-      const saleItem = sale.items.find((si) => (product ? si.productId === product.id : si.sku === item.sku)
-        && remaining.get(si.id) >= num(item.quantity) - 0.000001);
-      if (!saleItem) {
+      const candidates = sale.items.filter((si) => (product ? si.productId === product.id : si.sku === item.sku)
+        && remaining.get(si.id) > 0.000001);
+      let left = num(item.quantity);
+      const out = [];
+      for (const si of candidates) {
+        if (left <= 0.000001) break;
+        const take = Math.min(left, remaining.get(si.id));
+        remaining.set(si.id, remaining.get(si.id) - take);
+        out.push({ saleItemId: si.id, quantity: Math.round(take * 1000) / 1000 });
+        left -= take;
+      }
+      if (!out.length || left > 0.000001) {
         throw syncError(`Return line ${item.sku}: not found on ${sale.invoiceNumber} or over-returned`, 'RETURN_LINE_INVALID');
       }
-      remaining.set(saleItem.id, remaining.get(saleItem.id) - num(item.quantity));
-      return { saleItemId: saleItem.id, quantity: num(item.quantity) };
+      return out;
     });
     const refund = str(ret.refund_method).toLowerCase();
     const created = posService.createReturn({

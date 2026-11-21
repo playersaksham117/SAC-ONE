@@ -426,8 +426,8 @@ export default function Checkout() {
   const billSummary = (
     <Card style={{ marginTop: space.md }}>
       <Text style={{ fontWeight: '800', color: colors.text, marginBottom: space.sm }}>{quickBill ? 'Quick Bill' : 'GST invoice'} · {totals.lines.length} item{totals.lines.length === 1 ? '' : 's'}</Text>
-      {totals.lines.slice(0, 12).map((l) => (
-        <Row key={l.productId} style={{ justifyContent: 'space-between', paddingVertical: 3 }}>
+      {totals.lines.slice(0, 12).map((l, i) => (
+        <Row key={`${l.productId}-${i}`} style={{ justifyContent: 'space-between', paddingVertical: 3 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text }} numberOfLines={1}>{l.name}</Text>
             {l.shortDescription ? <Text style={{ color: colors.textMuted, fontSize: font.xs }} numberOfLines={1}>{l.shortDescription}</Text> : null}

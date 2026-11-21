@@ -77,6 +77,26 @@ export function roundRupee(n: number): number {
 }
 
 /** Value of `qty` units of a sold line, pro-rata to what the customer paid for it. */
+/**
+ * A bill's lines with each product once: a product billed on two lines (triple tap) is returned
+ * as one item, its quantity and value added up.
+ */
+export function linesByProduct(lines: ComputedLine[]): ComputedLine[] {
+  const out = new Map<string, ComputedLine>();
+  for (const l of lines) {
+    const seen = out.get(l.productId);
+    if (!seen) { out.set(l.productId, { ...l }); continue; }
+    seen.quantity = round2(seen.quantity + l.quantity);
+    seen.gross = round2(seen.gross + l.gross);
+    seen.discountAmount = round2(seen.discountAmount + l.discountAmount);
+    seen.invoiceDiscountShare = round2(seen.invoiceDiscountShare + l.invoiceDiscountShare);
+    seen.taxableAmount = round2(seen.taxableAmount + l.taxableAmount);
+    seen.gstAmount = round2(seen.gstAmount + l.gstAmount);
+    seen.lineTotal = round2(seen.lineTotal + l.lineTotal);
+  }
+  return [...out.values()];
+}
+
 export function lineRefundValue(line: ComputedLine, qty: number): number {
   if (!line.quantity) return 0;
   return round2(line.lineTotal * (qty / line.quantity));
