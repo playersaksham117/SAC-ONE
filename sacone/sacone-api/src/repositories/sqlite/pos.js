@@ -464,7 +464,7 @@ export class PosSaleRepository {
         warranty_unit = (SELECT p.warranty_unit FROM products p WHERE p.id = pos_sale_items.product_id),
         guarantee_value = (SELECT p.guarantee_value FROM products p WHERE p.id = pos_sale_items.product_id),
         guarantee_unit = (SELECT p.guarantee_unit FROM products p WHERE p.id = pos_sale_items.product_id),
-        base_price = (SELECT p.selling_price FROM products p WHERE p.id = pos_sale_items.product_id)
+        base_price = (SELECT MAX(COALESCE(p.retail_price, 0), COALESCE(p.selling_price, 0)) FROM products p WHERE p.id = pos_sale_items.product_id)
       WHERE sale_id = ?
     `).run(saleId);
   }

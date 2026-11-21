@@ -65,7 +65,7 @@ export class QuotationService {
       if (!product || !product.isActive) {
         throw new AppError(`Product not found on line ${index + 1}`, 400);
       }
-      const defaultPrice = product.sellingPrice;
+      const defaultPrice = product.retailPrice ?? product.sellingPrice;
       let unitPrice = item.unitPrice != null ? Number(item.unitPrice) : defaultPrice;
       if (unitPrice !== defaultPrice && !allowPriceEdit) {
         authService.checkPermission(actor.permissions, 'pos.pricing.edit');

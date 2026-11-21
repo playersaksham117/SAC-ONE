@@ -53,7 +53,7 @@ function Delta({ value }) {
   return <span className={`font-semibold ${tone}`}>{value === 0 ? '—' : signed(value)}</span>;
 }
 
-/** Sales → Sold Above Price: every item sold against its base selling price, and how much extra it earned. */
+/** Sales → Sold Above Price: every item sold against its retail price, and how much extra it earned. */
 export default function SoldAbovePrice() {
   const { session } = useAuth();
   const [filters, setFilters] = useState({ search: '', dateFrom: '', dateTo: '', show: 'above' });
@@ -97,7 +97,7 @@ export default function SoldAbovePrice() {
       <div className="space-y-4">
         <PageHeader
           title="Sold Above Price"
-          description="Every item sold, against its base selling price: what was sold above the base price and how much extra it earned. Prices before GST, after line and bill discounts; returned quantity is left out."
+          description="Every item sold, against its retail price: what was sold above the base price and how much extra it earned. Prices before GST, after line and bill discounts; returned quantity is left out."
           actions={<button type="button" className="btn-secondary" onClick={exportCsv} disabled={!data}>⬇ Export CSV</button>}
         />
         <Alert message={error} />
@@ -152,7 +152,7 @@ export default function SoldAbovePrice() {
             />
 
             {tab === 'lines' && (data.lines.length === 0 ? (
-              <EmptyPanel title="Nothing here" description={applied.show === 'above' ? 'No item was sold above its base selling price in this period.' : 'No sales match these filters.'} />
+              <EmptyPanel title="Nothing here" description={applied.show === 'above' ? 'No item was sold above its retail price in this period.' : 'No sales match these filters.'} />
             ) : (
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <table className="min-w-full text-sm">

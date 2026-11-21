@@ -227,7 +227,7 @@ export class DashboardService {
     // stock per product (goods only), summed over the chosen warehouse(s)
     const stock = db.prepare(`
       SELECT p.id, p.name, p.sku, COALESCE(cat.name,'Uncategorised') category, COALESCE(b.name,'') brand,
-        COALESCE(p.purchase_price,0) cost, COALESCE(p.selling_price,0) price, COALESCE(p.mrp,0) mrp,
+        COALESCE(p.purchase_price,0) cost, MAX(COALESCE(p.retail_price,0), COALESCE(p.selling_price,0)) price, COALESCE(p.mrp,0) mrp,
         COALESCE(p.reorder_level,0) reorder, COALESCE(p.minimum_stock,0) minimum,
         COALESCE((SELECT SUM(sl.quantity_on_hand) FROM stock_levels sl WHERE sl.product_id = p.id${wh}),0) qty
       FROM products p LEFT JOIN categories cat ON cat.id = p.category_id LEFT JOIN brands b ON b.id = p.brand_id

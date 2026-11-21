@@ -48,7 +48,10 @@ function mapProduct(row) {
     itemType: row.item_type === 'service' ? 'service' : 'goods',
     gstPercentage: Number(row.gst_percentage || 0),
     mrp: Number(row.mrp || 0),
+    /** Minimum selling price (the floor); shown as "Min. selling price". */
     sellingPrice: Number(row.selling_price || 0),
+    /** Default billing price; never below the minimum (an old or missing value falls back to it). */
+    retailPrice: Math.max(Number(row.retail_price || 0), Number(row.selling_price || 0)),
     purchasePrice: Number(row.purchase_price || 0),
     reorderLevel: Number(row.reorder_level || 0),
     minimumStock: Number(row.minimum_stock || 0),
@@ -354,8 +357,8 @@ export class ProductRepository {
       INSERT INTO products (
         id, name, sku, barcode, category_id, brand_id, unit_id, model_variant, attributes, hsn_code, gst_percentage,
         mrp, selling_price, purchase_price, reorder_level, minimum_stock, image_url, description,
-        is_active, web_store_published, created_at, updated_at, created_by, item_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_active, web_store_published, created_at, updated_at, created_by, item_type, retail_price
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.name,
@@ -380,7 +383,8 @@ export class ProductRepository {
       now,
       now,
       data.createdBy || null,
-      data.itemType === 'service' ? 'service' : 'goods'
+      data.itemType === 'service' ? 'service' : 'goods',
+      Number(data.retailPrice) > 0 ? Number(data.retailPrice) : Number(data.sellingPrice || 0)
     );
 
     return this.findById(id);
@@ -412,7 +416,7 @@ export class ProductRepository {
     db.prepare(`
       UPDATE products SET
         name = ?, sku = ?, barcode = ?, category_id = ?, brand_id = ?, unit_id = ?,
-        model_variant = ?, attributes = ?, hsn_code = ?, gst_percentage = ?, mrp = ?, selling_price = ?, purchase_price = ?,
+        model_variant = ?, attributes = ?, hsn_code = ?, gst_percentage = ?, mrp = ?, selling_price = ?, retail_price = ?, purchase_price = ?,
         reorder_level = ?, minimum_stock = ?, image_url = ?, description = ?,
         is_active = ?, web_store_published = ?, item_type = ?, updated_at = ?
       WHERE id = ?
@@ -429,6 +433,7 @@ export class ProductRepository {
       data.gstPercentage !== undefined ? Number(data.gstPercentage) : existing.gstPercentage,
       data.mrp !== undefined ? Number(data.mrp) : existing.mrp,
       data.sellingPrice !== undefined ? Number(data.sellingPrice) : existing.sellingPrice,
+      data.retailPrice !== undefined && data.retailPrice !== null ? Number(data.retailPrice) : existing.retailPrice,
       data.purchasePrice !== undefined ? Number(data.purchasePrice) : existing.purchasePrice,
       data.reorderLevel !== undefined ? Number(data.reorderLevel) : existing.reorderLevel,
       data.minimumStock !== undefined ? Number(data.minimumStock) : existing.minimumStock,

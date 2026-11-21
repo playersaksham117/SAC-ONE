@@ -592,7 +592,7 @@ export class PosSyncService {
       const line = {
         productId: product.id,
         quantity: num(item.quantity),
-        unitPrice: num(item.unit_price, product.sellingPrice),
+        unitPrice: num(item.unit_price, product.retailPrice ?? product.sellingPrice),
         discountAmount: num(item.discount_amount, 0),
       };
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
@@ -650,7 +650,7 @@ export class PosSyncService {
       const line = {
         productId: product.id,
         quantity: num(item.quantity),
-        unitPrice: num(item.unit_price, product.sellingPrice),
+        unitPrice: num(item.unit_price, product.retailPrice ?? product.sellingPrice),
         discountAmount: num(item.discount_amount, 0),
       };
       if (Array.isArray(item.serial_numbers) && item.serial_numbers.length) line.serialNumbers = item.serial_numbers;
@@ -939,7 +939,9 @@ export class PosSyncService {
       hsn: r.hsn_code,
       gst_rate: Number(r.gst_percentage || 0),
       mrp: Number(r.mrp || 0),
-      selling_price: Number(r.selling_price || 0),
+      // the phone bills at the retail price; min_selling_price is the floor it checks against
+      selling_price: Math.max(Number(r.retail_price || 0), Number(r.selling_price || 0)),
+      min_selling_price: Number(r.selling_price || 0),
       item_type: r.item_type === 'service' ? 'service' : 'goods',
       // Warranty / guarantee from the invoice date (printed on the phone's bills).
       short_description: r.short_description || null,
@@ -1162,6 +1164,7 @@ export class PosSyncService {
       hsnCode: overrides.hsnCode ?? (p.hsn || null),
       gstPercentage: overrides.gstPercentage ?? num(p.gst_rate),
       sellingPrice: overrides.sellingPrice ?? num(p.selling_price),
+      retailPrice: overrides.retailPrice ?? overrides.sellingPrice ?? num(p.selling_price),
       mrp: overrides.mrp ?? num(p.selling_price),
       purchasePrice: overrides.purchasePrice ?? 0,
       categoryId: overrides.categoryId || null,

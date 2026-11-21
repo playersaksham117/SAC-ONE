@@ -144,7 +144,7 @@ export class DeliveryChallanService {
       if (p.itemType === 'service') throw new AppError(`${p.name} is a service: services cannot go on a delivery challan.`, 400);
       const quantity = round2(l.quantity);
       // value for the challan only (insurance / transport), no GST; default the selling price
-      const rate = l.rate !== undefined && l.rate !== '' ? round2(l.rate) : round2(p.sellingPrice || 0);
+      const rate = l.rate !== undefined && l.rate !== '' ? round2(l.rate) : round2(p.retailPrice || p.sellingPrice || 0);
       if (!(rate >= 0)) throw new AppError('Rate must be zero or more', 400);
       return {
         productId: p.id, productName: p.name, sku: p.sku, hsnCode: l.hsnCode || p.hsnCode || null,

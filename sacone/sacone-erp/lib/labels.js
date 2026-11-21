@@ -25,7 +25,7 @@ export const LABEL_FIELDS = [
   ['barcode', 'Barcode (bars)'],
   ['barcodeText', 'Barcode number'],
   ['mrp', 'MRP'],
-  ['price', 'Selling price (incl. GST)'],
+  ['price', 'Retail price (incl. GST)'],
   ['hsn', 'HSN / SAC'],
   ['unit', 'Unit'],
   ['category', 'Category'],
@@ -56,7 +56,7 @@ function oneLabel(p, size, fields, { company, footer }) {
   const unit = Math.min(size.h, size.w * 0.6); // mm the text scales with
   const fs = (k) => `${(unit * k).toFixed(2)}mm`;
   const code = barcodeValue(p);
-  const withGst = Math.round(Number(p.sellingPrice || 0) * (1 + Number(p.gstPercentage || 0) / 100) * 100) / 100;
+  const withGst = Math.round(Number(p.retailPrice || p.sellingPrice || 0) * (1 + Number(p.gstPercentage || 0) / 100) * 100) / 100;
   const meta = [
     on.has('sku') && p.sku ? `SKU ${esc(p.sku)}` : '',
     on.has('hsn') && p.hsnCode ? `HSN ${esc(p.hsnCode)}` : '',

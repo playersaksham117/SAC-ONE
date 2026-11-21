@@ -419,7 +419,7 @@ export class PosService {
         sku: product.sku,
         hsnCode: lineHsn(item.hsnCode, product),
         quantity: item.quantity,
-        unitPrice: item.unitPrice != null ? item.unitPrice : product.sellingPrice,
+        unitPrice: item.unitPrice != null ? item.unitPrice : (product.retailPrice ?? product.sellingPrice),
         discountAmount: item.discountAmount || 0,
         discountPercent: item.discountPercent || 0,
         gstPercentage: item.gstPercentage != null ? item.gstPercentage : product.gstPercentage,

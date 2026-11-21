@@ -227,7 +227,7 @@ export default function InventoryDashboard({ warehouses: givenWarehouses }) {
               </ul>
             </ChartCard>
           </div>
-          <p className="text-xs text-slate-400">Stock is today&apos;s; sold units, flow and movements are for the chosen dates. Values use each item&apos;s purchase price; selling value uses its selling price.</p>
+          <p className="text-xs text-slate-400">Stock is today&apos;s; sold units, flow and movements are for the chosen dates. Values use each item&apos;s purchase price; selling value uses its retail price.</p>
         </>
       )}
     </div>

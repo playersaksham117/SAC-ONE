@@ -17,7 +17,9 @@ export interface Product {
   hsn?: string | null;
   gstRate: number;
   mrp: number;
-  price: number;         // selling price, GST-exclusive
+  price: number;         // retail price (billed by default), GST-exclusive
+  /** Minimum selling price before GST (ERP product master); null on an older server = price. */
+  minPrice?: number | null;
   itemType?: 'goods' | 'service'; // services have no stock (never blocked, not on the stock screen)
   /** Warranty / guarantee from the invoice date (ERP product master). */
   warranty?: Period | null;

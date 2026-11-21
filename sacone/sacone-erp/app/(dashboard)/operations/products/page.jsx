@@ -20,6 +20,7 @@ const EMPTY_PRODUCT = {
   hsnCode: '',
   gstPercentage: 18,
   mrp: 0,
+  retailPrice: 0,
   sellingPrice: 0,
   purchasePrice: 0,
   reorderLevel: 0,
@@ -395,6 +396,7 @@ export default function ProductsPage() {
         hsnCode: full.hsnCode || '',
         gstPercentage: full.gstPercentage || 0,
         mrp: full.mrp || 0,
+        retailPrice: full.retailPrice || full.sellingPrice || 0,
         sellingPrice: full.sellingPrice || 0,
         purchasePrice: full.purchasePrice || 0,
         reorderLevel: full.reorderLevel || 0,
@@ -780,7 +782,8 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Category</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Brand</th>
                     <th className="px-4 py-3 text-right font-medium text-slate-600">MRP</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">Sell</th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-600">Retail</th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-600" title="Minimum selling price">Min. Sell</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">GST%</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Status</th>
                     <th className="px-4 py-3 text-left font-medium text-slate-600">Web</th>
@@ -834,7 +837,8 @@ export default function ProductsPage() {
                         <td className="px-4 py-3 text-slate-600">{product.categoryName || '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{product.brandName || '—'}</td>
                         <td className="px-4 py-3 text-right">{product.mrp.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right">{product.sellingPrice.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right font-medium">{Number(product.retailPrice ?? product.sellingPrice).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-slate-500">{product.sellingPrice.toFixed(2)}</td>
                         <td className="px-4 py-3">{product.gstPercentage}%</td>
                         <td className="px-4 py-3"><StatusBadge active={product.isActive} /></td>
                         <td className="px-4 py-3">
@@ -877,7 +881,7 @@ export default function ProductsPage() {
                   })}
                   {!products.length && (
                     <tr>
-                      <td colSpan={11} className="px-4 py-8 text-center text-slate-500">No products found</td>
+                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">No products found</td>
                     </tr>
                   )}
                 </tbody>
@@ -1045,14 +1049,23 @@ export default function ProductsPage() {
             </div>
             {showAdvanced && (
               <>
-                <div className="grid gap-4 sm:grid-cols-3 md:col-span-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 md:col-span-2">
                   <div>
                     <label className="label">MRP</label>
                     <input type="number" step="0.01" className="input-field" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />
                   </div>
                   <div>
-                    <label className="label">Selling Price</label>
-                    <input type="number" step="0.01" className="input-field" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} />
+                    <label className="label">Retail Price</label>
+                    <input type="number" step="0.01" className="input-field" value={form.retailPrice} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} data-testid="product-retail-price" />
+                    <p className="mt-1 text-xs text-slate-500">Billed by default (before GST)</p>
+                  </div>
+                  <div>
+                    <label className="label">Minimum Selling Price</label>
+                    <input type="number" step="0.01" className="input-field" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} data-testid="product-min-price" />
+                    <p className="mt-1 text-xs text-slate-500">Lowest rate allowed after discount</p>
+                    {Number(form.retailPrice) > 0 && Number(form.retailPrice) < Number(form.sellingPrice) ? (
+                      <p className="mt-1 text-xs font-medium text-rose-600">Retail price is below the minimum</p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="label">Purchase Price</label>
@@ -1169,7 +1182,8 @@ export default function ProductsPage() {
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Category</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Brand</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-600">MRP</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-600">Sell</th>
+                <th className="px-3 py-2 text-right font-medium text-slate-600">Retail</th>
+                <th className="px-3 py-2 text-right font-medium text-slate-600">Min. Sell</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">GST</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600">Status</th>
               </tr>
@@ -1183,6 +1197,7 @@ export default function ProductsPage() {
                   <td className="px-3 py-2">{p.categoryName || '—'}</td>
                   <td className="px-3 py-2">{p.brandName || '—'}</td>
                   <td className="px-3 py-2 text-right">{Number(p.mrp).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">{Number(p.retailPrice ?? p.sellingPrice).toFixed(2)}</td>
                   <td className="px-3 py-2 text-right">{Number(p.sellingPrice).toFixed(2)}</td>
                   <td className="px-3 py-2">{p.gstPercentage}%</td>
                   <td className="px-3 py-2"><StatusBadge active={p.isActive} /></td>
@@ -1190,7 +1205,7 @@ export default function ProductsPage() {
               ))}
               {!selectedProducts.length && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-slate-500">No products selected</td>
+                  <td colSpan={10} className="px-3 py-6 text-center text-slate-500">No products selected</td>
                 </tr>
               )}
             </tbody>

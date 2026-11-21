@@ -49,6 +49,7 @@ export function mapServerProduct(p: ServerProduct): Product {
     gstRate: Number(p.gst_rate || 0),
     mrp: Number(p.mrp || 0),
     price: Number(p.selling_price || 0),
+    minPrice: p.min_selling_price != null ? Number(p.min_selling_price) : null,
     itemType: p.item_type === 'service' ? 'service' : 'goods',
     warranty: periodOf(p.warranty_value, p.warranty_unit),
     guarantee: periodOf(p.guarantee_value, p.guarantee_unit),

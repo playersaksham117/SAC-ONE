@@ -102,7 +102,7 @@ export interface CheckoutContext {
   allowNegativeStock: boolean;
   canOverridePrice: boolean;
   /** productId → lowest allowed unit price (before GST, after discounts), set in ERP Product Master.
-   *  Products without one may not go below their selling price. */
+   *  Products without one may not go below their minimum selling price. */
   minPrices?: Record<string, number>;
   /** Quick Bill: the counter works in prices incl. GST, so messages show those. */
   inclusive?: boolean;
@@ -110,14 +110,15 @@ export interface CheckoutContext {
 
 /**
  * Lines whose effective unit price (after line + bill discounts, before GST) is below the floor:
- * the Commission-settings minimum when one applies, otherwise the product's selling price.
+ * the Commission-settings minimum when one applies, otherwise the product's minimum selling price.
  */
 export function belowMinPrice(
-  totals: CartTotals, minPrices: Record<string, number> = {}, products: Record<string, Pick<Product, 'price'>> = {}, inclusive = false,
+  totals: CartTotals, minPrices: Record<string, number> = {}, products: Record<string, Pick<Product, 'price' | 'minPrice'>> = {}, inclusive = false,
 ): Issue[] {
   const issues: Issue[] = [];
   for (const l of totals.lines) {
-    const floor = minPrices[l.productId] ?? products[l.productId]?.price;
+    const p = products[l.productId];
+    const floor = minPrices[l.productId] ?? (p?.minPrice != null && p.minPrice > 0 ? p.minPrice : p?.price);
     if (!(Number(floor) > 0) || !(l.quantity > 0)) continue;
     const price = round2(l.taxableAmount / l.quantity);
     if (price + 0.005 < floor) {

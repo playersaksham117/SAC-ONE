@@ -249,7 +249,7 @@ export default function DeliveryChallans() {
             <label className="text-sm"><span className="label">GSTIN</span><input className="input-field" value={form.partyGstin} onChange={(e) => setForm({ ...form, partyGstin: e.target.value })} /></label>
           </div>
           <div>
-            <div className="label">Items (rate is for the value on the challan only; blank = selling price)</div>
+            <div className="label">Items (rate is for the value on the challan only; blank = retail price)</div>
             {lines.map((l, i) => (
               <div key={i} className="mb-2 grid gap-2 md:grid-cols-[2fr_90px_110px_2fr_auto]">
                 <select className="input-field" required={i === 0} value={l.productId} onChange={(e) => setLine(i, { productId: e.target.value })}>

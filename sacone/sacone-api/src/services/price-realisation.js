@@ -33,7 +33,7 @@ function linesFor({ dateFrom, dateTo, productId, staffId, search }) {
     SELECT si.id, si.sale_id, s.invoice_number, s.created_at, c.name AS customer_name, c.is_walk_in,
            s.created_by, u.full_name AS staff_name, sa.name AS agent_name,
            si.product_id, si.product_name, si.sku, si.quantity, si.quantity_returned,
-           si.unit_price, si.taxable_amount, si.base_price, p.selling_price AS price_today
+           si.unit_price, si.taxable_amount, si.base_price, MAX(COALESCE(p.retail_price, 0), COALESCE(p.selling_price, 0)) AS price_today
     FROM pos_sale_items si
     JOIN pos_sales s ON s.id = si.sale_id
     LEFT JOIN products p ON p.id = si.product_id

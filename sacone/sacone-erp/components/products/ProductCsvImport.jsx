@@ -4,14 +4,14 @@ import CsvImportDialog from '../common/CsvImportDialog';
 
 const COLUMNS = [
   'sku', 'name', 'item_type', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
-  'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock', 'image_url', 'description', 'is_active', 'web_store_published',
+  'mrp', 'retail_price', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock', 'image_url', 'description', 'is_active', 'web_store_published',
   'warranty', 'guarantee',
 ];
 const TEMPLATE = [
   COLUMNS.join(','),
-  'RICE-5KG,Basmati Rice 5kg,product,,Grocery,Daawat,KG,5 kg,1006,5,650,599,480,10,5,,Long grain rice,1,0,,',
-  'FAN-1200,Ceiling Fan 1200mm,product,,Fans,Havells,NOS,,8414,18,3200,2800,2300,5,2,,"1200 mm, 75 W, 5-star, copper motor",1,0,2 years,6 months',
-  ',Fan installation,service,,Services,,NOS,,998719,18,300,250,,,,,On-site installation,1,0,30 days,',
+  'RICE-5KG,Basmati Rice 5kg,product,,Grocery,Daawat,KG,5 kg,1006,5,650,620,599,480,10,5,,Long grain rice,1,0,,',
+  'FAN-1200,Ceiling Fan 1200mm,product,,Fans,Havells,NOS,,8414,18,3200,2950,2800,2300,5,2,,"1200 mm, 75 W, 5-star, copper motor",1,0,2 years,6 months',
+  ',Fan installation,service,,Services,,NOS,,998719,18,300,280,250,,,,,On-site installation,1,0,30 days,',
 ].join('\n');
 
 /** Products & Services CSV import. */
@@ -30,7 +30,7 @@ export default function ProductCsvImport({ onClose, onImported }) {
       help={(
         <>
           Required: <code>name</code>. Optional: sku, item_type (product / service), barcode, category, brand, unit, model_variant, hsn_code,
-          gst_percentage, mrp, selling_price, purchase_price, reorder_level, minimum_stock, image_url, description, is_active, web_store_published,
+          gst_percentage, mrp, retail_price (billed by default), selling_price (the minimum selling price), purchase_price, reorder_level, minimum_stock, image_url, description, is_active, web_store_published,
           warranty and guarantee (e.g. 1 year, 18 months, 90 days).
           {' '}<b>No duplicate names:</b> a row is matched to a product by its SKU (or by its name when the SKU is blank) and updated;
           a name already used by another product, or repeated in the file, is skipped. Capitals and extra spaces don&apos;t make a name different.

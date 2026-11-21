@@ -42,7 +42,7 @@ function toWebProduct(row) {
     category: row.categoryName || null,
     brand: row.brandName || null,
     mrp: Number(row.mrp || 0),
-    sellingPrice: Number(row.sellingPrice || 0),
+    sellingPrice: Number(row.retailPrice || row.sellingPrice || 0),
     gst: Number(row.gstPercentage || 0),
     productImage: row.imageUrl || null,
     activeStatus: Boolean(row.isActive),
@@ -271,7 +271,7 @@ export class WebstoreService {
         productId: product.id,
         sku: product.sku,
         quantity: qty,
-        unitPrice: item.unitPrice != null ? Number(item.unitPrice) : product.sellingPrice,
+        unitPrice: item.unitPrice != null ? Number(item.unitPrice) : (product.retailPrice ?? product.sellingPrice),
       });
     }
 

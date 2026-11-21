@@ -34,7 +34,7 @@ export const LABEL_FIELDS: [string, string][] = [
   ['barcode', 'Barcode (bars)'],
   ['barcodeText', 'Barcode number'],
   ['mrp', 'MRP'],
-  ['price', 'Selling price (incl. GST)'],
+  ['price', 'Retail price (incl. GST)'],
   ['hsn', 'HSN / SAC'],
   ['unit', 'Unit'],
   ['category', 'Category'],

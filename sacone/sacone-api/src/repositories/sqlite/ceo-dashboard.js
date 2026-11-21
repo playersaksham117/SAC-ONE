@@ -525,7 +525,7 @@ export class CeoDashboardRepository {
     const row = getDatabase().prepare(`
       SELECT
         COALESCE(SUM(s.quantity_on_hand * COALESCE(p.purchase_price, 0)), 0) as at_cost,
-        COALESCE(SUM(s.quantity_on_hand * COALESCE(p.selling_price, 0)), 0) as at_selling,
+        COALESCE(SUM(s.quantity_on_hand * MAX(COALESCE(p.retail_price, 0), COALESCE(p.selling_price, 0))), 0) as at_selling,
         COALESCE(SUM(s.quantity_on_hand), 0) as units,
         COALESCE(SUM(s.quantity_available), 0) as available,
         COALESCE(SUM(s.quantity_reserved), 0) as reserved,

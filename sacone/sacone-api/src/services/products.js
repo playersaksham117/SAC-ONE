@@ -34,6 +34,7 @@ function pricesChanged(previous, next) {
   return (
     previous.mrp !== next.mrp
     || previous.sellingPrice !== next.sellingPrice
+    || previous.retailPrice !== next.retailPrice
     || previous.purchasePrice !== next.purchasePrice
     || previous.gstPercentage !== next.gstPercentage
   );
@@ -43,6 +44,7 @@ function priceSnapshot(product) {
   return {
     mrp: product.mrp,
     sellingPrice: product.sellingPrice,
+    retailPrice: product.retailPrice,
     purchasePrice: product.purchasePrice,
     gstPercentage: product.gstPercentage,
   };
@@ -274,6 +276,7 @@ function normalizeProductInput(data, { preserveSku = null } = {}) {
     gstPercentage: toNumber(data.gstPercentage),
     mrp: toNumber(data.mrp),
     sellingPrice: toNumber(data.sellingPrice),
+    retailPrice: toNumber(data.retailPrice, null),
     purchasePrice: toNumber(data.purchasePrice),
     reorderLevel: toNumber(data.reorderLevel),
     minimumStock: toNumber(data.minimumStock),
@@ -292,6 +295,20 @@ function itemTypeOf(value) {
   if (v === 'service' || v === 'services') return 'service';
   if (v === 'goods' || v === 'product' || v === 'products') return 'goods';
   throw new AppError('Type must be goods or service', 400);
+}
+
+/**
+ * Retail price (billed by default) may not be below the minimum selling price. A retail price
+ * typed now is refused; an older one left behind by a raised minimum moves up with it.
+ */
+function settleRetailPrice(input, data) {
+  const typed = data.retailPrice !== undefined && data.retailPrice !== null && data.retailPrice !== '';
+  const min = Number(input.sellingPrice || 0);
+  if (!(Number(input.retailPrice) > 0)) { input.retailPrice = min; return; }
+  if (Number(input.retailPrice) + 0.000001 < min) {
+    if (typed) throw new AppError(`Retail price (${input.retailPrice}) cannot be below the minimum selling price (${min})`, 400, 'RETAIL_BELOW_MIN');
+    input.retailPrice = min;
+  }
 }
 
 function validateProductRefs(input) {
@@ -517,6 +534,7 @@ export class ProductService {
     }
 
     validateProductRefs(input);
+    settleRetailPrice(input, data);
 
     const periods = periodsFrom(data);
     let product = productRepo.create({
@@ -572,6 +590,7 @@ export class ProductService {
     }
 
     validateProductRefs(input);
+    settleRetailPrice(input, data);
 
     const periods = periodsFrom(data);
     let updated = productRepo.update(id, input);
@@ -730,7 +749,7 @@ export class ProductService {
 
     const headers = [
       'sku', 'name', 'barcode', 'category', 'brand', 'unit', 'model_variant', 'hsn_code', 'gst_percentage',
-      'mrp', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
+      'mrp', 'retail_price', 'selling_price', 'purchase_price', 'reorder_level', 'minimum_stock',
       'image_url', 'description', 'is_active', 'web_store_published', 'item_type', 'warranty', 'guarantee',
     ];
 
@@ -743,7 +762,7 @@ export class ProductService {
     const rows = items.map((p) => [
       p.sku, p.name, p.barcode || '', p.categoryName || '', p.brandName || '', p.unitAbbreviation || p.unitName || '',
       p.modelVariant || '',
-      p.hsnCode || '', p.gstPercentage, p.mrp, p.sellingPrice, p.purchasePrice,
+      p.hsnCode || '', p.gstPercentage, p.mrp, p.retailPrice, p.sellingPrice, p.purchasePrice,
       p.reorderLevel, p.minimumStock, p.imageUrl || '', p.description || '',
       p.isActive ? 1 : 0, p.webStorePublished ? 1 : 0, p.itemType === 'service' ? 'service' : 'product',
       periodText(p.warrantyValue, p.warrantyUnit).toLowerCase(), periodText(p.guaranteeValue, p.guaranteeUnit).toLowerCase(),
@@ -770,7 +789,7 @@ export class ProductService {
     if (table.length < 2) throw new AppError('CSV must include a header and at least one row', 400);
 
     // "Selling Price", "selling-price" and "selling_price" all mean selling_price; "Product Name" → name.
-    const HEADER_ALIASES = { product_name: 'name', item_name: 'name', product: 'name', item: 'name', item_code: 'sku', product_code: 'sku', code: 'sku', gst: 'gst_percentage', gst_rate: 'gst_percentage', 'gst_%': 'gst_percentage', price: 'selling_price', sale_price: 'selling_price', cost_price: 'purchase_price' };
+    const HEADER_ALIASES = { product_name: 'name', item_name: 'name', product: 'name', item: 'name', item_code: 'sku', product_code: 'sku', code: 'sku', gst: 'gst_percentage', gst_rate: 'gst_percentage', 'gst_%': 'gst_percentage', price: 'retail_price', sale_price: 'retail_price', retail: 'retail_price', rate: 'retail_price', min_selling_price: 'selling_price', minimum_selling_price: 'selling_price', min_price: 'selling_price', cost_price: 'purchase_price' };
     const headers = table[0].map((h) => {
       const k = String(h).toLowerCase().trim().replace(/[\s-]+/g, '_').replace(/[()]/g, '');
       return HEADER_ALIASES[k] || k;
@@ -880,6 +899,7 @@ export class ProductService {
               gstPercentage: num(row, 'gst_percentage', 'GST %'),
               mrp: num(row, 'mrp', 'MRP'),
               sellingPrice: num(row, 'selling_price', 'Selling price'),
+              retailPrice: num(row, 'retail_price', 'Retail price'),
               purchasePrice: num(row, 'purchase_price', 'Purchase price'),
               reorderLevel: num(row, 'reorder_level', 'Reorder level'),
               minimumStock: num(row, 'minimum_stock', 'Minimum stock'),
