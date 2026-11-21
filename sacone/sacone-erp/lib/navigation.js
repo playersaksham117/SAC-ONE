@@ -38,43 +38,23 @@ export const ERP_MODULES = [
   {
     id: 'pos',
     section: 'operations',
-    label: 'POS Billing',
-    description: 'SAC-POS web app inside the ERP: bills, quotations, returns and collections',
+    label: 'POS Billing, Sync & Notes',
+    description: 'SAC-POS billing, terminals & sync inbox, and GST credit / debit notes',
     href: '/operations/pos',
     permission: 'pos.sales.view',
-    permissions: ['pos.sales.view', 'pos.devices.view'],
+    permissions: ['pos.sales.view', 'pos.devices.view', 'pos.returns.view', 'purchases.returns.view'],
     icon: '🧾',
-    placeholder: false,
-  },
-  {
-    id: 'pos-devices',
-    section: 'operations',
-    label: 'POS Devices & Sync',
-    description: 'SAC-POS phones, device keys and sync inbox',
-    href: '/admin/pos-devices',
-    permission: 'pos.devices.view',
-    icon: '📲',
     placeholder: false,
   },
   {
     id: 'sales',
     section: 'operations',
-    label: 'Sales',
-    description: 'Invoices, quotations and Sold Above Price (sales against the retail price)',
+    label: 'Sales & Warranty',
+    description: 'Invoices, quotations, Sold Above Price and warranty check by invoice or serial number',
     href: '/operations/sales',
     permission: 'pos.sales.view',
     permissions: ['pos.sales.view', 'sales.orders.view'],
     icon: '💰',
-    placeholder: false,
-  },
-  {
-    id: 'warranty',
-    section: 'operations',
-    label: 'Warranty Check',
-    description: 'Warranty / guarantee by invoice or serial number',
-    href: '/operations/warranty',
-    permission: 'pos.sales.view',
-    icon: '🛡️',
     placeholder: false,
   },
   {
@@ -85,17 +65,6 @@ export const ERP_MODULES = [
     href: '/operations/purchases',
     permission: 'purchases.orders.view',
     icon: '📦',
-    placeholder: false,
-  },
-  {
-    id: 'notes',
-    section: 'operations',
-    label: 'Credit & Debit Notes',
-    description: 'GST credit notes (customer returns) and debit notes (supplier returns)',
-    href: '/operations/notes',
-    permission: 'pos.returns.view',
-    permissions: ['pos.returns.view', 'purchases.returns.view'],
-    icon: '🧾',
     placeholder: false,
   },
   {
@@ -111,26 +80,17 @@ export const ERP_MODULES = [
   {
     id: 'inventory',
     section: 'operations',
-    label: 'Inventory',
-    description: 'Stock levels and movements',
+    label: 'Inventory & Warehouse',
+    description: 'Stock levels, movements, warehouses, locations, transfers and counts',
     href: '/operations/inventory',
     permission: 'inventory.stock.view',
     permissions: [
       'inventory.stock.view',
       'inventory.movements.view',
       'inventory.adjustments.view',
+      'warehouse.warehouses.view',
     ],
     icon: '📊',
-    placeholder: false,
-  },
-  {
-    id: 'warehouse',
-    section: 'operations',
-    label: 'Warehouse',
-    description: 'Warehouses, locations, and transfers',
-    href: '/operations/warehouse',
-    permission: 'warehouse.warehouses.view',
-    icon: '🏭',
     placeholder: false,
   },
 
@@ -304,7 +264,7 @@ export const ERP_MODULES = [
 ];
 
 /** Modules offered as shortcuts on Home until the user has opened some themselves. */
-export const QUICK_ACCESS_DEFAULTS = ['products', 'inventory', 'purchases', 'crm', 'finance', 'warehouse'];
+export const QUICK_ACCESS_DEFAULTS = ['products', 'inventory', 'purchases', 'crm', 'finance', 'sales'];
 
 /**
  * CEO Dashboard and Income & Expense live in a separate web app (sacone-owner, :3001).
@@ -386,3 +346,4 @@ export const LEGACY_REDIRECTS = {
   '/admin/firms': '/admin/company',
   '/audit': '/admin/audit',
 };
+

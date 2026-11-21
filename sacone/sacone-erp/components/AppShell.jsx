@@ -38,6 +38,7 @@ function NavLink({ item, active, onNavigate }) {
     <Link
       href={item.href}
       onClick={onNavigate}
+      title={item.label}
       className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
         active
           ? 'bg-brand-600 text-white shadow-sm'
@@ -45,7 +46,7 @@ function NavLink({ item, active, onNavigate }) {
       }`}
     >
       <span className="text-base">{item.icon}</span>
-      <span className="truncate">{item.label}</span>
+      <span className="min-w-0 leading-tight">{item.label}</span>
     </Link>
   );
 }

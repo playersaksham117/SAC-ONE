@@ -1,65 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { RequirePermission, useAuth } from '../../../../lib/auth-context';
-import SalesInvoices from '../../../../components/sales/SalesInvoices';
-import SalesQuotations from '../../../../components/sales/SalesQuotations';
-import SoldAbovePrice from '../../../../components/sales/SoldAbovePrice';
-import SaleProfit from '../../../../components/sales/SaleProfit';
-import EwayBills from '../../../../components/sales/EwayBills';
-import DeliveryChallans from '../../../../components/sales/DeliveryChallans';
-import PageHeader from '../../../../components/ui';
-import SalesDashboard from '../../../../components/dashboards/SalesDashboard';
+import ModuleHub from '../../../../components/ModuleHub';
+import SalesWorkspace from '../../../../components/sales/SalesWorkspace';
+import WarrantyCheck from '../../../../components/sales/WarrantyCheck';
+import { useAuth } from '../../../../lib/auth-context';
 
-export default function Page() {
+/** Sales and Warranty Check in one module. Old address /operations/warranty opens ?view=warranty. */
+export default function SalesHubPage() {
   const { checkPermission } = useAuth();
-  const canQuotes = checkPermission('pos.quotations.view');
   const canSales = checkPermission('pos.sales.view');
-  const canProfit = canSales && checkPermission('purchases.bills.view');
-  const [tab, setTab] = useState(canSales ? 'dashboard' : 'invoices');
-  const tabs = [
-    ...(canSales ? [['dashboard', 'Dashboard']] : []),
-    ['invoices', 'Invoices'],
-    ...(canQuotes ? [['quotations', 'Quotations']] : []),
-    ...(canSales ? [['above', 'Sold Above Price']] : []),
-    ...(canProfit ? [['profit', 'Profit / Loss']] : []),
-    ...(canSales ? [['eway', 'E-way Bills']] : []),
-    ...(canSales ? [['challans', 'Delivery Challans']] : []),
-  ];
-
-  // Open a tab straight from a link: /operations/sales?tab=above
-  useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get('tab');
-    if (wanted && tabs.some(([id]) => id === wanted)) setTab(wanted);
-  }, [canQuotes, canSales, canProfit]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
-    <RequirePermission permissions={['pos.sales.view', 'sales.orders.view']}>
-      {tabs.length > 1 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === id ? 'bg-brand-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-      {tab === 'dashboard' && canSales ? (
-        <>
-          <PageHeader title="Sales Dashboard" description="Sales, profit, payments, products and customers for the dates you pick, compared with the period before." />
-          <SalesDashboard />
-        </>
-      ) : tab === 'quotations' && canQuotes ? (
-        <>
-          <PageHeader title="Quotations" description="Quotations from SAC-POS phones (Sale / Quotation toggle). Selling one on the phone marks it converted." />
-          <SalesQuotations />
-        </>
-      ) : tab === 'above' && canSales ? <SoldAbovePrice /> : tab === 'profit' && canProfit ? <SaleProfit /> : tab === 'eway' && canSales ? <EwayBills /> : tab === 'challans' && canSales ? <DeliveryChallans /> : <SalesInvoices />}
-    </RequirePermission>
+    <ModuleHub
+      title="Sales & Warranty"
+      icon="💰"
+      views={[
+        { id: 'sales', label: 'Sales', icon: '🧾', description: 'Invoices, quotations, profit, e-way bills and challans', allowed: canSales || checkPermission('sales.orders.view'), render: () => <SalesWorkspace /> },
+        { id: 'warranty', label: 'Warranty Check', icon: '🛡️', description: 'Warranty and guarantee by invoice or serial number', allowed: canSales, render: () => <WarrantyCheck /> },
+      ]}
+    />
   );
 }

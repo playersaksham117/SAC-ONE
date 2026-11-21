@@ -1,0 +1,660 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { apiRequest, getApiBase } from '../../lib/api';
+import { useLiveRefresh } from '../../lib/live';
+import { RequirePermission, useAuth } from '../../lib/auth-context';
+import PageHeader, { Alert, Modal, StatusBadge } from '../ui';
+import {
+  EmptyPanel, ModuleTabs, SectionCard, SkeletonGrid, StatCard, StatusPill, Toolbar,
+} from '../module-ui';
+import { accountLabel } from '../../lib/accounts';
+
+const INBOX_STATUS_COLORS = {
+  applied: 'bg-emerald-100 text-emerald-700',
+  failed: 'bg-rose-100 text-rose-700',
+  pending_review: 'bg-amber-100 text-amber-800',
+  ignored: 'bg-slate-100 text-slate-600',
+  rejected: 'bg-slate-200 text-slate-700',
+};
+
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)} h ago`;
+  return `${Math.round(mins / 1440)} d ago`;
+};
+
+/** This PC's current server URLs for phones (the PC's address can change with DHCP). */
+function useServerUrls() {
+  const [urls, setUrls] = useState(null);
+  useEffect(() => {
+    apiRequest('/api/pos-devices/server-addresses')
+      .then((d) => setUrls((d.addresses || []).map((a) => ({ url: a.url, kind: a.kind, name: a.name }))))
+      .catch(() => setUrls([]));
+  }, []);
+  return urls;
+}
+
+function ServerUrlCard() {
+  const urls = useServerUrls();
+  if (urls === null) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm">
+      <div className="font-semibold text-sky-900">Server URL for SAC-POS phones</div>
+      {urls.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {urls.map((u) => (
+            <span key={u.url} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 ring-1 ring-sky-200">
+              <code className="font-mono text-xs">{u.url}</code>
+              <span className="text-[11px] text-slate-500">{u.kind === 'tailscale' ? 'Tailscale' : u.name}</span>
+              <button type="button" className="text-xs font-medium text-sky-700" onClick={() => navigator.clipboard?.writeText(u.url)}>Copy</button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-sky-800">No network address found. Connect this PC to the shop Wi-Fi.</p>
+      )}
+      <p className="mt-2 text-xs text-sky-800">
+        The phone must be on the same Wi-Fi (or Tailscale). This address can change when the router restarts:
+        reserve it in the router (DHCP reservation) to keep it fixed.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * QR for SAC-POS: sacpos://connect?k=<key>&u=<url>,<url>&n=<device>&f=<firm>. The phone's camera
+ * opens SAC-POS with it, and the app's "Scan QR from ERP" reads it. Drawn here in the browser,
+ * so the key is not sent anywhere again. Same format as sac-pos/src/domain/pairing.ts.
+ */
+function pairingLink({ key, code, urls, deviceName, firm }) {
+  // a short pairing code (c=) instead of the key (k=): the app exchanges it for the key itself
+  const q = [...(key ? [`k=${encodeURIComponent(key)}`] : []), ...(code ? [`c=${encodeURIComponent(code)}`] : []), `u=${urls.map(encodeURIComponent).join(',')}`];
+  if (deviceName) q.push(`n=${encodeURIComponent(deviceName)}`);
+  if (firm) q.push(`f=${encodeURIComponent(firm)}`);
+  return `sacpos://connect?${q.join('&')}`;
+}
+
+const isLoopback = (url) => /^https?:\/\/(localhost|127\.|\[::1\])/i.test(url);
+
+function PairingQr({ link }) {
+  const [src, setSrc] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    import('qrcode')
+      .then(({ default: QRCode }) => QRCode.toDataURL(link, { margin: 1, width: 280, errorCorrectionLevel: 'M' }))
+      .then((url) => { if (alive) setSrc(url); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [link]);
+  if (failed) return <p className="text-xs text-rose-700">Could not draw the QR code. Type the server URL and key instead.</p>;
+  if (!src) return <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="SAC-POS connection QR code" width={220} height={220} className="rounded-xl bg-white p-2 ring-1 ring-amber-200" />;
+}
+
+function SyncKeyBanner({ secret, onClose }) {
+  const urls = useServerUrls();
+  const { session } = useAuth();
+  if (!secret) return null;
+  // Addresses a phone can reach: LAN / Tailscale first; this browser's API address only if it is not localhost.
+  const candidates = [...new Set([...(urls || []).map((u) => u.url), getApiBase()])].filter((u) => u && !isLoopback(u));
+  const apiUrl = candidates[0] || urls?.[0]?.url || getApiBase();
+  const link = candidates.length
+    ? pairingLink({ key: secret.syncKey, urls: candidates, deviceName: secret.device?.name, firm: session?.firm?.name })
+    : null;
+  return (
+    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="font-semibold text-amber-900">Connect {secret.device.name}: shown only once</div>
+        <button type="button" className="text-amber-700" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      <div className="mt-3 flex flex-col gap-4 md:flex-row">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          {urls === null ? <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" /> : link ? <PairingQr link={link} /> : (
+            <p className="max-w-[220px] text-xs text-amber-900">No network address found for phones, so no QR. Connect this PC to the shop Wi-Fi.</p>
+          )}
+          {link && <span className="max-w-[220px] text-center text-xs text-amber-800">In SAC-POS tap <b>Scan QR from ERP</b>, or scan with the phone camera.</span>}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="text-xs text-amber-800">Server URL{candidates.length > 1 ? 's (the phone tries each)' : ''}</div>
+            <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [apiUrl]).join('\n')}</code>
+          </div>
+          <div>
+            <div className="text-xs text-amber-800">Device sync key (to type it instead)</div>
+            <code className="mt-1 block break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{secret.syncKey}</code>
+          </div>
+          <button type="button" className="btn-secondary text-xs" onClick={() => navigator.clipboard?.writeText(secret.syncKey)}>
+            Copy key
+          </button>
+          <p className="text-xs text-amber-800">
+            The QR holds this terminal&apos;s key. It works for the first phone that connects; after that the key is bound to that phone.
+            Close this box once the phone is connected. If a QR was seen by someone else, use <b>Rotate key</b> to replace it.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Connect a device: a one-time 8-character code (and a QR with it) for this terminal. Nothing
+ * changes until a phone / browser uses it; then that device becomes this terminal and the device
+ * that used it before is disconnected.
+ */
+function PairingCodeBanner({ pairing, onClose, onNew }) {
+  const urls = useServerUrls();
+  const { session } = useAuth();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  if (!pairing) return null;
+  const candidates = [...new Set([...(urls || []).map((u) => u.url), getApiBase()])].filter((u) => u && !isLoopback(u));
+  const left = Math.max(0, Math.round((new Date(pairing.expiresAt).getTime() - now) / 1000));
+  const expired = left <= 0;
+  // the QR carries the key held in reserve (every SAC-POS version scans it) and the code
+  const link = candidates.length ? pairingLink({ key: pairing.pendingKey, code: pairing.code, urls: candidates, deviceName: pairing.device?.name, firm: session?.firm?.name }) : null;
+  return (
+    <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="font-semibold text-emerald-900">Connect a device to {pairing.device?.name}</div>
+        <button type="button" className="text-emerald-700" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      <div className="mt-3 flex flex-col gap-4 md:flex-row">
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          {expired ? <div className="flex h-[220px] w-[220px] items-center justify-center rounded-xl bg-white text-center text-xs text-slate-500">Code expired</div>
+            : link ? <PairingQr link={link} /> : <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-white" />}
+          {link && !expired && <span className="max-w-[220px] text-center text-xs text-emerald-800"><b>CONNECT QR</b> — in SAC-POS (any version) tap <b>Scan QR from ERP</b> and scan this one.</span>}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="text-xs text-emerald-800">Pairing code (type it in SAC-POS)</div>
+            <div className={`mt-1 inline-block rounded-xl bg-white px-4 py-2 font-mono text-3xl font-bold tracking-[0.3em] ${expired ? 'text-slate-300 line-through' : 'text-slate-900'}`}>{pairing.code}</div>
+            <div className={`mt-1 text-xs ${expired ? 'text-rose-700' : 'text-emerald-800'}`}>
+              {expired ? 'Expired.' : `Works once · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`}
+              {' '}<button type="button" className="font-semibold underline" onClick={onNew}>New code</button>
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-emerald-800">Server address{candidates.length > 1 ? 'es' : ''}</div>
+            <code className="mt-1 block whitespace-pre-line break-all rounded-lg bg-white px-3 py-2 font-mono text-xs">{(candidates.length ? candidates : [getApiBase()]).join('\n')}</code>
+          </div>
+          <details className="rounded-lg bg-white/70 p-2 text-xs text-emerald-900">
+            <summary className="cursor-pointer font-semibold">Older SAC-POS without a pairing-code box and no camera? Type this key instead</summary>
+            <code className="mt-1 block break-all rounded bg-white px-2 py-1 font-mono">{pairing.pendingKey}</code>
+            <span className="mt-1 block">Works once, until the code expires; it changes nothing until the device uses it.</span>
+          </details>
+          <p className="text-xs text-emerald-900">
+            On the phone or counter PC: <b>Connect with a pairing code</b> (first setup, or More → Connect to another terminal) → server address → this code.
+            {pairing.device?.lastSeenAt ? <> The device now using {pairing.device.name} (last seen {ago(pairing.device.lastSeenAt)}{pairing.device.platform ? `, ${pairing.device.platform}` : ''}) is disconnected when the new one connects; nothing changes until then.</> : null}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Devices tab ───────────────────────── */
+
+function DevicesTab({ devices, warehouses, users, banks = [], onChanged, onSecret, setError }) {
+  const { checkPermission } = useAuth();
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  useEffect(() => {
+    if (formError) document.getElementById('device-form-error')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [formError]);
+
+  const open = (device = null) => { setFormError(''); setForm(device
+    ? { id: device.id, name: device.name, warehouseId: device.warehouseId, actingUserId: device.actingUserId, notes: device.notes || '', paymentAccountId: device.paymentAccountId || '' }
+    : { name: '', code: '', warehouseId: warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || '', actingUserId: '', notes: '', paymentAccountId: '' }); };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setFormError('');
+    try {
+      if (form.id) {
+        await apiRequest(`/api/pos-devices/${form.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      } else {
+        const created = await apiRequest('/api/pos-devices', { method: 'POST', body: JSON.stringify(form) });
+        onSecret(created);
+      }
+      setForm(null);
+      await onChanged();
+    } catch (err) {
+      // shown in the dialog: the page's own message sits behind it
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const [pairing, setPairing] = useState(null);
+  const connectDevice = async (device) => {
+    setError('');
+    try {
+      setPairing(await apiRequest(`/api/pos-devices/${device.id}/pairing-code`, { method: 'POST' }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) { setError(err.message); }
+  };
+
+  const rotate = async (device) => {
+    if (!window.confirm(device.isActive
+      ? `Make a new key for ${device.name} now?\n\nThe phone / browser using it (last seen ${ago(device.lastSeenAt)}) STOPS WORKING at once and must be connected again.\n\nTo connect a device, use “Connect a device” instead: it changes nothing until the new device connects.`
+      : `Re-activate ${device.name} with a new key?`)) return;
+    try {
+      onSecret(await apiRequest(`/api/pos-devices/${device.id}/rotate-key`, { method: 'POST' }));
+      await onChanged();
+    } catch (err) { setError(err.message); }
+  };
+
+  const revoke = async (device) => {
+    if (!window.confirm(`Switch off ${device.name}?\n\nThe phone / browser using it (last seen ${ago(device.lastSeenAt)}) stops syncing at once and shows “not connected”. Use this only for a lost or retired device.`)) return;
+    try {
+      await apiRequest(`/api/pos-devices/${device.id}/revoke`, { method: 'POST' });
+      await onChanged();
+    } catch (err) { setError(err.message); }
+  };
+
+  return (
+    <>
+      <Toolbar className="mb-4 justify-between">
+        <p className="text-sm text-slate-600">Each POS terminal (desktop or phone) gets its own key, warehouse and invoice prefix.</p>
+        {checkPermission('pos.devices.create') && (
+          <button type="button" className="btn-primary" onClick={() => open()}>Register device</button>
+        )}
+      </Toolbar>
+
+      <PairingCodeBanner
+        pairing={pairing}
+        onClose={() => setPairing(null)}
+        onNew={() => pairing && connectDevice(pairing.device)}
+      />
+
+      {!devices.length ? (
+        <EmptyPanel title="No POS devices yet" description="Register a phone to let SAC-POS sync sales, returns, collections and customers into SACONE." />
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {devices.map((d) => (
+            <div key={d.id} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-slate-900">{d.name}</div>
+                  <div className="font-mono text-xs text-slate-500">{d.code} · {d.keyPrefix}…</div>
+                </div>
+                <StatusBadge active={d.isActive} labelInactive="Revoked" />
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <dt className="text-slate-500">Warehouse</dt><dd className="truncate text-right">{d.warehouseName || '—'}</dd>
+                <dt className="text-slate-500">UPI / bank to</dt><dd className="truncate text-right">{d.paymentAccountName || 'Default bank'}</dd>
+                <dt className="text-slate-500">Acts as</dt><dd className="truncate text-right">{d.actingUserName || '—'}</dd>
+                <dt className="text-slate-500">Last seen</dt><dd className="text-right">{ago(d.lastSeenAt)}</dd>
+                <dt className="text-slate-500">Last push</dt><dd className="text-right">{ago(d.lastPushAt)}</dd>
+                <dt className="text-slate-500">Platform</dt><dd className="truncate text-right">{[d.platform, d.appVersion].filter(Boolean).join(' ') || '—'}</dd>
+              </dl>
+              {(d.failedCount > 0 || d.pendingReviewCount > 0) && (
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  {d.failedCount > 0 && <span className="rounded-full bg-rose-100 px-2 py-0.5 font-semibold text-rose-700">{d.failedCount} failed</span>}
+                  {d.pendingReviewCount > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800">{d.pendingReviewCount} to review</span>}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {checkPermission('pos.devices.edit') && (
+                  <>
+                    <button type="button" className="btn-primary px-3 py-1.5 text-xs" onClick={() => connectDevice(d)} title="One-time code / QR; changes nothing until a device uses it">Connect a device</button>
+                    <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={() => open(d)}>Edit</button>
+                    <button type="button" className="px-2 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-800" onClick={() => rotate(d)} title="Disconnects the device using it now">
+                      {d.isActive ? 'New key (advanced)' : 'Re-activate'}
+                    </button>
+                  </>
+                )}
+                {d.isActive && checkPermission('pos.devices.delete') && (
+                  <button type="button" className="px-2 py-1.5 text-xs font-medium text-rose-600" onClick={() => revoke(d)}>Switch off</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal
+        open={Boolean(form)}
+        title={form?.id ? 'Edit POS device' : 'Register POS device'}
+        onClose={() => setForm(null)}
+        footer={(
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setForm(null)}>Cancel</button>
+            <button type="submit" form="device-form" className="btn-primary" disabled={saving}>{form?.id ? 'Save' : 'Create & show key'}</button>
+          </>
+        )}
+      >
+        {form && (
+          <form id="device-form" onSubmit={save} className="space-y-3">
+            <div>
+              <label className="label" htmlFor="dev-name">Device name</label>
+              <input id="dev-name" className="input-field" required placeholder="Counter 1 / Sales rep phone" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            {!form.id && (
+              <div>
+                <label className="label" htmlFor="dev-code">Invoice prefix (optional)</label>
+                <input id="dev-code" className="input-field uppercase" maxLength={10} placeholder="Auto: POS1, POS2…" value={form.code} onChange={(e) => { setForm({ ...form, code: e.target.value }); setFormError(''); }} />
+                <p className="mt-1 text-xs text-slate-500">Letters and digits only (POS-TR is saved as POSTR); each terminal needs its own.</p>
+              </div>
+            )}
+            <div>
+              <label className="label" htmlFor="dev-wh">Warehouse (stock is deducted here)</label>
+              <select id="dev-wh" className="input-field" required value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="dev-user">Records documents as</label>
+              <select id="dev-user" className="input-field" value={form.actingUserId} onChange={(e) => setForm({ ...form, actingUserId: e.target.value })}>
+                <option value="">Me</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.fullName} ({u.roleName})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="dev-bank">UPI / bank payments go to</label>
+              <select id="dev-bank" className="input-field" value={form.paymentAccountId} onChange={(e) => setForm({ ...form, paymentAccountId: e.target.value })}>
+                <option value="">Firm&apos;s default bank{banks.find((b) => b.isDefault) ? ` (${banks.find((b) => b.isDefault).name})` : ''}</option>
+                {banks.map((b) => <option key={b.id} value={b.id}>{accountLabel(b)}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">Also printed under &ldquo;Our Bankers&rdquo; (with its UPI pay QR) on this phone&apos;s invoices.</p>
+            </div>
+            <div>
+              <label className="label" htmlFor="dev-notes">Notes</label>
+              <input id="dev-notes" className="input-field" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            </div>
+            {formError ? <div id="device-form-error"><Alert type="error" message={formError} /></div> : null}
+          </form>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+/* ───────────────────────── Sync inbox tab ───────────────────────── */
+
+function InboxTab({ devices, onChanged, setError, setMessage }) {
+  const { checkPermission } = useAuth();
+  const [filters, setFilters] = useState({ status: 'failed', entityType: '', deviceId: '' });
+  const [rows, setRows] = useState({ items: [], total: 0 });
+  const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState(null);
+
+  const load = useCallback(async (silent = false) => {
+    if (silent !== true) setLoading(true);
+    try {
+      const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString();
+      setRows(await apiRequest(`/api/pos-devices/inbox?limit=200&${qs}`));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, setError]);
+
+  useEffect(() => { load(); }, [load]);
+  useLiveRefresh(() => load(true), { tables: ['pos_sync_inbox'] });
+
+  const act = async (item, action, body) => {
+    try {
+      const res = await apiRequest(`/api/pos-devices/inbox/${item.id}/${action}`, {
+        method: 'POST', body: body ? JSON.stringify(body) : undefined,
+      });
+      setMessage(action === 'retry'
+        ? (res.status === 'applied' ? 'Record applied successfully' : `Still failing: ${res.errorMessage}`)
+        : `Record ${action === 'approve' ? 'approved' : 'rejected'}`);
+      setDetail(null);
+      await Promise.all([load(), onChanged()]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <>
+      <Toolbar className="mb-4">
+        <select className="input-field w-auto" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+          <option value="">All statuses</option>
+          <option value="failed">Failed</option>
+          <option value="pending_review">Pending review</option>
+          <option value="applied">Applied</option>
+          <option value="ignored">Ignored</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <select className="input-field w-auto" value={filters.entityType} onChange={(e) => setFilters({ ...filters, entityType: e.target.value })}>
+          <option value="">All records</option>
+          {['sale', 'return', 'payment', 'customer', 'stock_event', 'product'].map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+        </select>
+        <select className="input-field w-auto" value={filters.deviceId} onChange={(e) => setFilters({ ...filters, deviceId: e.target.value })}>
+          <option value="">All devices</option>
+          {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <span className="ml-auto text-xs text-slate-500">{rows.total} record(s)</span>
+      </Toolbar>
+
+      <SectionCard noPadding>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-2">Received</th>
+                <th className="px-4 py-2">Device</th>
+                <th className="px-4 py-2">Record</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Detail</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>}
+              {!loading && rows.items.map((i) => (
+                <tr key={i.id} className="border-t border-slate-100 align-top">
+                  <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">{fmtTime(i.updatedAt)}</td>
+                  <td className="px-4 py-2 text-xs">{i.deviceCode}</td>
+                  <td className="px-4 py-2">
+                    <div className="text-xs uppercase text-slate-400">{i.entityType.replace('_', ' ')}</div>
+                    <div className="font-mono text-xs">{i.externalRef}</div>
+                  </td>
+                  <td className="px-4 py-2"><StatusPill status={i.status} map={INBOX_STATUS_COLORS} /></td>
+                  <td className="max-w-xs px-4 py-2 text-xs text-slate-600">
+                    {i.errorMessage || i.warnings?.map((w) => w.message).join(' · ') || '—'}
+                    {i.attempts > 1 && <span className="ml-1 text-slate-400">({i.attempts} attempts)</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right text-xs">
+                    <button type="button" className="font-medium text-slate-600" onClick={() => setDetail(i)}>View</button>
+                    {i.status === 'failed' && checkPermission('pos.devices.edit') && (
+                      <button type="button" className="ml-3 font-medium text-brand-600" onClick={() => act(i, 'retry')}>Retry</button>
+                    )}
+                    {i.status === 'pending_review' && i.entityType === 'product' && checkPermission('pos.devices.approve') && (
+                      <button type="button" className="ml-3 font-medium text-emerald-600" onClick={() => act(i, 'approve', {})}>Approve</button>
+                    )}
+                    {['failed', 'pending_review'].includes(i.status) && i.entityType !== 'stock_event' && checkPermission('pos.devices.approve') && (
+                      <button type="button" className="ml-3 font-medium text-rose-600" onClick={() => act(i, 'reject', { reason: window.prompt('Reason for rejecting?') || '' })}>Reject</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!loading && !rows.items.length && (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Nothing here — all synced records are healthy.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <Modal open={Boolean(detail)} title={`${detail?.entityType} ${detail?.externalRef}`} onClose={() => setDetail(null)} size="lg">
+        {detail && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap gap-2">
+              <StatusPill status={detail.status} map={INBOX_STATUS_COLORS} />
+              {detail.errorCode && <span className="rounded-full bg-rose-50 px-2 py-0.5 font-mono text-[11px] text-rose-700">{detail.errorCode}</span>}
+            </div>
+            {detail.errorMessage && <p className="text-rose-700">{detail.errorMessage}</p>}
+            <pre className="max-h-96 overflow-auto rounded-xl bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+              {JSON.stringify(detail.payload, null, 2)}
+            </pre>
+          </div>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+/* ───────────────────────── SAC-POS app updates ───────────────────────── */
+
+/** The newest SAC-POS APK this server holds (copied from GitHub releases) — phones install it from More → App update. */
+function AppReleaseCard() {
+  const { checkPermission } = useAuth();
+  const urls = useServerUrls();
+  // the phone downloads the APK from this server on the shop Wi-Fi (no GitHub / internet needed)
+  const lan = (urls || []).map((u) => u.url).find((u) => u && !isLoopback(u));
+  const installUrl = lan ? `${lan}/api/app/sac-pos.apk` : null;
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => { apiRequest('/api/pos-devices/app-release').then(setStatus).catch((e) => setError(e.message)); }, []);
+  const check = async () => {
+    setBusy(true); setError('');
+    try { setStatus(await apiRequest('/api/pos-devices/app-release/check', { method: 'POST' })); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const latest = status?.latest;
+  const link = latest ? `https://github.com/${status.repo}/releases/download/${latest.tag}/sac-pos.apk` : null;
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-semibold text-slate-900">📲 SAC-POS app update</div>
+          <div className="text-slate-600">
+            {latest
+              ? <>Phones are offered <b>{latest.versionName} (build {latest.versionCode})</b> · {(latest.size / 1048576).toFixed(1)} MB · published {new Date(latest.publishedAt).toLocaleDateString('en-IN')}. Staff install it from SAC-POS → More → App update.</>
+              : 'No app release on this server yet. New APKs are built by GitHub Actions (Gradle, signed with the shop key) and copied here automatically.'}
+          </div>
+          {status?.lastError && <div className="mt-1 text-xs text-rose-700">Last check: {status.lastError}</div>}
+          {error && <div className="mt-1 text-xs text-rose-700">{error}</div>}
+          {link && <div className="mt-1 text-xs text-slate-500">First install on a phone without in-app updates: <a className="font-medium text-brand-600 underline" href={link} target="_blank" rel="noreferrer">download the APK</a></div>}
+          {latest && installUrl && (
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <PairingQr link={installUrl} />
+              <div className="max-w-sm text-xs text-slate-600">
+                <div className="font-semibold text-slate-900">INSTALL QR: installs the SAC-POS app (not for connecting)</div>
+                Scan with the phone camera (phone on the shop Wi-Fi) → download → open → Install. Allow &quot;Install unknown apps&quot; if Android asks.
+                <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono">{installUrl}</code>
+                <span className="mt-1 block">A phone with an older SAC-POS signed by Expo must <b>uninstall it first</b> (sync its bills before) — newer builds are signed with the shop&apos;s own key; after that, updates install from More → App update.</span>
+              </div>
+            </div>
+          )}
+        </div>
+        {checkPermission('pos.devices.edit') && (
+          <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check for new version'}</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Page ───────────────────────── */
+
+export default function PosDevicesPage() {
+  const [tab, setTab] = useState('devices');
+  const [devices, setDevices] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [banks, setBanks] = useState([]);
+  const [summary, setSummary] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [secret, setSecret] = useState(null);
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const [d, s] = await Promise.all([
+        apiRequest('/api/pos-devices'),
+        apiRequest('/api/pos-devices/inbox/summary'),
+      ]);
+      setDevices(d);
+      setSummary(s);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    apiRequest('/api/warehouses').then((w) => setWarehouses((Array.isArray(w) ? w : w.items || []).filter((x) => x.isActive))).catch(() => {});
+    apiRequest('/api/finance/accounts').then((a) => setBanks((Array.isArray(a) ? a : a.items || []).filter((x) => x.accountType === 'bank' || x.accountType === 'upi'))).catch(() => {});
+    apiRequest('/api/users').then((u) => setUsers((Array.isArray(u) ? u : u.items || []).filter((x) => x.isActive))).catch(() => {});
+  }, [load]);
+
+  // Device status (last seen, last sync) and the inbox summary follow every terminal sync.
+  useLiveRefresh(load, { tables: ['pos_devices', 'pos_sync_inbox', 'warehouses', 'users'] });
+
+  const totals = useMemo(() => {
+    const by = (status) => summary.filter((r) => r.status === status).reduce((s, r) => s + r.count, 0);
+    const sales = summary.filter((r) => r.entityType === 'sale' && r.status === 'applied').reduce((s, r) => s + r.count, 0);
+    return { failed: by('failed'), review: by('pending_review'), sales };
+  }, [summary]);
+
+  const online = devices.filter((d) => d.isActive && d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 15 * 60000).length;
+
+  return (
+    <RequirePermission permission="pos.devices.view" fallback={<Alert message="You do not have access to POS devices." />}>
+      <PageHeader
+        title="POS Devices & Sync"
+        description="Connect SAC-POS phones to SACONE. Sales, returns, collections and new customers sync automatically; products, prices, stock and customers flow back. Staff sign in with their ERP login and role permissions."
+      />
+      <Alert type="error" message={error} />
+      <Alert type="success" message={message} />
+      <ServerUrlCard />
+      <AppReleaseCard />
+      <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+        Terminal staff are managed in <Link href="/admin/users" className="font-semibold underline">User Management</Link>: add the person there with a role that has SAC-POS access,
+        and they sign in on the phone with that email and password. Disable the user there to block them on every terminal.
+      </div>
+      <SyncKeyBanner secret={secret} onClose={() => setSecret(null)} />
+
+      {loading ? <SkeletonGrid /> : (
+        <>
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Active devices" value={devices.filter((d) => d.isActive).length} hint={`${online} online (15 min)`} icon="🖥️" />
+            <StatCard label="Synced invoices" value={totals.sales} icon="🧾" tone="success" />
+            <StatCard label="Failed records" value={totals.failed} tone={totals.failed ? 'danger' : 'default'} icon="⚠️" />
+            <StatCard label="Awaiting review" value={totals.review} tone={totals.review ? 'warning' : 'default'} icon="🕒" />
+          </div>
+
+          <div className="mb-4">
+            <ModuleTabs
+              active={tab}
+              onChange={setTab}
+              tabs={[
+                { id: 'devices', label: 'Devices' },
+                { id: 'inbox', label: 'Sync inbox', badge: totals.failed + totals.review },
+              ]}
+            />
+          </div>
+
+          {tab === 'devices' && (
+            <DevicesTab devices={devices} warehouses={warehouses} users={users} banks={banks} onChanged={load} onSecret={setSecret} setError={setError} />
+          )}
+          {tab === 'inbox' && (
+            <InboxTab devices={devices} onChanged={load} setError={setError} setMessage={setMessage} />
+          )}
+        </>
+      )}
+    </RequirePermission>
+  );
+}

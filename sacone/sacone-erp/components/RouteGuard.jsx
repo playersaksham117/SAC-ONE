@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth-context';
-import { findModuleByPath, HOME_PERMISSION } from '../lib/navigation';
+import { canViewModule, findModuleByPath, HOME_PERMISSION } from '../lib/navigation';
 
 export default function RouteGuard({ children }) {
   const pathname = usePathname();
@@ -21,7 +21,7 @@ export default function RouteGuard({ children }) {
     }
 
     const mod = findModuleByPath(pathname);
-    if (mod && !checkPermission(mod.permission)) {
+    if (mod && !canViewModule(checkPermission, mod)) {
       router.replace('/dashboard');
     }
   }, [pathname, loading, session, checkPermission, router]);
