@@ -468,6 +468,28 @@ export class PurchaseRepository {
     })();
   }
 
+  /** Remove a purchase bill and its lines (the service reverses stock and payable first). */
+  deleteBill(id) {
+    const db = getDatabase();
+    db.transaction(() => {
+      db.prepare('DELETE FROM supplier_bill_items WHERE bill_id = ?').run(id);
+      db.prepare('DELETE FROM supplier_bills WHERE id = ?').run(id);
+    })();
+  }
+
+  /** Payments (vouchers or direct) recorded against a purchase bill. */
+  billPaymentCount(id) {
+    const db = getDatabase();
+    const alloc = db.prepare("SELECT COUNT(*) AS n FROM supplier_payment_allocations WHERE document_type = 'purchase_bill' AND document_id = ?").get(id).n;
+    const direct = db.prepare('SELECT COUNT(*) AS n FROM supplier_payments WHERE bill_id = ?').get(id).n;
+    return alloc + direct;
+  }
+
+  /** Debit notes made against a purchase bill (any status). */
+  billReturnCount(id) {
+    return getDatabase().prepare('SELECT COUNT(*) AS n FROM purchase_returns WHERE bill_id = ?').get(id).n;
+  }
+
   markBillStockPosted(id) {
     getDatabase().prepare(`
       UPDATE supplier_bills SET stock_posted = 1, updated_at = ? WHERE id = ?

@@ -68,6 +68,11 @@ purchaseRouter.put('/bills/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.updateBill(req.params.id, req.body || {}, req.actor, req));
 }));
 
+// Owner only: delete a purchase bill (stock comes back out, payable drops; kept in the audit log).
+purchaseRouter.delete('/bills/:id', asyncHandler(async (req, res) => {
+  sendSuccess(res, purchaseService.deleteBill(req.params.id, req.body || {}, req.actor, req));
+}));
+
 // Owner only: mark a bill as from an unregistered supplier (no GST / input credit) or registered.
 purchaseRouter.post('/bills/:id/registration', asyncHandler(async (req, res) => {
   sendSuccess(res, purchaseService.setBillRegistration(req.params.id, req.body?.unregistered, req.actor, req));

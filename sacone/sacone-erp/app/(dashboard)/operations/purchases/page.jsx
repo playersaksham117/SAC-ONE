@@ -406,6 +406,22 @@ export default function PurchasesPage() {
     }
   };
 
+  const deleteBill = async (b) => {
+    const reason = window.prompt(`Delete purchase bill ${b.billNumber}${b.supplierInvoiceNumber ? ` (supplier inv. ${b.supplierInvoiceNumber})` : ''} for ${money(b.grandTotal)}?
+Its items come back out of stock and ${money(b.grandTotal)} comes off the supplier's balance. This cannot be undone.
+
+Reason (optional):`);
+    if (reason === null) return;
+    setError('');
+    try {
+      await apiRequest(`/api/purchases/bills/${b.id}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+      setMessage(`Purchase bill ${b.billNumber} deleted; stock and supplier balance reversed.`);
+      loadTab(true);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
   const billFromPo = async (row) => {
     setError('');
     // The list has no item lines: load the order with them.
@@ -680,6 +696,18 @@ export default function PurchasesPage() {
                           </button>
                         ) : null}
                         <button type="button" className={printButton} onClick={() => setDocOpen({ kind: 'bill', id: b.id })}>Print / PDF</button>
+                        {isOwner && b.status !== 'cancelled' ? (
+                          <button
+                            type="button"
+                            className={`${printButton} ml-2 !text-red-600`}
+                            onClick={() => deleteBill(b)}
+                            disabled={b.amountPaid > 0}
+                            title={b.amountPaid > 0 ? 'A payment is recorded on this bill: delete or move the payment first' : 'Delete bill (admin): stock and supplier balance are reversed'}
+                            data-testid={`delete-bill-${b.billNumber}`}
+                          >
+                            🗑 Delete
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

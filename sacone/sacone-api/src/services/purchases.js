@@ -672,6 +672,70 @@ export class PurchaseService {
     }, actor, req);
   }
 
+  /**
+   * Delete a purchase bill (firm admin only). Its stock comes back out of the warehouse, the
+   * supplier's payable drops by the bill total and a linked PO is no longer received for it.
+   * Not allowed while a payment or a debit note is recorded against the bill. The whole bill
+   * is kept in the audit log.
+   */
+  deleteBill(id, { reason } = {}, actor, req) {
+    authService.checkPermission(actor.permissions, 'purchases.bills.create');
+    if (!isFirmAdmin(actor.user)) throw new AppError('Only the firm admin or the group owner can delete purchase bills', 403, 'OWNER_ONLY');
+    const bill = purchaseRepo.findBillById(id);
+    if (!bill) throw new AppError('Purchase bill not found', 404);
+    if (bill.referenceType && !['purchase', 'purchase_bill', 'manual'].includes(bill.referenceType)) {
+      throw new AppError('This bill is an opening balance; change it in Opening Stock & Balances.', 400, 'NOT_A_PURCHASE_BILL');
+    }
+    if (purchaseRepo.billReturnCount(id) || Number(bill.returnedAmount || 0) > 0) {
+      throw new AppError('A debit note is made against this bill; delete the debit note first.', 400, 'BILL_HAS_RETURNS');
+    }
+    if (purchaseRepo.billPaymentCount(id) || Number(bill.amountPaid || 0) > 0.009) {
+      throw new AppError('A payment is recorded against this bill; delete or move that payment first.', 400, 'BILL_HAS_PAYMENTS');
+    }
+
+    getDatabase().transaction(() => {
+      if (bill.stockPosted !== false) {
+        const qty = bill.items.reduce((m, l) => m.set(l.productId, (m.get(l.productId) || 0) + Number(l.quantity)), new Map());
+        for (const [productId, q] of qty) {
+          if (!(q > 0)) continue;
+          inventoryMovementService.createMovement({
+            movementType: MOVEMENT_TYPES.PURCHASE_RETURN,
+            productId,
+            warehouseId: bill.warehouseId || null,
+            quantity: q,
+            referenceType: 'supplier_bill',
+            referenceId: bill.id,
+            reason: `Deleted purchase bill ${bill.billNumber}${reason ? `: ${reason}` : ''}`,
+          }, actor, req, { skipPermissionCheck: true });
+          if (bill.purchaseOrderId) purchaseRepo.addReceivedQty(bill.purchaseOrderId, productId, -q);
+        }
+      }
+      supplierRepo.adjustPayable(bill.supplierId, -Number(bill.grandTotal || 0));
+      if (bill.purchaseOrderId) {
+        const po = purchaseRepo.findOrderById(bill.purchaseOrderId);
+        if (po && po.status !== 'cancelled' && po.status !== 'closed') {
+          const any = po.items.some((i) => i.receivedQty > 0);
+          const all = po.items.every((i) => i.receivedQty >= i.quantity);
+          purchaseRepo.setOrderStatus(po.id, all ? 'received' : any ? 'partial' : 'sent');
+        }
+      }
+      purchaseRepo.deleteBill(bill.id);
+    })();
+
+    auditRepo.create({
+      userId: actor.user.id,
+      userName: actor.user.fullName,
+      action: 'delete',
+      module: 'purchases',
+      recordType: 'purchase_bill',
+      recordId: id,
+      previousValue: bill,
+      newValue: { deleted: true, reason: reason || null },
+      ...getRequestMeta(req),
+    });
+    return { id, billNumber: bill.billNumber, deleted: true };
+  }
+
   createBillFromPo(poId, data, actor, req) {
     authService.checkPermission(actor.permissions, 'purchases.bills.create');
     const po = purchaseRepo.findOrderById(poId);
