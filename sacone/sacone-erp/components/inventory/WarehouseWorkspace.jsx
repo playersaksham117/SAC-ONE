@@ -5,6 +5,7 @@ import { apiRequest } from '../../lib/api';
 import { useLiveRefresh } from '../../lib/live';
 import { useAuth, RequirePermission } from '../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../ui';
+import { ProductSelect } from '../common/ProductPicker';
 import { CityInput, StateSelect } from '../common/IndiaPlaceFields';
 
 function HierarchyTree({ nodes, depth = 0, onShowQr }) {
@@ -241,6 +242,7 @@ export default function WarehousePage() {
 
   const createTransfer = async (e) => {
     e.preventDefault();
+    if (!transferForm.productId) { setError('Choose the product'); return; }
     setSaving(true);
     setError('');
     try {
@@ -850,10 +852,7 @@ export default function WarehousePage() {
           </div>
           <div className="md:col-span-2">
             <label className="label">Product *</label>
-            <select className="input-field" value={transferForm.productId} onChange={(e) => setTransferForm({ ...transferForm, productId: e.target.value })} required>
-              <option value="">Select product</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-            </select>
+            <ProductSelect value={transferForm.productId} onChange={(id) => setTransferForm({ ...transferForm, productId: id })} testId="transfer-product" />
           </div>
           <div>
             <label className="label">Quantity *</label>

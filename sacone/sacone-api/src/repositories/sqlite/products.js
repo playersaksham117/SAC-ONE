@@ -254,16 +254,28 @@ export class ProductRepository {
 
     const conditions = [];
     const params = [];
-
-    if (search) {
-      conditions.push(`(
-        LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ? OR LOWER(COALESCE(p.barcode, '')) LIKE ?
-        OR LOWER(COALESCE(p.model_variant, '')) LIKE ?
-        OR LOWER(COALESCE(p.attributes, '')) LIKE ?
-        OR LOWER(COALESCE(p.hsn_code, '')) LIKE ?
-      )`);
-      const like = `%${search.toLowerCase()}%`;
-      params.push(like, like, like, like, like, like);
+    // Search word by word: every word typed must appear somewhere (name, SKU, barcode, model,
+    // attributes, HSN, brand or category), in any order ("copper lug 16", "ascon ferrule 25").
+    const words = String(search || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+    let rank = '';
+    const rankParams = [];
+    if (words.length) {
+      for (const w of words) {
+        conditions.push(`(
+          LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ? OR LOWER(COALESCE(p.barcode, '')) LIKE ?
+          OR LOWER(COALESCE(p.model_variant, '')) LIKE ? OR LOWER(COALESCE(p.attributes, '')) LIKE ?
+          OR LOWER(COALESCE(p.hsn_code, '')) LIKE ? OR LOWER(COALESCE(b.name, '')) LIKE ? OR LOWER(COALESCE(c.name, '')) LIKE ?
+        )`);
+        const like = `%${w}%`;
+        params.push(like, like, like, like, like, like, like, like);
+      }
+      // Best matches first: the exact code / barcode, then names that start with what was typed,
+      // then the typed phrase as is, then names holding most of the words as whole words.
+      const phrase = words.join(' ');
+      rank = `CASE WHEN LOWER(p.sku) = ? OR LOWER(COALESCE(p.barcode, '')) = ? THEN 0
+        WHEN LOWER(p.name) LIKE ? THEN 1 WHEN LOWER(p.name) LIKE ? THEN 2 ELSE 3 END,
+        (${words.map(() => "CASE WHEN ' ' || REPLACE(LOWER(p.name), ',', ' ') || ' ' LIKE ? THEN 1 ELSE 0 END").join(' + ')}) DESC,`;
+      rankParams.push(phrase, phrase, `${phrase}%`, `%${phrase}%`, ...words.map((w) => `% ${w} %`));
     }
     if (barcode) {
       conditions.push('LOWER(p.barcode) = LOWER(?)');
@@ -296,17 +308,18 @@ export class ProductRepository {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countParams = [...params];
-    params.push(limit, offset);
-
     const items = db.prepare(`
       ${PRODUCT_SELECT}
       ${where}
-      ORDER BY p.name ASC
+      ORDER BY ${rank} p.name ASC
       LIMIT ? OFFSET ?
-    `).all(...params).map(mapProduct);
+    `).all(...params, ...rankParams, limit, offset).map(mapProduct);
 
     const total = db.prepare(`
-      SELECT COUNT(*) as count FROM products p ${where}
+      SELECT COUNT(*) as count FROM products p
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN brands b ON b.id = p.brand_id
+      ${where}
     `).get(...countParams).count;
 
     return { items, total, limit, offset };

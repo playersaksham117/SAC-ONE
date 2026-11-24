@@ -5,6 +5,7 @@ import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../lib/auth-context';
 import { printHtml } from '../../lib/bill-document';
 import PageHeader, { Alert, LoadingState, Modal } from '../ui';
+import { ProductSelect } from '../common/ProductPicker';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB') : '');
@@ -252,10 +253,7 @@ export default function DeliveryChallans() {
             <div className="label">Items (rate is for the value on the challan only; blank = retail price)</div>
             {lines.map((l, i) => (
               <div key={i} className="mb-2 grid gap-2 md:grid-cols-[2fr_90px_110px_2fr_auto]">
-                <select className="input-field" required={i === 0} value={l.productId} onChange={(e) => setLine(i, { productId: e.target.value })}>
-                  <option value="">Product…</option>
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-                </select>
+                <ProductSelect value={l.productId} onChange={(id) => setLine(i, { productId: id })} placeholder="Search product: name, SKU, barcode" testId={`challan-product-${i}`} />
                 <input className="input-field" type="number" min="0.001" step="any" placeholder="Qty" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
                 <input className="input-field" type="number" min="0" step="0.01" placeholder="Rate" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} />
                 <input className="input-field" placeholder="Description (optional)" value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} />

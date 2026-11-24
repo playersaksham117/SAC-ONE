@@ -16,3 +16,24 @@ describe('product search', () => {
     expect(searchProducts(products, '853').map((x: { id: string }) => x.id)).toEqual(['a', 'b']);
   });
 });
+
+describe('word-by-word product search', () => {
+  const p = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, sku: id.toUpperCase(), isActive: true, price: 1, gstRate: 18, unit: 'NOS', ...extra });
+  const products = Object.fromEntries([
+    p('a', 'COPPER TUBULAR LUG ECONOMY 16 SQ.MM 6.4MM HOLE ASCON', { brand: 'ASCON' }),
+    p('b', 'COPPER TUBULAR LUG ECONOMY 160 SQ.MM ASCON', { brand: 'ASCON' }),
+    p('c', 'ALUMINIUM TUBULAR LUG 16 SQ.MM', { brand: 'LOCAL' }),
+    p('d', 'LED BATTEN 22W', { brand: 'STURLITE', category: 'LED LIGHTINGS' }),
+  ].map((x) => [x.id, x])) as never;
+  it('finds every word in any order, whole-word matches first', () => {
+    expect(searchProducts(products, 'copper lug 16').map((x: { id: string }) => x.id)).toEqual(['a', 'b']);
+    expect(searchProducts(products, 'lug 16 ascon')[0].id).toBe('a');
+  });
+  it('searches brand and category too', () => {
+    expect(searchProducts(products, 'sturlite batten').map((x: { id: string }) => x.id)).toEqual(['d']);
+    expect(searchProducts(products, 'lightings').map((x: { id: string }) => x.id)).toEqual(['d']);
+  });
+  it('an exact code still comes first', () => {
+    expect(searchProducts(products, 'C')[0].id).toBe('c');
+  });
+});

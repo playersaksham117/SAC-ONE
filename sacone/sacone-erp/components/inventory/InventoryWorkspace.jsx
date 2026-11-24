@@ -7,6 +7,7 @@ import HsnSummary from '../inventory/HsnSummary';
 import InventoryDashboard from '../dashboards/InventoryDashboard';
 import { useAuth, RequirePermission } from '../../lib/auth-context';
 import PageHeader, { Alert, LoadingState, Modal, StatusBadge } from '../ui';
+import { ProductSelect } from '../common/ProductPicker';
 
 const EMPTY_MOVEMENT = {
   productId: '',
@@ -162,6 +163,10 @@ export default function InventoryPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!form.productId) {
+      setError('Choose the product');
+      return;
+    }
     if (!form.movementType) {
       setError('Select a movement type');
       return;
@@ -274,10 +279,9 @@ export default function InventoryPage() {
             <option value="">All warehouses</option>
             {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
-          <select className="input-field" value={productFilter} onChange={(e) => setProductFilter(e.target.value)}>
-            <option value="">All products</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-          </select>
+          <div className="min-w-[16rem] flex-1">
+            <ProductSelect value={productFilter} onChange={(id) => setProductFilter(id)} emptyLabel="All products" placeholder="filter by product" testId="inventory-product-filter" />
+          </div>
           {tab === 'hsn' && <HsnSummary warehouses={warehouses} />}
 
           {tab === 'ledger' && (
@@ -441,10 +445,7 @@ export default function InventoryPage() {
         <form id="movement-form" onSubmit={handleCreate} className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="label">Product *</label>
-            <select className="input-field" value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required>
-              <option value="">Select product</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>)}
-            </select>
+            <ProductSelect value={form.productId} onChange={(id) => setForm({ ...form, productId: id })} testId="movement-product" />
           </div>
           <div>
             <label className="label">Warehouse *</label>

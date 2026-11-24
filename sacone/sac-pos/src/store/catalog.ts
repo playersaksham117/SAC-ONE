@@ -190,18 +190,33 @@ export const useCatalog = create<CatalogState>()(
   ),
 );
 
-/** Case-insensitive search on name / SKU / barcode / brand, exact barcode first. */
+/**
+ * Products matching every word typed, in any order, in the name, SKU, barcode, brand, HSN or
+ * category ("copper lug 16", "ascon ferrule 25"). The exact barcode / SKU comes first, then names
+ * starting with what was typed, then the phrase as typed, then names holding most words whole.
+ */
 export function searchProducts(products: Record<string, Product>, query: string, limit = 60): Product[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase().replace(/\s+/g, ' ');
   const all = Object.values(products).filter((p) => p.isActive);
   if (!q) return all.sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
+  const words = q.split(' ').slice(0, 8);
+  const hay = (p: Product) => [p.name, p.sku, p.barcode, p.brand, p.hsn, p.category].filter(Boolean).join(' ').toLowerCase();
   const exact = all.filter((p) => p.barcode?.toLowerCase() === q || p.sku.toLowerCase() === q);
-  const rest = all.filter((p) => !exact.includes(p) && (
-    p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    || (p.barcode ?? '').toLowerCase().includes(q) || (p.brand ?? '').toLowerCase().includes(q)
-    || (p.hsn ?? '').toLowerCase().includes(q)
-  ));
-  return [...exact, ...rest.sort((a, b) => a.name.localeCompare(b.name))].slice(0, limit);
+  const rank = (p: Product) => {
+    const name = p.name.toLowerCase();
+    const tier = name.startsWith(q) ? 0 : name.includes(q) ? 1 : 2;
+    const padded = ` ${name.replace(/,/g, ' ')} `;
+    const whole = words.filter((w) => padded.includes(` ${w} `)).length;
+    return { tier, whole };
+  };
+  const rest = all
+    .filter((p) => !exact.includes(p))
+    .map((p) => ({ p, h: hay(p) }))
+    .filter(({ h }) => words.every((w) => h.includes(w)))
+    .map(({ p }) => ({ p, r: rank(p) }))
+    .sort((a, b) => a.r.tier - b.r.tier || b.r.whole - a.r.whole || a.p.name.localeCompare(b.p.name))
+    .map(({ p }) => p);
+  return [...exact, ...rest].slice(0, limit);
 }
 
 export function findByCode(products: Record<string, Product>, code: string): Product | null {

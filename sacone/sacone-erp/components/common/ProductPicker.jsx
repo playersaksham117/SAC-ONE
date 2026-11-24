@@ -18,7 +18,7 @@ function Highlight({ text, query }) {
  * on the server (every product, not a first page). ↑ ↓ to move, Enter to add (an exact barcode / SKU
  * wins), Esc to close. `inBill` (productId → quantity) marks items already on the document.
  */
-export default function ProductPicker({ onPick, inBill = {}, placeholder = 'Add item: type name, SKU, barcode or HSN', autoFocus = false, testId = 'product-picker' }) {
+export default function ProductPicker({ onPick, inBill = {}, placeholder = 'Add item: type name, SKU, barcode or HSN', autoFocus = false, testId = 'product-picker', action = 'add' }) {
   const [q, setQ] = useState('');
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -163,9 +163,39 @@ export default function ProductPicker({ onPick, inBill = {}, placeholder = 'Add 
           ) : (
             <div className="px-4 py-3 text-sm text-slate-500">No product matches “{q.trim()}”.</div>
           )}
-          <div className="border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">↑ ↓ to move · Enter to add · Esc to close</div>
+          <div className="border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-400">↑ ↓ to move · Enter to {action} · Esc to close · words in any order</div>
         </div>
       ) : null}
     </div>
   );
+}
+
+/**
+ * One product chosen by searching (forms: stock movement, transfer, challan line, filters).
+ * value = product id; onChange(id, product). Shows the chosen product with ✕ to change it.
+ */
+export function ProductSelect({ value, onChange, placeholder = 'Search product: name, SKU, barcode or HSN', emptyLabel = null, testId = 'product-select' }) {
+  const [chosen, setChosen] = useState(null);
+  useEffect(() => {
+    if (!value) { setChosen(null); return undefined; }
+    if (chosen?.id === value) return undefined;
+    let live = true;
+    apiRequest(`/api/products/${value}`).then((p) => { if (live) setChosen(p); }).catch(() => {});
+    return () => { live = false; };
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (value && chosen) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border-2 border-brand-200 bg-brand-50/50 px-3 py-2" data-testid={testId}>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-slate-900">{chosen.name}</span>
+          <span className="text-xs text-slate-500"><span className="font-mono">{chosen.sku}</span>{chosen.unitAbbreviation ? ` · ${chosen.unitAbbreviation}` : ''}</span>
+        </span>
+        <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-white" onClick={() => onChange('', null)} data-testid={`${testId}-change`}>
+          {emptyLabel ? `✕ ${emptyLabel}` : 'Change'}
+        </button>
+      </div>
+    );
+  }
+  return <ProductPicker action="choose" placeholder={emptyLabel ? `${emptyLabel} · ${placeholder}` : placeholder} onPick={(p) => { setChosen(p); onChange(p.id, p); }} testId={testId} />;
 }
