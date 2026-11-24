@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth-context';
 import { Alert, LoadingState, Modal } from '../ui';
 import { accountLabel, defaultAccountFor } from '../../lib/accounts';
 import ShipToPicker from './ShipToPicker';
+import ProductPicker from '../common/ProductPicker';
 import { CityInput, StateSelect } from '../common/IndiaPlaceFields';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,11 +28,9 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   const { checkPermission } = useAuth();
   const canSeeCost = checkPermission('purchases.bills.view');
   const [sale, setSale] = useState(null);
-  const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [pick, setPick] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [banks, setBanks] = useState([]);
@@ -40,9 +39,8 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
   useEffect(() => {
     (async () => {
       try {
-        const [s, prods, custs, accts] = await Promise.all([
+        const [s, custs, accts] = await Promise.all([
           apiRequest(`/api/pos/sales/${saleId}`),
-          apiRequest('/api/products?limit=500&isActive=1'),
           apiRequest('/api/customers?limit=500').catch(() => ({ items: [] })),
           apiRequest('/api/finance/accounts').catch(() => []),
         ]);
@@ -50,7 +48,6 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
         const bankList = (Array.isArray(accts) ? accts : accts.items || []).filter((a) => a.accountType === 'bank' || a.accountType === 'upi');
         setBanks(bankList);
         setSale(s);
-        setProducts(prods.items || []);
         const list = custs.items || custs || [];
         setCustomers(list.some((c) => c.id === s.customerId) ? list : [{ id: s.customerId, name: s.customerName }, ...list]);
         const paid = (s.payments || []).find((p) => p.method !== 'credit');
@@ -114,12 +111,11 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
 
   const setItem = (idx, patch) => setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
   const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  const addItem = () => {
-    const p = products.find((x) => x.id === pick);
+  const addItem = (p) => {
     if (!p) return;
     setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, hsnCode: p.hsnCode || '', quantity: 1, unitPrice: p.retailPrice ?? p.sellingPrice, discountAmount: 0, serials: '', description: '', cost: '' }] }));
-    setPick('');
   };
+  const inBill = useMemo(() => (form?.items || []).reduce((m, it) => ({ ...m, [it.productId]: (m[it.productId] || 0) + (Number(it.quantity) || 0) }), {}), [form?.items]);
 
   const total = preview?.grandTotal;
   const received = form?.followTotal && total != null ? total : Number(form?.amountReceived || 0);
@@ -244,13 +240,7 @@ export default function EditInvoiceDialog({ saleId, onClose, onSaved }) {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select className="input-field flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">Add a product…</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.sku} · {money(p.retailPrice ?? p.sellingPrice)}</option>)}
-            </select>
-            <button type="button" className="btn-secondary" onClick={addItem} disabled={!pick}>Add</button>
-          </div>
+          <ProductPicker onPick={addItem} inBill={inBill} testId="edit-invoice-picker" />
 
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="block text-sm"><span className="label">Invoice discount ₹</span>

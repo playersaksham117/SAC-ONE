@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Alert, LoadingState, Modal } from '../ui';
+import ProductPicker from '../common/ProductPicker';
 
 const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -12,24 +13,20 @@ const money = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFract
  */
 export default function EditQuotationDialog({ quotationId, onClose, onSaved }) {
   const [quote, setQuote] = useState(null);
-  const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [pick, setPick] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const [q, prods, custs] = await Promise.all([
+        const [q, custs] = await Promise.all([
           apiRequest(`/api/pos/quotations/${quotationId}`),
-          apiRequest('/api/products?limit=500&isActive=1'),
           apiRequest('/api/customers?limit=500').catch(() => ({ items: [] })),
         ]);
         setQuote(q);
-        setProducts(prods.items || []);
         const list = custs.items || custs || [];
         setCustomers(!q.customerId || list.some((c) => c.id === q.customerId) ? list : [{ id: q.customerId, name: q.customerSnapshot?.name || q.customerName }, ...list]);
         setForm({
@@ -83,12 +80,11 @@ export default function EditQuotationDialog({ quotationId, onClose, onSaved }) {
 
   const setItem = (idx, patch) => setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
   const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
-  const addItem = () => {
-    const p = products.find((x) => x.id === pick);
+  const addItem = (p) => {
     if (!p) return;
     setForm((f) => ({ ...f, items: [...f.items, { productId: p.id, name: p.name, sku: p.sku, hsnCode: p.hsnCode || '', quantity: 1, unitPrice: p.retailPrice ?? p.sellingPrice, discountAmount: 0, description: '' }] }));
-    setPick('');
   };
+  const inBill = useMemo(() => (form?.items || []).reduce((m, it) => ({ ...m, [it.productId]: (m[it.productId] || 0) + (Number(it.quantity) || 0) }), {}), [form?.items]);
 
   const save = async () => {
     setSaving(true);
@@ -185,13 +181,7 @@ export default function EditQuotationDialog({ quotationId, onClose, onSaved }) {
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select className="input-field flex-1" value={pick} onChange={(e) => setPick(e.target.value)}>
-              <option value="">Add a product…</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.sku} · {money(p.retailPrice ?? p.sellingPrice)}</option>)}
-            </select>
-            <button type="button" className="btn-secondary" onClick={addItem} disabled={!pick}>Add</button>
-          </div>
+          <ProductPicker onPick={addItem} inBill={inBill} testId="edit-quote-picker" />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm"><span className="label">Customer PO no.</span>
