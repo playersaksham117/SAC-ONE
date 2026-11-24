@@ -31,7 +31,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
   const [bill, setBill] = useState(null);
   const [qty, setQty] = useState({});
   const [lines, setLines] = useState(editNote && !editNote.billId
-    ? editNote.items.map((i) => ({ productId: i.productId, productLabel: i.productName, sku: i.sku, hsnCode: i.hsnCode, quantity: i.quantity, unitPrice: i.unitPrice, gstPercentage: i.gstPercentage }))
+    ? editNote.items.map((i) => ({ productId: i.productId, productLabel: i.productName, sku: i.sku, hsnCode: i.hsnCode, quantity: i.quantity, unitPrice: i.unitPrice, gstPercentage: i.gstPercentage, batchNumber: i.batchNumber || '' }))
     : []);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -62,7 +62,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
     setLines((prev) => {
       const at = prev.findIndex((l) => l.productId === p.id);
       if (at >= 0) return prev.map((l, i) => (i === at ? { ...l, quantity: Number(l.quantity || 0) + 1 } : l));
-      return [...prev, { productId: p.id, productLabel: p.name, sku: p.sku, hsnCode: p.hsnCode, quantity: 1, unitPrice: p.purchasePrice ?? '', gstPercentage: p.gstPercentage ?? '' }];
+      return [...prev, { productId: p.id, productLabel: p.name, sku: p.sku, hsnCode: p.hsnCode, quantity: 1, unitPrice: p.purchasePrice ?? '', gstPercentage: p.gstPercentage ?? '', batchNumber: '' }];
     });
     setQuery('');
     setResults([]);
@@ -112,6 +112,7 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
         quantity: Number(l.quantity),
         unitPrice: l.unitPrice === '' ? undefined : Number(l.unitPrice),
         gstPercentage: l.gstPercentage === '' ? undefined : Number(l.gstPercentage),
+        batchNumber: l.batchNumber?.trim() || null,
       }));
     if (!supplierId) { setError('Choose the supplier.'); return; }
     if (!items.length) { setError('Enter the quantity being returned on at least one line.'); return; }
@@ -252,7 +253,10 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
                 {bill ? billLines.map(({ item, remaining, total: value, taxable: tv }, i) => (
                   <tr key={item.id} className={value > 0 ? 'bg-brand-50/40' : ''}>
                     <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
-                    <td className="py-2 pr-2 font-semibold text-slate-900">{item.productName}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-semibold text-slate-900">{item.productName}</div>
+                      {item.batchNumber ? <span className="mt-0.5 inline-block rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[11px] text-indigo-700" data-testid={`dn-batch-${i}`}>Batch {item.batchNumber}</span> : null}
+                    </td>
                     <td className="py-2 pr-2 font-mono text-xs">{item.hsnCode || '—'}</td>
                     <td className="py-2 pr-2 text-right">{qtyText(item.quantity)}</td>
                     <td className="py-2 pr-2 text-right text-slate-500">{item.returnedQuantity - mine(item.id) > 0 ? qtyText(item.returnedQuantity - mine(item.id)) : '—'}</td>
@@ -281,7 +285,13 @@ export default function DebitNoteDialog({ onClose, onCreated, supplierId: initia
                 )) : directLines.map((l, idx) => (l.productId ? (
                   <tr key={`${l.productId}-${idx}`}>
                     <td className="py-2 pr-2 text-slate-400">{idx + 1}</td>
-                    <td className="py-2 pr-2"><div className="font-semibold text-slate-900">{l.productLabel || l.productId}</div>{l.sku && <div className="text-xs text-slate-500">{l.sku}</div>}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-semibold text-slate-900">{l.productLabel || l.productId}</div>
+                      {l.sku && <div className="text-xs text-slate-500">{l.sku}</div>}
+                      <input className="input-field !min-h-0 mt-1 w-44 !py-1 font-mono text-xs uppercase" maxLength={40} placeholder="Batch no. (optional)"
+                        value={l.batchNumber || ''} onChange={(e) => updateLine(idx, { batchNumber: e.target.value.toUpperCase() })}
+                        aria-label={`Batch number of ${l.productLabel}`} data-testid={`dn-batch-input-${idx}`} />
+                    </td>
                     <td className="py-2 pr-2 font-mono text-xs">{l.hsnCode || '—'}</td>
                     <td className="py-2 pr-2"><input type="number" min="0" step="any" className="input-field !min-h-0 w-24 !py-1.5 text-right" value={l.quantity} onChange={(e) => updateLine(idx, { quantity: e.target.value })} aria-label={`Quantity of ${l.productLabel}`} /></td>
                     <td className="py-2 pr-2"><input type="number" min="0" step="0.01" className="input-field !min-h-0 w-28 !py-1.5 text-right" value={l.unitPrice} onChange={(e) => updateLine(idx, { unitPrice: e.target.value })} aria-label={`Rate of ${l.productLabel}`} /></td>

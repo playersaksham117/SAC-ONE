@@ -381,7 +381,7 @@ export default function PurchaseBillForm({
                         <input type="number" step="0.01" min="0" className={NUM_INPUT} value={l.unitPrice}
                           onChange={(e) => update(idx, { unitPrice: num(e.target.value) })} onFocus={(e) => e.target.select()} aria-label={`Rate of ${l.productLabel}`} data-testid={`pb-rate-${i}`} />
                       </LineField>
-                      <LineField label="Disc %">
+                      <LineField label="Disc %" hint={!order && Number(l.discountPercent) > 0 ? `Net rate ${money(Math.round(Number(l.unitPrice || 0) * (1 - Math.min(100, Number(l.discountPercent)) / 100) * 100) / 100)}` : null}>
                         <input type="number" step="0.01" min="0" max="100" className={NUM_INPUT} value={l.discountPercent}
                           onChange={(e) => update(idx, { discountPercent: num(e.target.value) })} onFocus={(e) => e.target.select()} aria-label={`Discount % on ${l.productLabel}`} data-testid={`pb-disc-${i}`} />
                       </LineField>
@@ -415,7 +415,7 @@ export default function PurchaseBillForm({
             </div>
             <p className="mt-2 text-xs text-slate-400">
               Rates are before GST. HSN blank = the product&apos;s own code. Adding an item twice adds to its quantity.
-              {!order ? ' Batch No. registers the batch for Warranty Check; “+ Batch” puts the same item on a new line for another batch.' : ''}
+              {!order ? ' Posting sets each item’s purchase price to the rate less its discount. Batch No. registers the batch for Warranty Check; “+ Batch” puts the same item on a new line for another batch.' : ''}
             </p>
           </Card>
 

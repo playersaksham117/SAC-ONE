@@ -45,6 +45,7 @@ export default function BatchRegister() {
       { label: 'Suppliers', value: (b) => [...new Set(b.bills.map((x) => x.supplierName))].join(' / ') },
       { label: 'Purchase bills', value: (b) => b.bills.map((x) => x.billNumber).join(' / ') },
       { label: 'Received', value: (b) => (b.registered ? b.received : '') },
+      { label: 'Returned to supplier', value: (b) => b.returned || 0 },
       { label: 'Sold', value: (b) => b.sold },
       { label: 'Left', value: (b) => (b.registered ? b.balance : '') },
     ];
@@ -113,7 +114,7 @@ export default function BatchRegister() {
                       <div key={x.billId}>{ddmmyyyy(x.date)} · {x.billNumber} · {x.supplierName || 'Supplier'} <span className="text-slate-400">({x.quantity})</span></div>
                     )) : <span className="text-slate-400">Not on a purchase bill{b.lastSold ? ` · last sold ${ddmmyyyy(b.lastSold)}` : ''}</span>}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{b.registered ? b.received : '—'}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{b.registered ? b.received : '—'}{b.returned ? <div className="text-[11px] text-rose-600">−{b.returned} returned</div> : null}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{b.sold}{b.saleBills ? <div className="text-[11px] text-slate-400">{b.saleBills} bill{b.saleBills === 1 ? '' : 's'}</div> : null}</td>
                   <td className={`px-4 py-3 text-right font-semibold tabular-nums ${b.registered && b.balance < 0 ? 'text-rose-600' : ''}`}>{b.registered ? b.balance : '—'}</td>
                 </tr>

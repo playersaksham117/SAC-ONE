@@ -118,6 +118,13 @@ function hsnOf(item, product) {
   return typed;
 }
 
+/** Cost of one unit on a purchase line: the rate less the line discount %, before GST (to the paisa). */
+export function netRate(line) {
+  const rate = Number(line.unitPrice) || 0;
+  const disc = Math.min(100, Math.max(0, Number(line.discountPercent) || 0));
+  return Math.round(rate * (1 - disc / 100) * 100) / 100;
+}
+
 function enrichLines(items, { allowInactive = [] } = {}) {
   return items.map((item) => {
     const product = productRepo.findById(item.productId);
@@ -524,7 +531,7 @@ export class PurchaseService {
         reason: `Purchase bill ${bill.billNumber}`,
       }, actor, req, { skipPermissionCheck: true });
 
-      productRepo.update(line.productId, { purchasePrice: line.unitPrice });
+      productRepo.update(line.productId, { purchasePrice: netRate(line) });
 
       if (data.purchaseOrderId) {
         purchaseRepo.addReceivedQty(data.purchaseOrderId, line.productId, line.quantity);
@@ -637,7 +644,7 @@ export class PurchaseService {
         notes: data.notes !== undefined ? (data.notes || null) : old.notes,
         isUnregistered: unregistered,
       }, items);
-      for (const line of items) productRepo.update(line.productId, { purchasePrice: line.unitPrice });
+      for (const line of items) productRepo.update(line.productId, { purchasePrice: netRate(line) });
       return purchaseRepo.findBillById(old.id);
     })();
 
@@ -883,9 +890,11 @@ export class PurchaseService {
       lines = lines.map((line, idx) => {
         const wanted = data.items.filter((l) => l.productId)[idx];
         const remainingOf = (bi) => bi.quantity - (returned.get(bi.id) || 0);
+        const sameBatch = (bi) => !line.batchNumber || String(bi.batchNumber || '').toUpperCase() === line.batchNumber;
         const billItem = wanted.billItemId
           ? bill.items.find((bi) => bi.id === wanted.billItemId)
-          : bill.items.find((bi) => bi.productId === line.productId && remainingOf(bi) > 0.000001)
+          : bill.items.find((bi) => bi.productId === line.productId && sameBatch(bi) && remainingOf(bi) > 0.000001)
+            || bill.items.find((bi) => bi.productId === line.productId && remainingOf(bi) > 0.000001)
             || bill.items.find((bi) => bi.productId === line.productId);
         if (!billItem || billItem.productId !== line.productId) {
           throw new AppError(`${line.productName} is not on bill ${bill.billNumber}`, 400);
@@ -898,6 +907,7 @@ export class PurchaseService {
         return {
           ...line,
           billItemId: billItem.id,
+          batchNumber: line.batchNumber || billItem.batchNumber || null,
           unitPrice: billItem.unitPrice,
           discountPercent: billItem.discountPercent,
           gstPercentage: billItem.gstPercentage,
@@ -910,7 +920,7 @@ export class PurchaseService {
     if (!warehouseId) throw new AppError('Choose the warehouse the goods leave from', 400);
 
     const { totals, items } = buildPurchaseTotals(lines, data.supplierId);
-    items.forEach((item, idx) => { item.billItemId = lines[idx].billItemId || null; });
+    items.forEach((item, idx) => { item.billItemId = lines[idx].billItemId || null; item.batchNumber = lines[idx].batchNumber || null; });
     const grandTotal = round2(totals.grandTotal);
     const adjustedAmount = bill ? round2(Math.min(grandTotal, Math.max(0, bill.amountPayable))) : 0;
     return { bill, warehouseId, totals, items, grandTotal, adjustedAmount };

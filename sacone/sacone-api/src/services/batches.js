@@ -39,14 +39,25 @@ function soldRows(where = '', params = []) {
   `).all(...params);
 }
 
-function merge(received, sold) {
+/** Debit notes: product + batch → quantity sent back to the supplier. */
+function returnedRows(where = '', params = []) {
+  return db().prepare(`
+    SELECT i.product_id, UPPER(i.batch_number) AS batch, SUM(i.quantity) AS qty
+    FROM purchase_return_items i
+    JOIN purchase_returns r ON r.id = i.return_id AND r.status != 'cancelled'
+    WHERE i.batch_number IS NOT NULL AND TRIM(i.batch_number) != '' ${where}
+    GROUP BY i.product_id, UPPER(i.batch_number)
+  `).all(...params);
+}
+
+function merge(received, sold, returned = []) {
   const map = new Map();
   const key = (pid, batch) => `${pid}|${batch}`;
   for (const r of received) {
     const k = key(r.product_id, r.batch);
     const e = map.get(k) || {
       productId: r.product_id, productName: r.product_name, sku: r.sku, batchNumber: r.batch,
-      registered: true, received: 0, sold: 0, saleBills: 0, lastSold: null, bills: [],
+      registered: true, received: 0, sold: 0, returned: 0, saleBills: 0, lastSold: null, bills: [],
     };
     e.received = r3(e.received + Number(r.quantity || 0));
     e.bills.push({ billId: r.bill_id, billNumber: r.bill_number, supplierInvoiceNumber: r.supplier_invoice_number || null, date: r.bill_date, supplierName: r.supplier_name, quantity: Number(r.quantity || 0) });
@@ -56,17 +67,22 @@ function merge(received, sold) {
     const k = key(r.product_id, r.batch);
     const e = map.get(k) || {
       productId: r.product_id, productName: r.product_name, sku: r.sku, batchNumber: r.batch,
-      registered: false, received: 0, sold: 0, saleBills: 0, lastSold: null, bills: [],
+      registered: false, received: 0, sold: 0, returned: 0, saleBills: 0, lastSold: null, bills: [],
     };
     e.sold = r3(r.sold);
     e.saleBills = r.bills;
     e.lastSold = r.last_sold;
     map.set(k, e);
   }
+  // sent back on debit notes (only batches received on a purchase bill)
+  for (const r of returned) {
+    const e = map.get(key(r.product_id, r.batch));
+    if (e) e.returned = r3(r.qty);
+  }
   return [...map.values()].map((e) => ({
     ...e,
     firstReceived: e.bills[0]?.date || null,
-    balance: e.registered ? r3(e.received - e.sold) : null,
+    balance: e.registered ? r3(e.received - e.sold - e.returned) : null,
   }));
 }
 
@@ -75,10 +91,8 @@ export class BatchService {
   register(filters = {}, actor) {
     authService.checkAnyPermission(actor.permissions, ['pos.sales.view', 'purchases.bills.view']);
     const q = String(filters.q || '').trim();
-    let rows = merge(
-      receivedRows(filters.productId ? 'AND i.product_id = ?' : '', filters.productId ? [filters.productId] : []),
-      soldRows(filters.productId ? 'AND i.product_id = ?' : '', filters.productId ? [filters.productId] : []),
-    );
+    const byProduct = [filters.productId ? 'AND i.product_id = ?' : '', filters.productId ? [filters.productId] : []];
+    let rows = merge(receivedRows(...byProduct), soldRows(...byProduct), returnedRows(...byProduct));
     if (q) {
       const t = q.toUpperCase();
       rows = rows.filter((r) => r.batchNumber.includes(t) || String(r.productName || '').toUpperCase().includes(t) || String(r.sku || '').toUpperCase().includes(t)
@@ -99,7 +113,7 @@ export class BatchService {
   /** Registered batches of one product (the ones still in stock first), for picking on a sale line. */
   forProduct(productId) {
     if (!productId) throw new AppError('Product is required', 400);
-    const rows = merge(receivedRows('AND i.product_id = ?', [productId]), soldRows('AND i.product_id = ?', [productId]))
+    const rows = merge(receivedRows('AND i.product_id = ?', [productId]), soldRows('AND i.product_id = ?', [productId]), returnedRows('AND i.product_id = ?', [productId]))
       .filter((r) => r.registered);
     rows.sort((a, b) => Number(b.balance > 0) - Number(a.balance > 0) || String(b.firstReceived).localeCompare(String(a.firstReceived)));
     return { productId, batches: rows.map((r) => ({ batchNumber: r.batchNumber, received: r.received, sold: r.sold, balance: r.balance, firstReceived: r.firstReceived })) };
@@ -114,10 +128,9 @@ export class BatchService {
   origin(batchNumber, productId = null) {
     const b = String(batchNumber || '').trim();
     if (!b) return null;
-    const rows = merge(
-      receivedRows(`AND UPPER(i.batch_number) = UPPER(?)${productId ? ' AND i.product_id = ?' : ''}`, productId ? [b, productId] : [b]),
-      soldRows(`AND UPPER(i.batch_number) = UPPER(?)${productId ? ' AND i.product_id = ?' : ''}`, productId ? [b, productId] : [b]),
-    );
+    const where = `AND UPPER(i.batch_number) = UPPER(?)${productId ? ' AND i.product_id = ?' : ''}`;
+    const params = productId ? [b, productId] : [b];
+    const rows = merge(receivedRows(where, params), soldRows(where, params), returnedRows(where, params));
     return rows;
   }
 }

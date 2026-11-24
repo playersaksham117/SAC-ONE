@@ -621,6 +621,7 @@ export class PurchaseRepository {
     `).all(id).map((r) => ({
       id: r.id,
       billItemId: r.bill_item_id || null,
+      batchNumber: r.batch_number || null,
       productId: r.product_id,
       productName: r.product_name,
       sku: r.sku,
@@ -658,14 +659,14 @@ export class PurchaseRepository {
       const insert = db.prepare(`
         INSERT INTO purchase_return_items (
           id, return_id, product_id, product_name, sku, quantity, unit_price, gst_percentage, line_total,
-          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount, batch_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item) => {
         insert.run(generateId(), id, item.productId, item.productName, item.sku || null,
           item.quantity, item.unitPrice, item.gstPercentage || 0, item.lineTotal,
           item.billItemId || null, item.hsnCode || null, item.discountPercent || 0,
-          item.taxableAmount ?? null, item.gstAmount ?? null);
+          item.taxableAmount ?? null, item.gstAmount ?? null, item.batchNumber || null);
       });
     })();
     return this.findReturnById(id);
@@ -732,15 +733,15 @@ export class PurchaseRepository {
       const insert = db.prepare(`
         INSERT INTO purchase_return_items (
           id, return_id, product_id, product_name, sku, quantity, unit_price, gst_percentage, line_total,
-          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          bill_item_id, hsn_code, discount_percent, taxable_amount, gst_amount, batch_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item) => {
         insert.run(
           generateId(), id, item.productId, item.productName, item.sku || null,
           item.quantity, item.unitPrice, item.gstPercentage || 0, item.lineTotal,
           item.billItemId || null, item.hsnCode || null, item.discountPercent || 0,
-          item.taxableAmount ?? null, item.gstAmount ?? null
+          item.taxableAmount ?? null, item.gstAmount ?? null, item.batchNumber || null
         );
       });
     });

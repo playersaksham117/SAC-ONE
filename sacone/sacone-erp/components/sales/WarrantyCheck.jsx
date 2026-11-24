@@ -127,7 +127,7 @@ function BatchSummary({ batches }) {
               : <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Not registered</span>}
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
-            <div className="rounded-lg bg-slate-50 py-1.5"><div className="text-[10px] uppercase text-slate-400">Received</div><div className="font-semibold">{b.registered ? b.received : '—'}</div></div>
+            <div className="rounded-lg bg-slate-50 py-1.5"><div className="text-[10px] uppercase text-slate-400">Received</div><div className="font-semibold">{b.registered ? b.received : '—'}</div>{b.returned ? <div className="text-[10px] text-rose-600">−{b.returned} returned</div> : null}</div>
             <div className="rounded-lg bg-slate-50 py-1.5"><div className="text-[10px] uppercase text-slate-400">Sold</div><div className="font-semibold">{b.sold}</div></div>
             <div className="rounded-lg bg-slate-50 py-1.5"><div className="text-[10px] uppercase text-slate-400">Left</div><div className="font-semibold">{b.registered ? b.balance : '—'}</div></div>
           </div>
