@@ -32,7 +32,7 @@ interface CartState {
   add: (p: Product, qty?: number, opts?: { newLine?: boolean; after?: string }) => void;
   /** key = lineKey(line); a product's first line is keyed by its productId. */
   setQty: (key: string, qty: number) => void;
-  updateLine: (key: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount'>>) => void;
+  updateLine: (key: string, patch: Partial<Pick<CartLine, 'unitPrice' | 'discountAmount' | 'serialNumbers' | 'shortDescription' | 'costAmount' | 'batchNumber'>>) => void;
   remove: (key: string) => void;
   /** Put the lines back as they were (undo of a triple tap's first two taps). */
   restoreLines: (lines: CartLine[]) => void;

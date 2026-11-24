@@ -4,6 +4,7 @@ import { istDate } from '../core/ist.js';
 import { periodEnd, periodText } from '../core/warranty.js';
 import { getDatabase } from '../database/connection.js';
 import { authService } from './index.js';
+import { batchService } from './batches.js';
 
 /**
  * Serial numbers on invoice lines and Warranty Check: find a bill by invoice number or by a
@@ -84,17 +85,33 @@ export class WarrantyService {
   /** The search itself (SAC-POS terminals call it with their device key). */
   lookup(query) {
     const q = String(query ?? '').trim();
-    if (q.length < 2) throw new AppError('Type at least 2 characters of the invoice or serial number', 400);
+    if (q.length < 2) throw new AppError('Type at least 2 characters of the invoice, serial or batch number', 400);
     const bySerial = db().prepare(`
       SELECT DISTINCT x.sale_id FROM sale_item_serials x JOIN pos_sales s ON s.id = x.sale_id
       WHERE UPPER(x.serial_number) = UPPER(?) AND s.status != 'voided' LIMIT 20
+    `).all(q).map((r) => r.sale_id);
+    const byBatch = db().prepare(`
+      SELECT DISTINCT i.sale_id FROM pos_sale_items i JOIN pos_sales s ON s.id = i.sale_id
+      WHERE UPPER(i.batch_number) = UPPER(?) AND s.status != 'voided' AND s.document_type IS NOT 'quotation'
+      ORDER BY s.created_at DESC LIMIT 20
     `).all(q).map((r) => r.sale_id);
     const byInvoice = db().prepare(`
       SELECT id FROM pos_sales WHERE status != 'voided' AND document_type IS NOT 'quotation'
         AND (UPPER(invoice_number) = UPPER(?) OR UPPER(invoice_number) LIKE UPPER(?))
       ORDER BY CASE WHEN UPPER(invoice_number) = UPPER(?) THEN 0 ELSE 1 END, created_at DESC LIMIT 20
     `).all(q, `%${q}%`, q).map((r) => r.id);
-    const ids = [...new Set([...bySerial, ...byInvoice])].slice(0, 20);
+    const ids = [...new Set([...bySerial, ...byBatch, ...byInvoice])].slice(0, 20);
+    // where each batch on these bills came from (purchase bill / supplier), looked up once per product + batch
+    const origins = new Map();
+    const originOf = (productId, batch) => {
+      if (!batch) return null;
+      const k = `${productId}|${batch.toUpperCase()}`;
+      if (!origins.has(k)) {
+        const row = batchService.origin(batch, productId)[0];
+        origins.set(k, row ? { registered: row.registered, bills: row.bills, received: row.received, sold: row.sold } : { registered: false, bills: [] });
+      }
+      return origins.get(k);
+    };
     const today = istDate();
     const results = ids.map((id) => {
       const s = db().prepare(`
@@ -112,10 +129,13 @@ export class WarrantyService {
         quantity: Number(l.quantity || 0),
         quantityReturned: Number(l.quantity_returned || 0),
         serials: serials[l.id] || [],
+        batchNumber: l.batch_number || null,
+        batch: originOf(l.product_id, l.batch_number),
         warranty: status(start, l.warranty_value, l.warranty_unit, today),
         guarantee: status(start, l.guarantee_value, l.guarantee_unit, today),
       }));
       const hit = lines.flatMap((l) => l.serials).find((x) => x.toUpperCase() === q.toUpperCase()) || null;
+      const batchHit = lines.some((l) => l.batchNumber && l.batchNumber.toUpperCase() === q.toUpperCase()) ? q.toUpperCase() : null;
       return {
         saleId: s.id,
         invoiceNumber: s.invoice_number,
@@ -126,11 +146,15 @@ export class WarrantyService {
         customerName: s.is_walk_in ? null : s.customer_name,
         customerPhone: s.is_walk_in ? null : s.customer_phone,
         matchedSerial: hit,
-        // A serial search shows just that unit's line first.
-        lines: hit ? [...lines].sort((a, b) => Number(b.serials.includes(hit)) - Number(a.serials.includes(hit))) : lines,
+        matchedBatch: batchHit,
+        // A serial or batch search shows the matching line first.
+        lines: hit ? [...lines].sort((a, b) => Number(b.serials.includes(hit)) - Number(a.serials.includes(hit)))
+          : batchHit ? [...lines].sort((a, b) => Number(b.batchNumber === batchHit) - Number(a.batchNumber === batchHit)) : lines,
       };
     });
-    return { query: q, today, results };
+    // The batch itself (registered on a purchase bill or not), also when nothing is sold from it yet.
+    const batches = batchService.origin(q);
+    return { query: q, today, results, batches };
   }
 
   /** Add or correct the serial numbers of one invoice line later. */

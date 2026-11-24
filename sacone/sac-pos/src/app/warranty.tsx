@@ -55,9 +55,9 @@ export default function Warranty() {
 
   return (
     <Screen scroll padded={false}>
-      <Header title="Warranty check" subtitle="Invoice number or serial number" onBack={() => goBack()} />
+      <Header title="Warranty check" subtitle="Invoice, serial or batch number" onBack={() => goBack()} />
       <View style={{ paddingHorizontal: space.lg }}>
-        <SearchBar value={q} onChangeText={setQ} placeholder="Scan or type invoice / serial no." onSubmitEditing={check} autoFocus />
+        <SearchBar value={q} onChangeText={setQ} placeholder="Scan or type invoice / serial / batch no." onSubmitEditing={check} autoFocus />
         <Button title="Check" icon="shield-checkmark-outline" onPress={check} loading={busy} disabled={q.trim().length < 2} style={{ marginTop: space.sm }} />
         {error ? <View style={{ marginTop: space.md }}><Banner tone="danger" messages={[error]} /></View> : null}
         {data?.results.length ? (
@@ -68,7 +68,24 @@ export default function Warranty() {
             </Row>
           </View>
         ) : null}
-        {data && !data.results.length ? <Text style={{ color: colors.textMuted, marginTop: space.lg }}>Nothing found for “{data.query}”.</Text> : null}
+        {(data?.batches ?? []).map((b) => (
+          <Card key={`${b.productId}-${b.batchNumber}`} style={{ marginTop: space.md }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={{ fontWeight: '800', color: colors.text, fontFamily: 'monospace' }}>Batch {b.batchNumber}</Text>
+              <Badge tone={b.registered ? 'success' : 'warning'} label={b.registered ? 'Registered' : 'Not registered'} />
+            </Row>
+            <Text style={{ color: colors.textMuted, fontSize: font.xs }}>{b.productName} · {b.sku}</Text>
+            <Text style={{ color: colors.text, fontSize: font.sm, marginTop: 4 }}>
+              {b.registered ? `Received ${b.received} · Sold ${b.sold} · Left ${b.balance}` : `Sold ${b.sold} · not on any purchase bill`}
+            </Text>
+            {b.bills.map((x) => (
+              <Text key={x.billId} style={{ color: colors.textMuted, fontSize: font.xs }}>
+                Purchase {x.billNumber} · {x.supplierName || 'Supplier'} · {ddmmyyyy(x.date)} · qty {x.quantity}
+              </Text>
+            ))}
+          </Card>
+        ))}
+        {data && !data.results.length ? <Text style={{ color: colors.textMuted, marginTop: space.lg }}>{data.batches?.length ? 'No sale bill carries this batch yet.' : `Nothing found for “${data.query}”.`}</Text> : null}
         {data?.results.map((r) => (
           <Card key={r.saleId} style={{ marginTop: space.md }}>
             <Row style={{ justifyContent: 'space-between' }}>
@@ -82,6 +99,14 @@ export default function Warranty() {
               <View key={l.itemId} style={{ marginTop: space.md, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
                 <Text style={{ fontWeight: '700', color: colors.text }}>{l.productName}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: font.xs }}>Qty {l.quantity}{l.quantityReturned ? ` · ${l.quantityReturned} returned` : ''}{l.serials.length ? ` · S/N ${l.serials.join(', ')}` : ''}</Text>
+                {l.batchNumber ? (
+                  <Row gap={6} style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                    <Badge tone={l.batchNumber === r.matchedBatch ? 'warning' : 'neutral'} label={`Batch ${l.batchNumber}`} />
+                    {l.batch ? <Badge tone={l.batch.registered ? 'success' : 'warning'} label={l.batch.registered
+                      ? `Registered${l.batch.bills[0] ? ` · ${l.batch.bills[0].billNumber}${l.batch.bills[0].supplierName ? ` · ${l.batch.bills[0].supplierName}` : ''}` : ''}`
+                      : 'Not registered'} /> : null}
+                  </Row>
+                ) : null}
                 <Period label="Warranty" p={l.warranty} />
                 <Period label="Guarantee" p={l.guarantee} />
               </View>

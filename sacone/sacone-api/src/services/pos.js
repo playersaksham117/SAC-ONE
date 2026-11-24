@@ -262,8 +262,18 @@ export function invoicePrintSettings({ withImage = true } = {}) {
 }
 
 /** A bill line's own work description and cost (undefined = not given, null cost = clear it). */
+/** A batch number as typed: trimmed, single spaces, upper case, at most 40 characters; '' clears it. */
+export function cleanBatch(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const b = String(value).replace(/\s+/g, ' ').trim().toUpperCase();
+  if (b.length > 40) throw new AppError(`Batch number "${b.slice(0, 20)}…" is too long (40 characters at most)`, 400);
+  return b || null;
+}
+
 function lineDetailOf(it) {
   const out = {};
+  if (it?.batchNumber !== undefined) out.batchNumber = cleanBatch(it.batchNumber);
   if (it?.description != null) out.description = String(it.description).replace(/\s+/g, ' ').trim().slice(0, 500);
   if (it?.costAmount !== undefined && it?.costAmount !== '') {
     if (it.costAmount === null) out.costAmount = null;
@@ -857,7 +867,7 @@ export class PosService {
     if (!sale || sale.status === 'voided') throw new AppError('Invoice not found', 404);
     if (!sale.items.some((i) => i.id === itemId)) throw new AppError('Line not found on this invoice', 404);
     const detail = lineDetailOf(body);
-    if (detail.description !== undefined) authService.checkPermission(actor.permissions, 'pos.sales.create');
+    if (detail.description !== undefined || detail.batchNumber !== undefined) authService.checkPermission(actor.permissions, 'pos.sales.create');
     if (detail.costAmount !== undefined) authService.checkPermission(actor.permissions, 'purchases.bills.view');
     if (!Object.keys(detail).length) throw new AppError('Nothing to change', 400);
     saleRepo.setLineDetails(saleId, [{ itemId, ...detail }]);
@@ -901,11 +911,13 @@ export class PosService {
       const created = this.checkout({
         warehouseId: old.warehouseId,
         customerId,
-        items: (data.items || []).map((it) => {
-          const prev = oldLines.get(it.productId);
+        items: (data.items || []).map((it, idx) => {
+          // the same line of the old bill (two lines of one product can carry different batches)
+          const prev = old.items?.[idx]?.productId === it.productId ? old.items[idx] : oldLines.get(it.productId);
           const withSerials = it.serialNumbers !== undefined || !oldSerials.has(it.productId) ? it : { ...it, serialNumbers: oldSerials.get(it.productId) };
           return {
             ...withSerials,
+            batchNumber: it.batchNumber !== undefined ? it.batchNumber : prev?.batchNumber ?? undefined,
             description: it.description !== undefined ? it.description : prev?.shortDescription ?? undefined,
             costAmount: it.costAmount !== undefined ? it.costAmount : prev?.costAmount ?? undefined,
           };

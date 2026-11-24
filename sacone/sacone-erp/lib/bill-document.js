@@ -101,6 +101,7 @@ const ddmmyyyy = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
 /** Classic grid rows: gross, discount, taxable and the SGST/CGST/IGST split of each line. */
 /** Under an item: its serial numbers and warranty / guarantee ("S/N A1, A2 · Warranty 1 Year (till …)"). */
 const lineNote = (l, startDate) => [
+  l.batchNumber ? `Batch ${l.batchNumber}` : '',
   l.serialNumbers?.length ? `S/N ${l.serialNumbers.join(', ')}` : '',
   periodNote(l, startDate),
 ].filter(Boolean).join(' · ');
@@ -113,7 +114,7 @@ function classicLines(items, interState, startDate = null) {
     const half = r2(gst / 2);
     return {
       name: l.productName, hsn: l.hsnCode, qty: l.quantity, uom: l.unit || '', rate: l.unitPrice,
-      note: startDate ? lineNote(l, startDate) : '',
+      note: startDate ? lineNote(l, startDate) : (l.batchNumber ? `Batch ${l.batchNumber}` : ''),
       desc: l.shortDescription || '',
       gross, disc: r2(gross - taxable), taxable, gstRate: Number(l.gstPercentage || 0),
       sgst: interState ? 0 : half, cgst: interState ? 0 : r2(gst - half), igst: interState ? r2(gst) : 0,

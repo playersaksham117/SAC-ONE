@@ -87,7 +87,7 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact, onTripl
   const { setQty, updateLine, remove } = useCart.getState();
   const [open, setOpen] = useState(false);
   const issues = validateLine(line, { canOverridePrice: canOverride });
-  const extra = line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '';
+  const extra = [line.batchNumber ? `Batch ${line.batchNumber}` : '', line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : ''].filter(Boolean).join(' · ');
   const [desc, setDesc] = useState(line.shortDescription ?? '');
   return (
     <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
@@ -127,7 +127,7 @@ function ItemRow({ line, index, canOverride, canCost, computed, compact, onTripl
         {compact ? null : <Text style={[cellText, { width: W.tax, textAlign: 'right', color: colors.textMuted }]}>{formatMoney(computed?.gstAmount ?? 0)}</Text>}
         <Text style={[cellText, { width: W.amt, textAlign: 'right', fontWeight: '800' }]}>{formatMoney(computed?.lineTotal ?? 0)}</Text>
         <Row gap={0} style={{ width: W.act, justifyContent: 'flex-end' }}>
-          <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
+          <IconButton icon={open ? 'chevron-up' : 'ellipsis-horizontal'} label={`More for ${line.name}: batch, serial numbers${canCost ? ', cost' : ''}`} size={18} onPress={() => setOpen(!open)} />
           <IconButton icon="trash-outline" tone="danger" label={`Remove ${line.name}`} size={18} onPress={() => remove(lineKey(line))} />
         </Row>
       </Row>
@@ -392,7 +392,7 @@ export function GstInvoiceForm({ searchRef }: { searchRef?: Ref<TextInput> }) {
               <Text style={{ color: colors.textMuted, marginTop: space.xs }}>No items yet. Type above or scan a barcode to add products.</Text>
             </View>
           )}
-          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. Short description prints under the item.{tripleTap ? ' Tap an item name 3 times for the same item on a new line.' : ''} ⋯ on a row: serial numbers{canCost ? ', cost' : ''}.</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.xs, marginTop: space.sm }}>Rates and discounts are before GST. Short description prints under the item.{tripleTap ? ' Tap an item name 3 times for the same item on a new line.' : ''} ⋯ on a row: batch, serial numbers{canCost ? ', cost' : ''}.</Text>
         </Card>
 
         {/* Notes */}

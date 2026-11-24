@@ -1,4 +1,5 @@
 import { warrantyService } from '../services/warranty.js';
+import { batchService } from '../services/batches.js';
 import { signStampForPrint } from '../services/pos.js';
 import { posPins } from '../services/pos-pins.js';
 import { authService } from '../services/index.js';
@@ -141,7 +142,12 @@ posSyncRouter.post('/login', asyncHandler(async (req, res) => {
   sendSuccess(res, { ...session, pinSetAt });
 }));
 
-/** Warranty Check from the terminal: invoice number or serial number. */
+/** Registered batches of a product (received on purchase bills), for the batch box on a bill line. */
+posSyncRouter.get('/batches', asyncHandler(async (req, res) => {
+  sendSuccess(res, batchService.forProduct(String(req.query.product_id || req.query.productId || '')));
+}));
+
+/** Warranty Check from the terminal: invoice, serial or batch number. */
 posSyncRouter.get('/warranty', asyncHandler(async (req, res) => {
   sendSuccess(res, warrantyService.lookup(req.query.q));
 }));

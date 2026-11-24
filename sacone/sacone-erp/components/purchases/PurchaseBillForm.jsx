@@ -114,6 +114,12 @@ export default function PurchaseBillForm({
   const items = lines.filter((l) => l.productId);
   const update = (idx, patch) => setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   const remove = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
+  // the same product again on the next line, for a second batch of it
+  const splitBatch = (idx) => setLines((prev) => {
+    const src = prev[idx];
+    const copy = { ...src, quantity: 1, batchNumber: '' };
+    return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
+  });
 
   // product search (debounced)
   useEffect(() => {
@@ -159,7 +165,7 @@ export default function PurchaseBillForm({
   const addProduct = useCallback((p) => {
     setLines((prev) => {
       const clean = prev.filter((l) => l.productId);
-      const at = clean.findIndex((l) => l.productId === p.id);
+      const at = clean.map((l) => l.productId).lastIndexOf(p.id);
       if (at >= 0) return clean.map((l, i) => (i === at ? { ...l, quantity: Number(l.quantity || 0) + 1 } : l));
       return [...clean, {
         productId: p.id,
@@ -347,9 +353,9 @@ export default function PurchaseBillForm({
             <div className="mt-4 space-y-3">
               {items.map((l, i) => {
                 const idx = lines.indexOf(l);
-                const c = computed.find((x) => x.productId === l.productId);
+                const c = computed[i] && computed[i].productId === l.productId ? computed[i] : computed.find((x) => x.productId === l.productId);
                 return (
-                  <div key={l.productId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-slate-300" data-testid={`pb-line-${i}`}>
+                  <div key={`${l.productId}-${i}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-slate-300" data-testid={`pb-line-${i}`}>
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">{i + 1}</span>
                       <div className="min-w-0 flex-1">
@@ -360,6 +366,10 @@ export default function PurchaseBillForm({
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Amount</div>
                         <div className="text-base font-bold tabular-nums text-slate-900">{c ? money(c.lineTotal) : '—'}</div>
                       </div>
+                      {!order && (
+                        <button type="button" className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50" onClick={() => splitBatch(idx)}
+                          title="Same item on a new line for another batch" data-testid={`pb-split-${i}`}>+ Batch</button>
+                      )}
                       <button type="button" className="shrink-0 rounded-lg px-2 py-1 text-rose-600 hover:bg-rose-50" onClick={() => remove(idx)} aria-label={`Remove ${l.productLabel}`} title="Remove line">🗑</button>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-6 sm:pl-9">
@@ -386,6 +396,14 @@ export default function PurchaseBillForm({
                         <div className="py-2 text-right text-sm tabular-nums text-slate-700">{c ? money(c.gstAmount) : '—'}</div>
                       </LineField>
                     </div>
+                    {!order && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 sm:pl-9">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Batch No.</span>
+                        <input className="input-field !min-h-0 w-full max-w-xs !py-1.5 font-mono text-sm uppercase" maxLength={40} placeholder="Optional · e.g. B2611"
+                          value={l.batchNumber || ''} onChange={(e) => update(idx, { batchNumber: e.target.value.toUpperCase() })}
+                          aria-label={`Batch number of ${l.productLabel}`} data-testid={`pb-batch-${i}`} />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -395,7 +413,10 @@ export default function PurchaseBillForm({
                 </div>
               )}
             </div>
-            <p className="mt-2 text-xs text-slate-400">Rates are before GST. HSN blank = the product&apos;s own code. Adding an item twice adds to its quantity.</p>
+            <p className="mt-2 text-xs text-slate-400">
+              Rates are before GST. HSN blank = the product&apos;s own code. Adding an item twice adds to its quantity.
+              {!order ? ' Batch No. registers the batch for Warranty Check; “+ Batch” puts the same item on a new line for another batch.' : ''}
+            </p>
           </Card>
 
           <Card title="Notes">

@@ -73,6 +73,8 @@ export interface CartLine {
   guarantee?: Period | null;
   /** Serial numbers of the units sold (warranty claims), printed on the bill and synced. */
   serialNumbers?: string[];
+  /** Batch the units came from (registered on a purchase bill in SACONE, or typed), printed on the bill and synced. */
+  batchNumber?: string | null;
   /** Printed under the item; starts as the product's, can be typed per bill (the work done for this customer). */
   shortDescription?: string | null;
   /** What this line cost us to provide (services: this job), ₹ before GST for the whole line. */

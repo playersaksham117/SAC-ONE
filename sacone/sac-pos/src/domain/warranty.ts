@@ -38,8 +38,12 @@ export function quoteNote(line: { warranty?: Period | null; guarantee?: Period |
 }
 
 /** Under an item on the bill: its serial numbers and warranty / guarantee. */
-export function lineNote(line: { warranty?: Period | null; guarantee?: Period | null; serialNumbers?: string[] }, startIso: string): string {
-  return [line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '', periodNote(line, startIso)].filter(Boolean).join(' · ');
+export function lineNote(line: { warranty?: Period | null; guarantee?: Period | null; serialNumbers?: string[]; batchNumber?: string | null }, startIso: string): string {
+  return [
+    line.batchNumber ? `Batch ${line.batchNumber}` : '',
+    line.serialNumbers?.length ? `S/N ${line.serialNumbers.join(', ')}` : '',
+    periodNote(line, startIso),
+  ].filter(Boolean).join(' · ');
 }
 
 /** "Warranty 1 Year (till 20/10/2027) · Guarantee 6 Months (till 20/04/2027)" for a bill line, or ''. */

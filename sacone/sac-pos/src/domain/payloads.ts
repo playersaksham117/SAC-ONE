@@ -43,6 +43,7 @@ export function salePayload(sale: Sale, userId: string) {
       tax_rate: l.gstRate,
       total_amount: l.lineTotal,
       serial_numbers: l.serialNumbers?.length ? l.serialNumbers : undefined,
+      batch_number: l.batchNumber || undefined,
       description: l.shortDescription ?? undefined,
       cost_amount: l.costAmount ?? undefined,
     })),

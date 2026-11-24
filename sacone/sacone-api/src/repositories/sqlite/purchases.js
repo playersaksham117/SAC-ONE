@@ -62,6 +62,7 @@ function mapBillItem(row) {
     productName: row.product_name,
     sku: row.sku,
     hsnCode: row.hsn_code,
+    batchNumber: row.batch_number || null,
     unit: row.unit_abbreviation || null,
     quantity: Number(row.quantity || 0),
     unitPrice: Number(row.unit_price || 0),
@@ -411,15 +412,15 @@ export class PurchaseRepository {
         INSERT INTO supplier_bill_items (
           id, bill_id, product_id, product_name, sku, hsn_code, quantity, unit_price,
           discount_percent, gst_percentage, taxable_amount, gst_amount, cgst_amount, sgst_amount, igst_amount,
-          line_total, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          line_total, sort_order, batch_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item, idx) => {
         insertItem.run(
           generateId(), id, item.productId, item.productName, item.sku || null, item.hsnCode || null,
           item.quantity, item.unitPrice, item.discountPercent || 0, item.gstPercentage || 0,
           item.taxableAmount, item.gstAmount, item.cgstAmount || 0, item.sgstAmount || 0, item.igstAmount || 0,
-          item.lineTotal, idx
+          item.lineTotal, idx, item.batchNumber || null
         );
       });
     });
@@ -454,15 +455,15 @@ export class PurchaseRepository {
         INSERT INTO supplier_bill_items (
           id, bill_id, product_id, product_name, sku, hsn_code, quantity, unit_price,
           discount_percent, gst_percentage, taxable_amount, gst_amount, cgst_amount, sgst_amount, igst_amount,
-          line_total, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          line_total, sort_order, batch_number
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       items.forEach((item, idx) => {
         insertItem.run(
           generateId(), id, item.productId, item.productName, item.sku || null, item.hsnCode || null,
           item.quantity, item.unitPrice, item.discountPercent || 0, item.gstPercentage || 0,
           item.taxableAmount, item.gstAmount, item.cgstAmount || 0, item.sgstAmount || 0, item.igstAmount || 0,
-          item.lineTotal, idx,
+          item.lineTotal, idx, item.batchNumber || null,
         );
       });
     })();

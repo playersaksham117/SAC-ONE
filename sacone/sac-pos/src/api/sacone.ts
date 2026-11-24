@@ -95,9 +95,24 @@ export interface WarrantyCheck {
   query: string; today: string;
   results: {
     saleId: string; invoiceNumber: string; date: string; branch?: string | null; status: string; customerName: string | null; customerPhone: string | null; matchedSerial: string | null;
-    lines: { itemId: string; productName: string; sku: string; quantity: number; quantityReturned: number; serials: string[]; warranty: WarrantyPeriod | null; guarantee: WarrantyPeriod | null }[];
+    matchedBatch?: string | null;
+    lines: {
+      itemId: string; productName: string; sku: string; quantity: number; quantityReturned: number; serials: string[]; warranty: WarrantyPeriod | null; guarantee: WarrantyPeriod | null;
+      batchNumber?: string | null; batch?: BatchOrigin | null;
+    }[];
   }[];
+  /** Batches matching the search (where they came from, sold / left); older servers send none. */
+  batches?: BatchInfo[];
 }
+/** Purchase bills a batch came in on. */
+export interface BatchBill { billId: string; billNumber: string; supplierInvoiceNumber: string | null; date: string; supplierName: string | null; quantity: number }
+export interface BatchOrigin { registered: boolean; bills: BatchBill[]; received?: number; sold?: number }
+export interface BatchInfo {
+  productId: string; productName: string; sku: string; batchNumber: string; registered: boolean;
+  received: number; sold: number; balance: number | null; bills: BatchBill[];
+}
+/** A registered batch of a product, to pick on a bill line. */
+export interface ProductBatch { batchNumber: string; received: number; sold: number; balance: number; firstReceived: string | null }
 
 /** Today's attendance row for a staff member (times are ISO; inTime / outTime are IST 'HH:MM'). */
 export interface AttendanceToday {
@@ -195,6 +210,9 @@ export const sync = {
       method: 'POST', body: { userId, action }, headers: deviceHeaders(c),
     }),
 
+  /** Registered batches of a product (received on purchase bills), for the batch box on a bill line. */
+  batches: (c: DeviceConfig, productId: string) =>
+    request<{ productId: string; batches: ProductBatch[] }>(c.baseUrl, '/api/v1/sync/batches', { query: { product_id: productId }, headers: deviceHeaders(c) }),
   /** Warranty Check: invoice number or a unit's serial number. */
   warranty: (c: DeviceConfig, q: string) =>
     request<WarrantyCheck>(c.baseUrl, '/api/v1/sync/warranty', { query: { q }, headers: deviceHeaders(c) }),

@@ -13,6 +13,7 @@ import { ExchangeNotice } from '../ui/ExchangeNotice';
 import { useCan } from '../store/session';
 import { confirm, notify } from '../ui/dialogs';
 import { parseSerials } from '../domain/serials';
+import { BatchInput } from '../ui/BatchInput';
 import {
   Badge, Banner, Button, Card, Chip, Divider, Empty, Header, IconButton, KeyValue, Row, Screen, SectionTitle, Stepper,
   colors, font, radius, space,
@@ -58,6 +59,8 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
   const [serialOpen, setSerialOpen] = useState(Boolean(line.serialNumbers?.length));
   const [serialText, setSerialText] = useState((line.serialNumbers || []).join('\n'));
   const serialCheck = parseSerials(serialText, line.quantity);
+  const [batchOpen, setBatchOpen] = useState(Boolean(line.batchNumber));
+  const goods = line.itemType !== 'service';
   const hasWarranty = Boolean(line.warranty || line.guarantee);
   const issues = validateLine(line, { canOverridePrice: canOverride });
   const rate = quick ? inclGst(line.unitPrice, line.gstRate) : line.unitPrice;
@@ -89,6 +92,16 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
             </Text>
           </Row>
         </Pressable>
+        {goods ? (
+          <Pressable onPress={() => setBatchOpen(!batchOpen)} hitSlop={8} testID={`batch-toggle-${line.productId}`}>
+            <Row gap={4}>
+              <Ionicons name="layers-outline" size={16} color={line.batchNumber ? colors.primary : colors.textMuted} />
+              <Text style={{ color: line.batchNumber ? colors.primary : colors.textMuted, fontWeight: '700', fontSize: font.sm }}>
+                Batch{line.batchNumber ? ` ${line.batchNumber}` : ''}
+              </Text>
+            </Row>
+          </Pressable>
+        ) : null}
         <Pressable onPress={() => setDetailsOpen(!detailsOpen)} hitSlop={8}>
           <Row gap={4}>
             <Ionicons name="create-outline" size={16} color={line.itemType === 'service' || line.shortDescription ? colors.primary : colors.textMuted} />
@@ -148,6 +161,11 @@ export function LineRow({ line, canOverride, canCost, quick = false }: { line: C
               testID={`cost-${line.productId}`}
             />
           ) : null}
+        </View>
+      ) : null}
+      {batchOpen && goods ? (
+        <View style={{ marginTop: space.sm }}>
+          <BatchInput productId={line.productId} value={line.batchNumber} onChange={(v) => updateLine(lineKey(line), { batchNumber: v })} testID={`batch-${line.productId}`} />
         </View>
       ) : null}
       {serialOpen ? (

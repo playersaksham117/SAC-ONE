@@ -12,6 +12,7 @@ import { customerInvoiceService } from '../services/customer-invoices.js';
 import { supplierBillService } from '../services/supplier-bills.js';
 import { partyStatementService } from '../services/party-statements.js';
 import { warrantyService } from '../services/warranty.js';
+import { batchService } from '../services/batches.js';
 
 export const customerRouter = Router();
 customerRouter.use(authenticate());
@@ -209,6 +210,14 @@ export const warrantyRouter = Router();
 warrantyRouter.use(authenticate());
 warrantyRouter.get('/check', asyncHandler(async (req, res) => {
   sendSuccess(res, warrantyService.check(req.query.q, req.actor));
+}));
+/** Batch Register: every product + batch (registered on purchase bills, or only on sales). */
+warrantyRouter.get('/batches', asyncHandler(async (req, res) => {
+  sendSuccess(res, batchService.register(req.query, req.actor));
+}));
+/** Registered batches of one product, for picking on a sale line. */
+warrantyRouter.get('/batches/product/:productId', asyncHandler(async (req, res) => {
+  sendSuccess(res, batchService.forProductChecked(req.params.productId, req.actor));
 }));
 
 export const posRouter = Router();

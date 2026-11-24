@@ -117,6 +117,7 @@ function mapSaleItem(row) {
     guaranteeValue: row.guarantee_value || null,
     guaranteeUnit: row.guarantee_value ? row.guarantee_unit : null,
     shortDescription: row.short_description || null,
+    batchNumber: row.batch_number || null,
     costAmount: row.cost_amount ?? null,
     basePrice: row.base_price ?? null,
     movementId: row.movement_id,
@@ -477,11 +478,13 @@ export class PosSaleRepository {
     const db = getDatabase();
     const desc = db.prepare('UPDATE pos_sale_items SET short_description = ? WHERE id = ? AND sale_id = ?');
     const cost = db.prepare('UPDATE pos_sale_items SET cost_amount = ? WHERE id = ? AND sale_id = ?');
+    const batch = db.prepare('UPDATE pos_sale_items SET batch_number = ? WHERE id = ? AND sale_id = ?');
     db.transaction(() => {
       for (const d of details || []) {
         if (!d?.itemId) continue;
         if (d.description !== undefined && d.description !== null) desc.run(d.description || null, d.itemId, saleId);
         if (d.costAmount !== undefined) cost.run(d.costAmount, d.itemId, saleId);
+        if (d.batchNumber !== undefined) batch.run(d.batchNumber, d.itemId, saleId);
       }
     })();
   }

@@ -12,7 +12,7 @@ export interface ServerSale {
     productId: string; name: string; sku: string; hsn: string | null; unit: string;
     quantity: number; unitPrice: number; discountAmount: number; gstRate: number;
     taxableAmount: number; gstAmount: number; lineTotal: number; quantityReturned: number;
-    warranty: Period | null; guarantee: Period | null; serialNumbers: string[]; shortDescription: string | null;
+    warranty: Period | null; guarantee: Period | null; serialNumbers: string[]; shortDescription: string | null; batchNumber?: string | null;
   }[];
   subtotal: number; itemDiscountTotal: number; invoiceDiscount: number; taxableAmount: number;
   cgstAmount: number; sgstAmount: number; igstAmount: number; gstAmount: number; grandTotal: number;
@@ -63,6 +63,7 @@ export function withServerSale(local: Sale, s: ServerSale): Sale {
       discountAmount: i.discountAmount, gstRate: i.gstRate,
       warranty: i.warranty, guarantee: i.guarantee,
       serialNumbers: i.serialNumbers.length ? i.serialNumbers : undefined,
+      batchNumber: i.batchNumber ?? null,
       shortDescription: i.shortDescription,
       gross,
       invoiceDiscountShare: Math.max(0, r2(gross - i.discountAmount - i.taxableAmount)),

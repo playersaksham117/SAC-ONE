@@ -130,7 +130,7 @@ function phoneSale(s) {
       quantity: i.quantity, unitPrice: i.unitPrice, discountAmount: i.discountAmount, gstRate: i.gstPercentage,
       taxableAmount: i.taxableAmount, gstAmount: i.gstAmount, lineTotal: i.lineTotal, quantityReturned: i.quantityReturned,
       warranty: period(i.warrantyValue, i.warrantyUnit), guarantee: period(i.guaranteeValue, i.guaranteeUnit),
-      serialNumbers: i.serialNumbers || [], shortDescription: i.shortDescription || null,
+      serialNumbers: i.serialNumbers || [], shortDescription: i.shortDescription || null, batchNumber: i.batchNumber || null,
     })),
     subtotal: s.subtotal, itemDiscountTotal: s.itemDiscountTotal, invoiceDiscount: s.invoiceDiscount,
     taxableAmount: s.taxableAmount, cgstAmount: s.cgstAmount, sgstAmount: s.sgstAmount, igstAmount: s.igstAmount,
@@ -654,6 +654,7 @@ export class PosSyncService {
         discountAmount: num(item.discount_amount, 0),
       };
       if (Array.isArray(item.serial_numbers) && item.serial_numbers.length) line.serialNumbers = item.serial_numbers;
+      if (item.batch_number != null && String(item.batch_number).trim()) line.batchNumber = String(item.batch_number).slice(0, 40);
       if (item.tax_rate != null) line.gstPercentage = num(item.tax_rate);
       // per-bill work description and the cost of providing the line (services)
       if (item.description != null) line.description = str(item.description);

@@ -5,7 +5,7 @@ import { MOVEMENT_TYPES } from '../core/inventory-constants.js';
 import { repos } from '../repositories/index.js';
 import { authService, isFirmAdmin } from './index.js';
 import { getDatabase } from '../database/connection.js';
-import { calculateCartTotals } from './pos.js';
+import { calculateCartTotals, cleanBatch } from './pos.js';
 import { inventoryMovementService } from './inventory.js';
 import { supplierService } from './parties.js';
 import { partyStatementService } from './party-statements.js';
@@ -133,6 +133,7 @@ function enrichLines(items, { allowInactive = [] } = {}) {
       unitPrice: item.unitPrice != null ? Number(item.unitPrice) : product.purchasePrice,
       discountPercent: Number(item.discountPercent || 0),
       gstPercentage: item.gstPercentage != null ? Number(item.gstPercentage) : product.gstPercentage,
+      batchNumber: cleanBatch(item.batchNumber) || null,
     };
   });
 }
@@ -154,6 +155,7 @@ function buildPurchaseTotals(items, supplierId, { unregistered = false } = {}) {
     productName: items[idx].productName,
     sku: items[idx].sku,
     hsnCode: items[idx].hsnCode,
+    batchNumber: items[idx].batchNumber || null,
     quantity: line.quantity,
     unitPrice: line.unitPrice,
     discountPercent: line.discountPercent,
@@ -666,7 +668,7 @@ export class PurchaseService {
       unregistered: flag,
       // back to registered: each item's GST rate from the product
       items: bill.items.map((i) => ({
-        productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, discountPercent: i.discountPercent, hsnCode: i.hsnCode,
+        productId: i.productId, quantity: i.quantity, unitPrice: i.unitPrice, discountPercent: i.discountPercent, hsnCode: i.hsnCode, batchNumber: i.batchNumber,
         ...(flag ? {} : { gstPercentage: undefined }),
       })),
     }, actor, req);

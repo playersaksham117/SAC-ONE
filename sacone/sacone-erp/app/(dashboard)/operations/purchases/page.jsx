@@ -239,6 +239,7 @@ export default function PurchasesPage() {
         unitPrice: Number(l.unitPrice),
         discountPercent: Number(l.discountPercent) || 0,
         hsnCode: l.hsnCode || '',
+        batchNumber: l.batchNumber || null,
       }));
       if (editBillId) {
         const { purchaseOrderId: _po, ...form } = billForm;
@@ -398,6 +399,7 @@ export default function PurchasesPage() {
         discountPercent: i.discountPercent || 0,
         hsnCode: i.hsnCode || '',
         gstPercentage: i.gstPercentage,
+        batchNumber: i.batchNumber || '',
       })));
       setEditBillId(bill.id);
       setBillModal(true);

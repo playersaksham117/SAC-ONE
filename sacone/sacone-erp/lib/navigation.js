@@ -50,7 +50,7 @@ export const ERP_MODULES = [
     id: 'sales',
     section: 'operations',
     label: 'Sales & Warranty',
-    description: 'Invoices, quotations, Sold Above Price and warranty check by invoice or serial number',
+    description: 'Invoices, quotations, Sold Above Price, warranty check by invoice / serial / batch and the batch register',
     href: '/operations/sales',
     permission: 'pos.sales.view',
     permissions: ['pos.sales.view', 'sales.orders.view'],
