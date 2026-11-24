@@ -84,6 +84,19 @@ export function SupplierPicker({ suppliers, value, onChange, disabled }) {
   );
 }
 
+const NUM_INPUT = 'input-field !min-h-0 !py-2 text-right text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+
+/** A labelled box on a bill line (label above, value below). */
+function LineField({ label, hint, children }) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+      {children}
+      {hint ? <span className="mt-0.5 block text-[10px] text-amber-700">{hint}</span> : null}
+    </label>
+  );
+}
+
 export default function PurchaseBillForm({
   kind = 'bill', editing, form, setForm, lines, setLines, suppliers, warehouses, saving, error, onSubmit, onCancel,
 }) {
@@ -331,68 +344,56 @@ export default function PurchaseBillForm({
               )}
             </div>
 
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="border-b-2 border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="w-8 py-2 pr-2">#</th>
-                    <th className="min-w-[180px] py-2 pr-2">Item</th>
-                    <th className="w-24 py-2 pr-2">HSN/SAC</th>
-                    <th className="w-24 py-2 pr-2 text-right">Qty</th>
-                    <th className="w-28 py-2 pr-2 text-right">Rate ₹</th>
-                    <th className="w-20 py-2 pr-2 text-right">Disc %</th>
-                    <th className="w-16 py-2 pr-2 text-right">GST</th>
-                    <th className="hidden w-24 py-2 pr-2 text-right 2xl:table-cell">Tax ₹</th>
-                    <th className="w-28 py-2 pr-2 text-right">Amount ₹</th>
-                    <th className="w-10 py-2" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {items.map((l, i) => {
-                    const idx = lines.indexOf(l);
-                    const c = computed.find((x) => x.productId === l.productId);
-                    return (
-                      <tr key={l.productId} className="align-top">
-                        <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
-                        <td className="py-2 pr-2">
-                          <div className="font-semibold text-slate-900">{l.productLabel || c?.productName || l.productId}</div>
-                          <div className="text-xs text-slate-500">{[l.sku || c?.sku, l.unit].filter(Boolean).join(' · ')}</div>
-                        </td>
-                        <td className="py-2 pr-2">
-                          <input className="input-field !min-h-0 !py-1.5 font-mono text-xs" inputMode="numeric" maxLength={8} placeholder="Product's" title="HSN / SAC (4–8 digits); blank = the product's code"
-                            value={l.hsnCode || ''} onChange={(e) => update(idx, { hsnCode: e.target.value.replace(/\D/g, '') })} />
-                        </td>
-                        <td className="py-2 pr-2">
-                          <input type="number" min="0.001" step="any" className="input-field !min-h-0 !py-1.5 text-right" value={l.quantity}
-                            onChange={(e) => update(idx, { quantity: num(e.target.value) })} aria-label={`Quantity of ${l.productLabel}`} data-testid={`pb-qty-${i}`} />
-                          {l.receivedQty > 0 && <div className="mt-0.5 text-[10px] text-amber-700">received {l.receivedQty}</div>}
-                        </td>
-                        <td className="py-2 pr-2">
-                          <input type="number" step="0.01" min="0" className="input-field !min-h-0 !py-1.5 text-right" value={l.unitPrice}
-                            onChange={(e) => update(idx, { unitPrice: num(e.target.value) })} aria-label={`Rate of ${l.productLabel}`} data-testid={`pb-rate-${i}`} />
-                        </td>
-                        <td className="py-2 pr-2">
-                          <input type="number" step="0.01" min="0" max="100" className="input-field !min-h-0 !py-1.5 text-right" value={l.discountPercent}
-                            onChange={(e) => update(idx, { discountPercent: num(e.target.value) })} aria-label={`Discount % on ${l.productLabel}`} />
-                        </td>
-                        <td className="py-2 pr-2 pt-3.5 text-right text-slate-600">{c ? c.gstPercentage : l.gstPercentage ?? '—'}%</td>
-                        <td className="hidden py-2 pr-2 pt-3.5 text-right tabular-nums text-slate-500 2xl:table-cell">{c ? money(c.gstAmount) : '—'}</td>
-                        <td className="py-2 pr-2 pt-3.5 text-right font-semibold tabular-nums text-slate-900">{c ? money(c.lineTotal) : '—'}</td>
-                        <td className="py-2 pt-2.5 text-right">
-                          <button type="button" className="rounded-lg px-2 py-1 text-rose-600 hover:bg-rose-50" onClick={() => remove(idx)} aria-label={`Remove ${l.productLabel}`}>🗑</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {!items.length && (
-                    <tr>
-                      <td colSpan={10} className="py-10 text-center text-slate-400">
-                        No items yet. {form.supplierId ? 'Search above and press Enter to add products.' : 'Choose the supplier, then add products.'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <div className="mt-4 space-y-3">
+              {items.map((l, i) => {
+                const idx = lines.indexOf(l);
+                const c = computed.find((x) => x.productId === l.productId);
+                return (
+                  <div key={l.productId} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-slate-300" data-testid={`pb-line-${i}`}>
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold leading-snug text-slate-900">{l.productLabel || c?.productName || l.productId}</div>
+                        <div className="text-xs text-slate-500">{[l.sku || c?.sku, l.unit].filter(Boolean).join(' · ')}</div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Amount</div>
+                        <div className="text-base font-bold tabular-nums text-slate-900">{c ? money(c.lineTotal) : '—'}</div>
+                      </div>
+                      <button type="button" className="shrink-0 rounded-lg px-2 py-1 text-rose-600 hover:bg-rose-50" onClick={() => remove(idx)} aria-label={`Remove ${l.productLabel}`} title="Remove line">🗑</button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-6 sm:pl-9">
+                      <LineField label="Qty" hint={l.receivedQty > 0 ? `received ${l.receivedQty}` : null}>
+                        <input type="number" min="0.001" step="any" className={NUM_INPUT} value={l.quantity}
+                          onChange={(e) => update(idx, { quantity: num(e.target.value) })} onFocus={(e) => e.target.select()} aria-label={`Quantity of ${l.productLabel}`} data-testid={`pb-qty-${i}`} />
+                      </LineField>
+                      <LineField label="Rate ₹">
+                        <input type="number" step="0.01" min="0" className={NUM_INPUT} value={l.unitPrice}
+                          onChange={(e) => update(idx, { unitPrice: num(e.target.value) })} onFocus={(e) => e.target.select()} aria-label={`Rate of ${l.productLabel}`} data-testid={`pb-rate-${i}`} />
+                      </LineField>
+                      <LineField label="Disc %">
+                        <input type="number" step="0.01" min="0" max="100" className={NUM_INPUT} value={l.discountPercent}
+                          onChange={(e) => update(idx, { discountPercent: num(e.target.value) })} onFocus={(e) => e.target.select()} aria-label={`Discount % on ${l.productLabel}`} data-testid={`pb-disc-${i}`} />
+                      </LineField>
+                      <LineField label="HSN / SAC">
+                        <input className="input-field !min-h-0 !py-2 font-mono text-sm" inputMode="numeric" maxLength={8} placeholder="Auto" title="HSN / SAC (4–8 digits); blank = the product's code"
+                          value={l.hsnCode || ''} onChange={(e) => update(idx, { hsnCode: e.target.value.replace(/\D/g, '') })} aria-label={`HSN of ${l.productLabel}`} />
+                      </LineField>
+                      <LineField label="Taxable ₹">
+                        <div className="py-2 text-right text-sm tabular-nums text-slate-700">{c ? money(c.taxableAmount) : '—'}</div>
+                      </LineField>
+                      <LineField label={`GST ${c ? c.gstPercentage : l.gstPercentage ?? '—'}%`}>
+                        <div className="py-2 text-right text-sm tabular-nums text-slate-700">{c ? money(c.gstAmount) : '—'}</div>
+                      </LineField>
+                    </div>
+                  </div>
+                );
+              })}
+              {!items.length && (
+                <div className="rounded-xl border border-dashed border-slate-300 py-10 text-center text-sm text-slate-400">
+                  No items yet. {form.supplierId ? 'Search above and press Enter to add products.' : 'Choose the supplier, then add products.'}
+                </div>
+              )}
             </div>
             <p className="mt-2 text-xs text-slate-400">Rates are before GST. HSN blank = the product&apos;s own code. Adding an item twice adds to its quantity.</p>
           </Card>
