@@ -37,3 +37,16 @@ describe('word-by-word product search', () => {
     expect(searchProducts(products, 'C')[0].id).toBe('c');
   });
 });
+
+describe('search by the supplier price-list heading (description)', () => {
+  const products = {
+    l: { id: 'l', name: 'COPPER TUBULAR LUG ECONOMY 16 SQ.MM 6.4MM HOLE ASCON', sku: 'ACUS-09', isActive: true, price: 23, gstRate: 18, unit: 'NOS',
+      description: 'COPPER TUBULAR CABLE LUG TERMINAL ENDS, ECONOMY SERIES. STD. PKG 400 PCS.' },
+    f: { id: 'f', name: 'COPPER FERRULE ECONOMY 16 SQ.MM ASCON', sku: 'ACB-6', isActive: true, price: 16, gstRate: 18, unit: 'NOS',
+      description: 'COPPER TUBULAR FERRULE (IN-LINE CONNECTOR), ECONOMY SERIES.' },
+  } as never;
+  it('finds the lug by words that are only in its description', () => {
+    expect(searchProducts(products, 'COPPER TUBULAR CABLE LUG TERMINAL ENDS').map((x: { id: string }) => x.id)).toEqual(['l']);
+    expect(searchProducts(products, 'terminal ends 16').map((x: { id: string }) => x.id)).toEqual(['l']);
+  });
+});

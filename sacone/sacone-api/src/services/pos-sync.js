@@ -946,6 +946,8 @@ export class PosSyncService {
       item_type: r.item_type === 'service' ? 'service' : 'goods',
       // Warranty / guarantee from the invoice date (printed on the phone's bills).
       short_description: r.short_description || null,
+      // searched on the phone (a supplier's price-list heading, e.g. "Copper Tubular Cable Lug Terminal Ends")
+      description: r.description ? String(r.description).slice(0, 300) : null,
       warranty_value: r.warranty_value || null,
       warranty_unit: r.warranty_value ? r.warranty_unit : null,
       guarantee_value: r.guarantee_value || null,

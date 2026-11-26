@@ -54,6 +54,7 @@ export function mapServerProduct(p: ServerProduct): Product {
     warranty: periodOf(p.warranty_value, p.warranty_unit),
     guarantee: periodOf(p.guarantee_value, p.guarantee_unit),
     shortDescription: p.short_description || null,
+    description: p.description || null,
     onHand: Number(p.current_stock || 0),
     available: Number(p.available_stock ?? p.current_stock ?? 0),
     isActive: p.is_active !== false && p.approval_status !== 'rejected',
@@ -186,13 +187,19 @@ export const useCatalog = create<CatalogState>()(
         set({ products: {}, customers: {}, minPrices: {}, productCursor: EPOCH, customerCursor: EPOCH, lastPullAt: null });
       },
     }),
-    { name: 'sacpos.catalog', storage: jsonStorage },
+    {
+      name: 'sacpos.catalog',
+      storage: jsonStorage,
+      // v1: products carry their description (searched): pull every product once more
+      version: 1,
+      migrate: (state, from) => (from < 1 && state && typeof state === 'object' ? { ...(state as object), productCursor: EPOCH } : state) as never,
+    },
   ),
 );
 
 /**
- * Products matching every word typed, in any order, in the name, SKU, barcode, brand, HSN or
- * category ("copper lug 16", "ascon ferrule 25"). The exact barcode / SKU comes first, then names
+ * Products matching every word typed, in any order, in the name, SKU, barcode, brand, HSN,
+ * category or description ("copper lug 16", "ascon ferrule 25"). The exact barcode / SKU comes first, then names
  * starting with what was typed, then the phrase as typed, then names holding most words whole.
  */
 export function searchProducts(products: Record<string, Product>, query: string, limit = 60): Product[] {
@@ -200,7 +207,7 @@ export function searchProducts(products: Record<string, Product>, query: string,
   const all = Object.values(products).filter((p) => p.isActive);
   if (!q) return all.sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
   const words = q.split(' ').slice(0, 8);
-  const hay = (p: Product) => [p.name, p.sku, p.barcode, p.brand, p.hsn, p.category].filter(Boolean).join(' ').toLowerCase();
+  const hay = (p: Product) => [p.name, p.sku, p.barcode, p.brand, p.hsn, p.category, p.shortDescription, p.description].filter(Boolean).join(' ').toLowerCase();
   const exact = all.filter((p) => p.barcode?.toLowerCase() === q || p.sku.toLowerCase() === q);
   const rank = (p: Product) => {
     const name = p.name.toLowerCase();

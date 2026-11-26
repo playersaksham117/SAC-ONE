@@ -26,6 +26,8 @@ export interface Product {
   guarantee?: Period | null;
   /** One line of specs, printed under the item on A4 / A5 bills and quotations. */
   shortDescription?: string | null;
+  /** The product's description in the ERP (searched, not printed). */
+  description?: string | null;
   onHand: number;
   available: number;     // server stock for this device's warehouse
   isActive: boolean;

@@ -255,7 +255,8 @@ export class ProductRepository {
     const conditions = [];
     const params = [];
     // Search word by word: every word typed must appear somewhere (name, SKU, barcode, model,
-    // attributes, HSN, brand or category), in any order ("copper lug 16", "ascon ferrule 25").
+    // attributes, HSN, brand, category or description), in any order ("copper lug 16",
+    // "copper tubular cable lug terminal ends" as in a supplier's price list).
     const words = String(search || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
     let rank = '';
     const rankParams = [];
@@ -265,9 +266,10 @@ export class ProductRepository {
           LOWER(p.name) LIKE ? OR LOWER(p.sku) LIKE ? OR LOWER(COALESCE(p.barcode, '')) LIKE ?
           OR LOWER(COALESCE(p.model_variant, '')) LIKE ? OR LOWER(COALESCE(p.attributes, '')) LIKE ?
           OR LOWER(COALESCE(p.hsn_code, '')) LIKE ? OR LOWER(COALESCE(b.name, '')) LIKE ? OR LOWER(COALESCE(c.name, '')) LIKE ?
+          OR LOWER(COALESCE(p.description, '')) LIKE ? OR LOWER(COALESCE(p.short_description, '')) LIKE ?
         )`);
         const like = `%${w}%`;
-        params.push(like, like, like, like, like, like, like, like);
+        params.push(like, like, like, like, like, like, like, like, like, like);
       }
       // Best matches first: the exact code / barcode, then names that start with what was typed,
       // then the typed phrase as is, then names holding most of the words as whole words.
